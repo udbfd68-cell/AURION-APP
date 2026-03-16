@@ -1,0 +1,62 @@
+@import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700,800,900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;800&display=swap');
+@import '../styles/scrollbar.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    height: 100%;
+    overscroll-behavior: none;
+  }
+  
+  body {
+    font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', 'Segoe UI', 'Inter', system-ui, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'liga' 1, 'calt' 1;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Mobile responsive overrides */
+@media (max-width: 768px) {
+  .workspace-layout {
+    flex-direction: column !important;
+  }
+  .workspace-layout > .chat-panel {
+    width: 100% !important;
+    max-height: 50vh;
+    border-right: none !important;
+    border-bottom: 1px solid #1e1e1e;
+  }
+  .workspace-layout > .chat-panel > div {
+    width: 100% !important;
+  }
+  .workspace-layout > .right-panel {
+    flex: 1;
+    min-height: 0;
+  }
+  .workspace-layout .chat-drag-handle {
+    display: none !important;
+  }
+  .workspace-layout .file-tree-sidebar {
+    width: 140px !important;
+  }
+  .workspace-layout .integration-side-panel {
+    position: fixed !important;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 40;
+    width: 280px !important;
+  }
+}
+
+@layer components {}
+
+@layer utilities {}

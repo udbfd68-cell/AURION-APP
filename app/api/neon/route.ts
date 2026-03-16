@@ -1,0 +1,72 @@
+/**
+ * Neon Proxy Route — Execute SQL via Neon Serverless HTTP API
+ * https://neon.tech/docs/serverless/serverless-driver#use-the-neon-http-api
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+
+export const runtime = 'edge';
+
+export async function POST(req: NextRequest) {
+  try {
+    const { connectionString, sql, params } = await req.json();
+
+    if (!connectionString) {
+      return NextResponse.json({ error: 'Missing Neon connection string' }, { status: 400 });
+    }
+
+    // Parse connection string: postgres://user:pass@host/dbname
+    const match = connectionString.match(/^postgres(?:ql)?:\/\/([^:]+):([^@]+)@([^/]+)\/(.+?)(?:\?.*)?$/);
+    if (!match) {
+      return NextResponse.json({ error: 'Invalid connection string format. Expected: postgres://user:pass@host.neon.tech/dbname' }, { status: 400 });
+    }
+
+    const [, user, password, host, dbname] = match;
+
+    // Verify it's a Neon host
+    if (!host.includes('neon.tech') && !host.includes('neon.')) {
+      return NextResponse.json({ error: 'Invalid host. Must be a Neon database host (*.neon.tech)' }, { status: 400 });
+    }
+
+    if (!sql) {
+      return NextResponse.json({ error: 'Missing SQL query' }, { status: 400 });
+    }
+
+    // Block dangerous operations
+    const sqlUpper = sql.toUpperCase().trim();
+    if (sqlUpper.startsWith('DROP DATABASE') || sqlUpper.startsWith('DROP ROLE') || sqlUpper.includes('pg_terminate_backend')) {
+      return NextResponse.json({ error: 'This SQL operation is not allowed for safety' }, { status: 400 });
+    }
+
+    // Use Neon's serverless HTTP API
+    const endpoint = `https://${host}/sql`;
+    const auth = btoa(`${user}:${password}`);
+
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json',
+        'Neon-Connection-String': connectionString,
+        'Neon-Raw-Text-Output': 'false',
+        'Neon-Array-Mode': 'false',
+        'Neon-Pool-Opt-In': 'true',
+      },
+      body: JSON.stringify({
+        query: sql,
+        params: params || [],
+      }),
+    });
+
+    const data = await resp.json().catch(() => null);
+
+    if (!resp.ok) {
+      return NextResponse.json({ error: `Neon error ${resp.status}`, details: data }, { status: resp.status });
+    }
+
+    return NextResponse.json({ data });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
