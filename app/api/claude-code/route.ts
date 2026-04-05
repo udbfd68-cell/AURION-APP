@@ -21,10 +21,6 @@ import {
   runQualityChecks,
   HTML_QUALITY_CHECKS,
   buildContinuationPrompt,
-  CLAUDE_CODE_METHODOLOGY,
-  ADVANCED_TOOL_COMPOSITION,
-  STREAMING_OPTIMIZATION,
-  PROMPT_INJECTION_DEFENSE,
 } from '@/lib/claude-code-engine';
 
 import { buildSystemPrompt, buildCloneSystemPrompt } from '@/lib/system-prompts';
@@ -148,10 +144,7 @@ export async function POST(req: Request) {
         return Response.json({
           success: true,
           data: {
-            methodology: CLAUDE_CODE_METHODOLOGY,
-            toolComposition: ADVANCED_TOOL_COMPOSITION,
-            streaming: STREAMING_OPTIMIZATION,
-            security: PROMPT_INJECTION_DEFENSE,
+            methodology: 'Methodology strings removed — they wasted tokens. The real intelligence is in the design system, component libraries, and quality checks.',
           },
         });
       }
@@ -428,10 +421,6 @@ function buildEnhancedSystemPrompt(researchContext?: string): string {
   const base = buildSystemPrompt();
 
   const enhanced = `${base}
-
-${CLAUDE_CODE_METHODOLOGY}
-
-${ADVANCED_TOOL_COMPOSITION}
 
 ${researchContext ? `
 [RESEARCH-ENHANCED CONTEXT]

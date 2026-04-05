@@ -17,9 +17,9 @@
  */
 
 import { REACTBITS_CATALOG, type ReactBitsComponent } from './reactbits-catalog';
-import { CLAUDE_CODE_METHODOLOGY, ADVANCED_TOOL_COMPOSITION, STREAMING_OPTIMIZATION, PROMPT_INJECTION_DEFENSE, MULTI_AGENT_ORCHESTRATION, ULTRA_THINK_ENGINE, CONTEXT_ENGINEERING, AGENTIC_WORKFLOW_PATTERNS, CODE_QUALITY_SYSTEM, ADVANCED_GENERATION_INTELLIGENCE, SELF_HEALING_RESILIENCE, INTELLIGENCE_AMPLIFICATION } from './claude-code-engine';
+// Bloat removed: methodology strings from claude-code-engine (652 lines of abstract text that wasted tokens)
 import { MOTIONSITE_LIBRARY } from './motionsite-templates';
-import { RESEARCH_ENHANCED_METHODOLOGY } from './research-orchestrator';
+// research-orchestrator: RESEARCH_ENHANCED_METHODOLOGY removed from system prompt — it was generic phases text
 import { UX_GUIDELINES } from './ui-ux-pro-max';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1476,7 +1476,6 @@ export function buildSystemPrompt(): string {
 
   return [
     CORE_IDENTITY,
-    CLAUDE_CODE_METHODOLOGY,
     DESIGN_SYSTEM,
     CDN_ANIMATION_STACK,
     reactBitsSection,
@@ -1491,18 +1490,6 @@ export function buildSystemPrompt(): string {
     GENERATION_RULES,
     SITE_RECIPES,
     COPY_INTELLIGENCE,
-    ADVANCED_TOOL_COMPOSITION,
-    STREAMING_OPTIMIZATION,
-    PROMPT_INJECTION_DEFENSE,
-    MULTI_AGENT_ORCHESTRATION,
-    ULTRA_THINK_ENGINE,
-    CONTEXT_ENGINEERING,
-    AGENTIC_WORKFLOW_PATTERNS,
-    CODE_QUALITY_SYSTEM,
-    ADVANCED_GENERATION_INTELLIGENCE,
-    SELF_HEALING_RESILIENCE,
-    INTELLIGENCE_AMPLIFICATION,
-    RESEARCH_ENHANCED_METHODOLOGY,
   ].join('\n');
 }
 

@@ -42,16 +42,16 @@ const CLONE_SYSTEM = buildCloneSystemPrompt() + `
 8. Begin IMMEDIATELY with <!DOCTYPE html>.
 
 # ⛔ MANDATORY RESOURCE USAGE FOR CLONES — USE EVERY TIME:
-9. ALWAYS include a VIDEO BACKGROUND from VIDEO_ASSETS in the hero section (pick a REAL MP4 URL from the table: jet-luxury, stellar-saas, dark-ambient, cinematic-studio, bold-design, etc.): <video autoplay muted loop playsinline> with overlay div. EXCEPTION: skip video ONLY if the source site clearly has no video/motion.
-10. ALWAYS use GLASS_EFFECTS: backdrop-filter:blur(40px) saturate(200%) on navbar, cards, and footer.
-11. ALWAYS use ANIMATION_PATTERNS: fade-in-up on scroll, stagger entrance (0.1-0.15s), marquee for logos, hover glow/tilt on cards, text shimmer on headlines.
+9. If the source site uses video backgrounds, reproduce them. Otherwise use a clean hero matching the source aesthetic. Do NOT force video on sites that don't have it.
+10. Match the source site's visual style: if it uses glassmorphism, reproduce it. If it uses flat/clean design, reproduce THAT instead. Do NOT force glass effects on every clone.
+11. ALWAYS use ANIMATION_PATTERNS: fade-in-up on scroll, stagger entrance (0.1-0.15s), marquee for logos, hover effects on cards.
 12. ALWAYS use the EXACT FONTS from the FONT STACK enrichment data below. Import them via Google Fonts or the provided import URLs. Do NOT default to Syne/DM Sans — use whatever the source site uses (Poppins, Inter, Open Sans, Montserrat, Lato, Roboto, etc. are all valid if the source uses them). If no font data is available, THEN fall back to premium Google Fonts matching the site's mood.
-13. ALWAYS use GRADIENT TEXT on the main heading: background:linear-gradient(...); -webkit-background-clip:text; -webkit-text-fill-color:transparent.
+13. Use gradient text on headings ONLY if the source site uses gradient text. Do NOT force gradients on every clone.
 14. ALWAYS use SECTION_BLUEPRINTS: 8+ sections minimum (nav→hero→logos→features→stats→testimonials→cta→footer).
-15. ALWAYS use COMPONENT_PATTERNS: glow/gradient buttons, glassmorphic badges, glass hover cards.
-16. For dark sites: aurora bg, backdrop-filter glass, gradient glows, neon accents, video hero.
-17. For light sites: soft glass, subtle gradients, clean typography, video hero with bright overlay.
-18. If a clone is missing videos, glass, animations or premium fonts, IT IS INCOMPLETE. Include ALL of these.`;
+15. Use premium component patterns (glow buttons, glass cards) ONLY when they match the source site's aesthetic.
+16. For dark sites: reproduce the source's dark aesthetic faithfully. Add aurora/glass/neon ONLY if the source uses similar effects.
+17. For light sites: reproduce the source's clean/light aesthetic faithfully.
+18. The GOAL is FAITHFUL REPRODUCTION. Premium effects are tools, not mandates. Use them when appropriate.`;
 
 // Ollama Cloud models for cloning (primary)
 const OLLAMA_MODELS: Record<string, string> = {
