@@ -51,27 +51,63 @@ Be proactive: install packages, suggest integrations, offer to deploy.`;
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const DESIGN_SYSTEM = `
-# DEFAULT DARK THEME (switch to light when context requires it: e-commerce, healthcare, recipes, etc.)
-Dark default: body #0a0a0a, text #f5f5f5, cards rgba(255,255,255,0.04), borders rgba(255,255,255,0.08).
-Light when needed: body #fafafa, text #1a1a1a, cards #fff with subtle shadow, borders #e5e7eb.
-ONE accent: #6366f1 | #3b82f6 | #8b5cf6 | #06b6d4 | #ec4899 (pick based on industry).
-For CLONE mode: use the EXACT theme from the source site (do NOT force dark on a light site).
-For CLONE mode: use the EXACT FONTS from the source site (see FONT STACK enrichment data). Do NOT import Syne/DM Sans unless the source site actually uses them. Replace the @import and font-family rules below with the extracted fonts.
+# SMART THEME SELECTION (context-aware, NOT always dark)
+## Decision tree — pick theme BEFORE writing any CSS:
+- Portfolio / Creative / Studio → DARK or WHITE (vary — alternate between generations)
+- SaaS / Tech / AI → DARK (default) or WHITE (if clean/minimal feel)
+- E-commerce / Healthcare / Education / Recipes → LIGHT
+- Agency → DARK (bold) or WHITE (minimal/editorial) — pick what fits the brand
+- Luxury / Finance → DARK
+- Restaurant / Food → WARM LIGHT or DARK (moody)
+- Web3 / Gaming → DARK always
 
-# MANDATORY BASE CSS (include in EVERY site — for CLONE mode, replace fonts with extracted ones)
+Dark tokens: body #0a0a0a, text #f5f5f5, cards rgba(255,255,255,0.04), borders rgba(255,255,255,0.08).
+Light tokens: body #fafafa or #fff, text #1a1a1a, cards #fff with shadow, borders rgba(0,0,0,0.06).
+
+## ACCENT COLOR — MUST VARY (never same accent twice in a row)
+Pick ONE per site based on industry + mood. ROTATE across these:
+| Context | Accent Options |
+|---------|---------------|
+| SaaS/Tech | #6366f1 indigo, #3b82f6 blue, #0ea5e9 sky |
+| Agency/Creative | #a855f7 purple, #ec4899 pink, #f43f5e rose |
+| Portfolio | #8b5cf6 violet, #06b6d4 cyan, #f59e0b amber, or NO accent (B&W) |
+| E-commerce | #f97316 orange, #10b981 emerald, #ef4444 red |
+| Luxury | #d97706 gold, #a855f7 purple, #1a1a1a black |
+| Healthcare | #06b6d4 teal, #3b82f6 blue, #10b981 green |
+| Web3/Gaming | #06b6d4 cyan, #ec4899 pink, #8b5cf6 violet |
+For CLONE mode: use the EXACT theme + accent from the source site.
+For CLONE mode: use the EXACT FONTS from the source site (see FONT STACK enrichment data). Do NOT import Syne/DM Sans unless the source site actually uses them.
+
+# FONT SELECTION — MUST VARY PER CONTEXT (NEVER always Syne×DM Sans)
+## Pick fonts BEFORE writing CSS based on site type:
+| Context | Font Pairing (heading × body) |
+|---------|------------------------------|
+| Tech/SaaS | Inter×Inter, Space Grotesk×Inter, Outfit×DM Sans, Lexend×Inter |
+| Agency/Creative | Clash Display×Satoshi, Syne×DM Sans, Bricolage Grotesque×Manrope |
+| Portfolio | Instrument Serif×Inter, Clash Display×Inter, Playfair Display×Barlow |
+| Luxury | Playfair Display×Plus Jakarta Sans, Bodoni Moda×Jost, Cormorant Garamond×DM Sans |
+| Editorial | Young Serif×Inter, Instrument Serif×Inter, Newsreader×Source Sans 3 |
+| E-commerce | Plus Jakarta Sans×DM Sans, Rubik×Inter, Nunito Sans×Inter |
+| Brutalist | Bebas Neue×Space Mono, Anton×Fira Code, Unbounded×Figtree |
+NEVER use Syne×DM Sans as default — pick from the table above. Syne×DM Sans is ONE option among many.
+
+# BASE CSS TEMPLATE (ADAPT fonts + colors per context — DO NOT copy blindly)
 \`\`\`css
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&display=swap');
+@import url('REPLACE_WITH_CHOSEN_GOOGLE_FONTS_URL');
+:root{--heading-font:'HEADING_FONT';--body-font:'BODY_FONT';--accent:CHOSEN_ACCENT;--bg:THEME_BG;--text:THEME_TEXT}
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth;scrollbar-width:thin;scrollbar-color:#333 transparent}
-body{font-family:'DM Sans',sans-serif;background:#0a0a0a;color:#f5f5f5;overflow-x:hidden;-webkit-font-smoothing:antialiased}
-h1,h2,h3{font-family:'Syne',sans-serif;font-weight:700}
+body{font-family:var(--body-font),sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--heading-font),sans-serif;font-weight:700}
 h1{font-size:clamp(2.5rem,6vw,5rem);line-height:1.05;letter-spacing:-0.03em}
 h2{font-size:clamp(1.8rem,4vw,3rem);line-height:1.1;letter-spacing:-0.02em}
 h3{font-size:clamp(1.2rem,2.5vw,1.5rem);line-height:1.2}
-::selection{background:var(--accent,#6366f1);color:#fff}
+::selection{background:var(--accent);color:#fff}
 ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;transition-duration:0.01ms!important}}
 \`\`\`
+REPLACE all placeholders (HEADING_FONT, BODY_FONT, THEME_BG, THEME_TEXT, CHOSEN_ACCENT) with your chosen values.
+The CSS patterns below use var(--heading-font) and var(--body-font) — they auto-inherit your font choice.
 
 # MANDATORY BASE JS (include in EVERY site)
 - IntersectionObserver on all .reveal elements → add .visible class with stagger delay
@@ -208,14 +244,15 @@ Each pattern is SELF-CONTAINED inline CSS+JS — copy directly into your output.
 
   lines.push(`
 ## REACTBITS RULES (CRITICAL — FOLLOW EVERY TIME):
-• NEVER generate a static solid-color background → Use Aurora/Beams/Galaxy/Particles/DotGrid/Waves
+• For MARKETING/SAAS sites: NEVER generate a static solid-color background → Use Aurora/Beams/Galaxy/Particles/DotGrid/Waves
+• For PORTFOLIO/EDITORIAL sites: Subtle backgrounds are OK (solid dark, noise texture, or simple gradient) — the work is the hero, not the bg effects
 • NEVER generate basic opacity:1→0.7 hover → Use TiltedCard/GlareHover/SpotlightCard/Magnet/StarBorder
-• NEVER generate plain static text for headings → Use BlurText/ShinyText/GradientText/ScrambleText/GlitchText
-• NEVER use default browser cursor on premium sites → Use BlobCursor/ClickSpark
+• NEVER generate plain static text for headings → Use BlurText/ShinyText/GradientText/ScrambleText/GlitchText (pick 1-2, not all)
+• Custom cursor: Use on creative/agency sites ONLY — skip for SaaS, e-commerce, healthcare
 • ALWAYS implement patterns INLINE (CSS+JS in the same file) — never import from npm
 • Each pattern MUST be self-contained in the generated output
-• Combine multiple patterns: Aurora bg + BlurText heading + TiltedCard features + ScrollReveal sections + Marquee logos
-• For hero sections: ALWAYS use an animated background (Aurora/Particles/Galaxy) + animated heading text (BlurText/ShinyText)`);
+• For SaaS hero sections: ALWAYS use animated background (Aurora/Particles/Galaxy) + animated heading text (BlurText/ShinyText)
+• For Portfolio hero sections: Video bg OR simple gradient + clean typography is sufficient — restraint = premium`);
 
   return lines.join('\n');
 }
@@ -235,7 +272,7 @@ Apply these EXACT patterns in every site:
   background:rgba(10,10,10,0.6); backdrop-filter:blur(16px) saturate(180%);
   border-bottom:1px solid rgba(255,255,255,0.06); transition:all 0.3s ease; }
 .nav.scrolled { background:rgba(10,10,10,0.85); padding:12px 24px; }
-.nav-logo { font-family:'Syne',sans-serif; font-weight:800; font-size:1.25rem; }
+.nav-logo { font-family:var(--heading-font,'Syne'),sans-serif; font-weight:800; font-size:1.25rem; }
 .nav-links { display:flex; gap:2rem; align-items:center; }
 .nav-link { color:#999; font-size:0.9rem; transition:color 0.2s; position:relative; }
 .nav-link:hover { color:#fff; }
@@ -295,7 +332,7 @@ Card spotlight JS: document.querySelectorAll('.card').forEach(el=>{el.addEventLi
 \`\`\`css
 .btn-primary { display:inline-flex; align-items:center; gap:8px; padding:14px 32px;
   background:var(--accent,#6366f1); border:none; border-radius:12px; color:#fff;
-  font-family:'DM Sans',sans-serif; font-weight:600; font-size:1rem; cursor:pointer;
+  font-family:var(--body-font,'DM Sans'),sans-serif; font-weight:600; font-size:1rem; cursor:pointer;
   transition:all 0.3s cubic-bezier(0.16,1,0.3,1); position:relative; overflow:hidden; }
 .btn-primary::before { content:''; position:absolute; inset:0;
   background:radial-gradient(150px circle at var(--mx,50%) var(--my,50%),rgba(255,255,255,0.2),transparent 60%);
@@ -305,7 +342,7 @@ Card spotlight JS: document.querySelectorAll('.card').forEach(el=>{el.addEventLi
 .btn-primary:active { transform:translateY(0); }
 .btn-secondary { display:inline-flex; align-items:center; gap:8px; padding:14px 32px;
   background:transparent; border:1px solid rgba(255,255,255,0.15); border-radius:12px; color:#f5f5f5;
-  font-family:'DM Sans',sans-serif; font-weight:500; font-size:1rem; cursor:pointer; transition:all 0.3s; }
+  font-family:var(--body-font,'DM Sans'),sans-serif; font-weight:500; font-size:1rem; cursor:pointer; transition:all 0.3s; }
 .btn-secondary:hover { border-color:rgba(255,255,255,0.3); background:rgba(255,255,255,0.04); transform:translateY(-2px); }
 \`\`\`
 Magnetic hover JS: document.querySelectorAll('[data-magnetic]').forEach(btn=>{btn.addEventListener('mousemove',e=>{const r=btn.getBoundingClientRect();const x=(e.clientX-r.left-r.width/2)*0.3;const y=(e.clientY-r.top-r.height/2)*0.3;btn.style.transform='translate('+x+'px,'+y+'px)'});btn.addEventListener('mouseleave',()=>{btn.style.transform='';btn.style.transition='transform 0.5s cubic-bezier(0.16,1,0.3,1)'})});
@@ -324,7 +361,7 @@ Magnetic hover JS: document.querySelectorAll('[data-magnetic]').forEach(btn=>{bt
 \`\`\`css
 .stats { display:flex; justify-content:center; gap:48px; padding:48px 0; flex-wrap:wrap; }
 .stat { text-align:center; }
-.stat-value { font-family:'Syne',sans-serif; font-size:clamp(2rem,4vw,3.5rem); font-weight:800;
+.stat-value { font-family:var(--heading-font,'Syne'),sans-serif; font-size:clamp(2rem,4vw,3.5rem); font-weight:800;
   background:linear-gradient(135deg,#fff,var(--accent,#6366f1)); -webkit-background-clip:text;
   -webkit-text-fill-color:transparent; }
 .stat-label { font-size:0.85rem; color:#666; margin-top:4px; }
@@ -354,7 +391,7 @@ Number counter JS: function countUp(el,target,duration=2000){let start=0;const s
 .pricing-card.featured::after { content:''; position:absolute; inset:2px; background:#0a0a0a; border-radius:18px; z-index:-1; }
 @keyframes border-spin { to { --border-angle:360deg } }
 @property --border-angle { syntax:'<angle>'; initial-value:0deg; inherits:false; }
-.pricing-price { font-family:'Syne',sans-serif; font-size:3rem; font-weight:800; margin:16px 0; }
+.pricing-price { font-family:var(--heading-font,'Syne'),sans-serif; font-size:3rem; font-weight:800; margin:16px 0; }
 .pricing-price span { font-size:1rem; color:#666; font-weight:400; }
 .pricing-features { list-style:none; padding:0; margin:24px 0; text-align:left; }
 .pricing-features li { padding:8px 0; color:#999; font-size:0.9rem; display:flex; align-items:center; gap:8px; }
@@ -387,7 +424,7 @@ RULE: ALWAYS duplicate the inner content 2x for seamless loop.
 .footer-grid { display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:48px; max-width:1200px; margin:0 auto; }
 @media(max-width:768px) { .footer-grid { grid-template-columns:1fr 1fr; gap:32px; } }
 .footer-brand { max-width:280px; }
-.footer-brand-name { font-family:'Syne',sans-serif; font-weight:800; font-size:1.25rem; margin-bottom:12px; }
+.footer-brand-name { font-family:var(--heading-font,'Syne'),sans-serif; font-weight:800; font-size:1.25rem; margin-bottom:12px; }
 .footer-brand-desc { font-size:0.85rem; color:#666; line-height:1.6; }
 .footer-col-title { font-weight:600; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.08em;
   color:#999; margin-bottom:16px; }
@@ -405,7 +442,7 @@ RULE: ALWAYS duplicate the inner content 2x for seamless loop.
 .faq-item { border-bottom:1px solid rgba(255,255,255,0.06); }
 .faq-question { width:100%; padding:20px 0; background:none; border:none; color:#f5f5f5; font-size:1rem;
   font-weight:500; text-align:left; cursor:pointer; display:flex; justify-content:space-between; align-items:center;
-  transition:color 0.2s; font-family:'DM Sans',sans-serif; }
+  transition:color 0.2s; font-family:var(--body-font,'DM Sans'),sans-serif; }
 .faq-question:hover { color:var(--accent,#6366f1); }
 .faq-icon { transition:transform 0.3s; font-size:1.2rem; }
 .faq-item.active .faq-icon { transform:rotate(45deg); }
@@ -449,7 +486,7 @@ const PREMIUM_EFFECTS = `
   display:flex; align-items:center; justify-content:center;
   transition:clip-path 1s cubic-bezier(0.76,0,0.24,1); }
 .preloader.done { clip-path:inset(0 0 100% 0); }
-.preloader .counter { font-family:'Syne',sans-serif; font-size:clamp(3rem,8vw,6rem);
+.preloader .counter { font-family:var(--heading-font,'Syne'),sans-serif; font-size:clamp(3rem,8vw,6rem);
   font-weight:800; color:#fff; }
 \`\`\`
 JS: let progress=0;const interval=setInterval(()=>{progress+=Math.random()*15;if(progress>=100){progress=100;clearInterval(interval);setTimeout(()=>document.querySelector('.preloader').classList.add('done'),400)}document.querySelector('.counter').textContent=Math.floor(progress)},80);
@@ -680,7 +717,7 @@ backdrop-filter:blur(40px); background:rgba(10,10,10,0.8); border-top:1px solid 
 ## MINIMUM REQUIREMENTS FOR CINEMATIC MODE
 - Page MUST have: preloader + aurora/video hero + at least 8 scroll-animated sections
 - MUST use GSAP ScrollTrigger for at least 5 animations
-- MUST have glass morphism on at least 3 elements (navbar, cards, footer)
+- MUST have glass morphism on navbar (+ optionally 1-2 other elements if dark theme)
 - MUST have at least 2 text effects (shimmer, gradient, blur reveal)
 - MUST be 1500+ lines minimum (preloader ~100 + hero ~150 + 8 sections × 150 = 1350 + footer ~100 = 1550+). Under 1400 lines = REJECTED.
 - MUST be responsive with mobile hamburger
@@ -711,7 +748,7 @@ const GENERATION_RULES = `
 - ALL CSS in ONE <style> in <head>. ALL JS in ONE <script> at end of body.
 - Clean semantic class names (.hero, .nav, .card, .cta, .footer). NEVER hashed classes.
 - External libs ONLY from cdnjs.cloudflare.com or unpkg.com
-- Images: placehold.co/WIDTHxHEIGHT/BGCOLOR/TEXT or GEMINI_IMAGE tags
+- Images: GEMINI_IMAGE for important visuals (hero, projects, products). placehold.co/WIDTHxHEIGHT/1a1a2e/ACCENT?text=Label for secondary images (match site accent color, never gray-on-gray).
 - NEVER use localStorage/sessionStorage. Use JS variables/objects for state.
 - EXACT COLOR MATCHING: use given hex values exactly. #0a0a0a ≠ #000. Brand colors define identity.
 - Semantic HTML5: header, nav, main, section, article, aside, footer
@@ -727,7 +764,8 @@ const GENERATION_RULES = `
 ## ⛔ MANDATORY RESOURCE USAGE — NON-NEGOTIABLE — EVERY SINGLE GENERATION ⛔
 YOU MUST USE THE FOLLOWING FROM THE MOTIONSITE_LIBRARY AND UI-UX-PRO-MAX ON **EVERY** GENERATION:
 
-### 1. VIDEO BACKGROUNDS (MANDATORY — pick 1-2 per site)
+### 1. VIDEO BACKGROUNDS (PREFERRED over aurora — pick 1-2 per site)
+Video backgrounds are MORE IMPACTFUL and UNIQUE than CSS aurora gradients. Always prefer a real video.
 Pick a REAL video URL from the VIDEO_ASSETS table in MOTIONSITE_LIBRARY and embed as:
 \`\`\`html
 <video autoplay muted loop playsinline poster="https://images.unsplash.com/photo-1647356191320-d7a1f80ca777?w=1080" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0">
@@ -777,8 +815,13 @@ For HLS streams (.m3u8): In HTML mode, use this vanilla JS (NOT React):
 NOTE on GIFs: Framer GIFs are for MARQUEE CARDS and PROJECT THUMBNAILS only, NOT for hero/background use.
 NOTE on orb video (future.co): External CDN — if broken, fallback to purple-abstract MP4 instead.
 
-### 2. GLASS MORPHISM (MANDATORY — use on 3+ elements)
-MUST apply on: navbar, cards, footer. ALWAYS include BOTH prefixed and unprefixed:
+### 2. GLASS MORPHISM (CONTEXT-AWARE — use where it enhances, NOT everywhere)
+Apply glass effects thoughtfully:
+- Dark sites: Use on navbar + 1-2 accent elements (cards OR footer, not both)
+- Light sites: Use SPARINGLY — glass on light bg looks muddy. Prefer subtle shadows instead.
+- Editorial/minimal sites: SKIP glass entirely — use clean borders instead
+- SaaS/Agency: Glass on navbar is great. Glass on ALL cards = overdone.
+When used, ALWAYS include BOTH prefixed and unprefixed:
 \`\`\`css
 -webkit-backdrop-filter: blur(40px) saturate(200%);
 backdrop-filter: blur(40px) saturate(200%);
@@ -794,22 +837,33 @@ Effects to choose from:
 - Frosted: -webkit-backdrop-filter:blur(20px) saturate(180%); backdrop-filter:blur(20px) saturate(180%); background:rgba(10,10,10,0.7); border-bottom:1px solid rgba(255,255,255,0.06);
 - Saturated Card: -webkit-backdrop-filter:blur(24px) saturate(200%); backdrop-filter:blur(24px) saturate(200%); background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(168,85,247,0.05)); border:1px solid rgba(255,255,255,0.08); border-radius:20px;
 
-### 3. PREMIUM ANIMATIONS (MANDATORY — use 5+ per site)
-MUST include from ANIMATION_PATTERNS:
+### 3. PREMIUM ANIMATIONS (CONTEXT-AWARE — quality over quantity)
+Use animations that SERVE the design, not that show off. Pick based on site type:
+
+**For portfolio/creative sites (RESTRAINT = PREMIUM):**
+- Pick 3-4 effects MAXIMUM from: fade-in-up, split text, parallax, role cycling, one marquee
+- DO NOT use: aurora + glass + film grain + custom cursor + marquee + particles all at once
+- The best portfolios (lusion.co, dennissnellenberg.com) use FEWER, more polished effects
+
+**For SaaS/marketing sites (MORE effects = engaging):**
+- 5+ effects: fade-in-up, stagger entrance, marquee, hover glow, word reveal or split text
+- Full treatment: badge→heading→subtitle→CTAs with 0.1-0.15s delay stagger
+
+**For all sites, MUST include:**
 - Fade-in-up on scroll (IntersectionObserver or GSAP ScrollTrigger)
-- Stagger entrance: badge→heading→subtitle→CTAs with 0.1-0.15s delay
-- Marquee for logos/partners (infinite horizontal scroll, duplicate items 2x for seamless loop, animation:marquee 30s linear infinite, translateX(-50%))
-- Hover effects on cards (scale, glow, or 3D tilt)
-- At LEAST one of: Word Reveal, Split Text, Blur Reveal, Text Shimmer
+- Hover effects on cards (scale, glow, or 3D tilt — pick ONE, not all)
+- At LEAST one text effect: Word Reveal, Split Text, Blur Reveal, or Text Shimmer
+
 IMPORTANT — HTML vs React mode:
 - HTML mode: Use ONLY CSS @keyframes + vanilla JS (IntersectionObserver, GSAP). NO Framer Motion, NO motion.div, NO useScroll/useTransform.
 - React CDN mode: Framer Motion patterns are allowed (motion.div, AnimatePresence, etc.)
 - All GSAP/Lenis patterns work in BOTH modes. All CSS @keyframes work in BOTH modes.
 - GSAP CDN MUST be included in <head> if using ANY GSAP animation patterns.
 
-### 4. PREMIUM FONTS (MANDATORY — never system defaults)
+### 4. PREMIUM FONTS (MANDATORY — never system defaults, ALWAYS VARY)
 MUST use Google Fonts or FontShare. 120+ fonts available — see COMPLETE FONT LIBRARY section above.
-Default for GENERATED sites: Syne × DM Sans (if no better match). But try to VARY — pick from the full library based on context:
+⚠️ NEVER default to Syne × DM Sans. ALWAYS pick from the FONT SELECTION table based on context.
+Rotate fonts across generations — if you just used Inter, try Space Grotesk or Instrument Serif next.
 - Tech/SaaS: Inter, Space Grotesk, Outfit, Lexend, Geist, Public Sans
 - Agency/Creative: Clash Display, Satoshi, General Sans, Bricolage Grotesque, Syne
 - Luxury/Fashion: Playfair Display, Bodoni Moda, Cormorant Garamond, Instrument Serif, Fraunces
@@ -820,10 +874,14 @@ Default for GENERATED sites: Syne × DM Sans (if no better match). But try to VA
 Include the Google Fonts <link> or @import in <head>.
 ⚠️ FOR CLONE MODE: Use the EXACT fonts from the FONT STACK enrichment data. If commercial/CORS-blocked, use the Google Fonts alternative from the COMMERCIAL FONT MAPPING in the library section. The source site's fonts take ABSOLUTE priority over any default.
 
-### 5. GRADIENT TEXT (MANDATORY — on main headline, UNLESS context demands clean text)
-Apply on h1 by default: background:linear-gradient(135deg,COLOR1,COLOR2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;
-SKIP gradient text ONLY when: (a) CLONE mode where source uses solid text, (b) minimalist/brutalist style, (c) user explicitly requests clean text, (d) accessibility-first sites (healthcare, .gov) where WCAG contrast is paramount.
-When using gradients: ensure ALL gradient colors have 4.5:1+ contrast ratio against background.
+### 5. GRADIENT TEXT (CONTEXT-AWARE — not on every site)
+Apply gradient text ONLY when it enhances the design:
+- SaaS/AI/Tech: YES — gradient on main headline adds energy
+- Portfolio/Editorial/Minimal: SKIP or use SUBTLE gradient (white→gray, not rainbow)
+- Luxury/Fashion: SKIP — solid elegant text is better
+- Agency/Creative: YES if bold style, NO if clean editorial
+When using: background:linear-gradient(135deg,COLOR1,COLOR2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;
+Ensure ALL gradient colors have 4.5:1+ contrast ratio against background.
 
 ### 6. SECTION STRUCTURE (context-dependent minimum)
 Full marketing sites: 8+ sections: Navbar → Hero → Social proof/logos → Features/Bento → Stats → Testimonials → CTA → Footer
@@ -832,15 +890,22 @@ Use SECTION_BLUEPRINTS hero variants (A-K) and navbar types (float/sticky/transp
 
 ### 7. COMPONENT PATTERNS (MANDATORY — use from COMPONENT_PATTERNS)
 Buttons: glow/gradient/outline from library. Badges: glassmorphic tag. Cards: glass card with hover.
-Images: Use placehold.co/WIDTHxHEIGHT/BG_HEX/TEXT_HEX or <<GEMINI_IMAGE:id|prompt>> for important visuals. NEVER leave cards/images empty.
+Images: Use <<GEMINI_IMAGE:id|prompt>> for hero/project/product visuals. placehold.co/WIDTHxHEIGHT/1a1a2e/ACCENT?text=Label for secondary images (match site accent). NEVER leave cards/images empty.
 
-### 8. VARIETY (MANDATORY)
-NEVER repeat the same layout. Pick a DIFFERENT template from TEMPLATE_CATALOG as starting point.
-Mix hero from template A + nav from template B + cards from template C.
-Use DIFFERENT color palettes each time from UI-UX-PRO-MAX (19 palettes available).
+### 8. VARIETY (MANDATORY — CRITICAL)
+NEVER repeat the same layout, fonts, accent color, or effects combination.
+- Pick a DIFFERENT template from TEMPLATE_CATALOG as starting point each time
+- Mix hero from template A + nav from template B + cards from template C
+- Use DIFFERENT color palettes each time from UI-UX-PRO-MAX (19 palettes available)
+- DIFFERENT font pairing each time from the FONT SELECTION table
+- Alternate dark/light themes for the same category (portfolio dark → next portfolio light)
+- For PORTFOLIO requests: Use T12 (dark-portfolio), T10 (vortex-creative), or T17 (cinematic-aethera) as reference
+- For SAAS requests: Use T15 (stellar-ai), T18 (nexora-saas), or T06 (neuralyn) as reference
+- For AGENCY requests: Use T04 (liquid-glass), T19 (new-era), or T20 (glassmorphism) as reference
 
 ### ENFORCEMENT
-If ANY generation is missing videos, glass effects, animations, premium fonts, it is REJECTED. Use ALL resources EVERY TIME.
+EVERY generation MUST have: premium fonts (varied), scroll animations, hover effects, responsive layout, consistent accent color.
+Video backgrounds: STRONGLY preferred for hero sections. Use aurora/gradient only as FALLBACK.\nGlass effects: Required on dark sites (navbar minimum). Optional on light sites.\nContext overrides: Portfolio sites may use FEWER effects (3-5) if the design is clean and intentional.
 For CLONE mode: Match the source site faithfully. ENHANCE with glass, animations, premium fonts. Add video ONLY if source has video. Respect source's color scheme/typography — do NOT force dark theme on a light site.
 
 # REACT CDN MODE (for dashboards, interactive apps, "react" requests)
@@ -885,17 +950,57 @@ const SITE_RECIPES = `
 ## SaaS / Tech Startup
 Structure: Preloader → Glass nav → Aurora hero + gradient text h1 + badge + 2 CTAs → Marquee logos → Bento feature grid (3-col, spotlight cards) → Stats section (counters) → Testimonials → Pricing (3 cards, shine-border featured) → FAQ accordion → CTA banner → 4-col footer
 Effects: Aurora bg, shimmer h1, blur-fade reveals, glow buttons, spotlight cards, marquee, number counters, shine-border pricing
-Accent: #6366f1 indigo | Fonts: Syne × DM Sans
+Accent: #6366f1 indigo | Fonts: Space Grotesk × Inter OR Outfit × DM Sans OR Lexend × Inter (VARY)
 
 ## Agency / Portfolio
 Structure: Preloader → Minimal nav → Spotlight hero + split text reveal + cursor follower → Horizontal project scroll (GSAP pin) → Services bento → About with parallax → Testimonials → Contact with gradient border → Footer
 Effects: Spotlight bg, magnetic hover, 3D tilt cards, custom cursor, GSAP scroll, text scramble, clip-path reveals
 Accent: #a855f7 purple | Fonts: Clash Display × Satoshi
 
+## Developer Portfolio (DETAILED BLUEPRINT)
+Structure: Loading screen (counter 0→100) → Minimal fixed nav (name left, links right, CV button) → Hero (name + role cycling + video/minimal bg) → Selected Works (bento grid or horizontal scroll, 4-6 projects with real thumbnails) → About (2-col: text + photo/visual) → Skills/Stack (tech icons grid or marquee) → Journal/Blog entries (date + title + arrow) → Contact CTA (large serif headline + email link) → Minimal footer (socials + copyright)
+Reference templates: T12 (dark-portfolio), T10 (vortex-creative), T17 (cinematic-aethera)
+Design philosophy: LESS IS MORE. Let the work speak. Maximum 2-3 animations per section. Clean whitespace.
+Effects: Pick ONLY 3-4 from (loading screen, role cycling, parallax gallery, GSAP scroll, magnetic hover, marquee). Do NOT use all of them.
+Theme: Dark (#0a0a0a) OR White (#fff) — alternate between generations. B&W with ONE accent color or no accent.
+Fonts: Instrument Serif × Inter (editorial) OR Clash Display × Inter (bold) OR Playfair Display × Barlow (elegant)
+Images: Use GEMINI_IMAGE for portfolio project thumbnails — generate real-looking project screenshots, not placehold.co
+Key: The hero should feel personal, not corporate. Use first name. Role cycling adds personality. Keep copy minimal and confident.
+
+### PORTFOLIO LAYOUT VARIANTS (pick a DIFFERENT one each time to avoid repetition)
+**Layout A — Horizontal Scroll Gallery (bold, immersive)**
+Hero (full viewport, name + title) → Horizontal scroll pinned gallery (4-6 project cards side-scrolling) → About → Skills marquee → Contact → Footer
+Best for: Developers, creative technologists. Use GSAP ScrollTrigger pin.
+
+**Layout B — Editorial Grid (clean, professional)**
+Nav → Hero (text-only, large serif headline, no bg effect) → 2-column project grid (image left, text right, alternating) → About → Experience timeline → Contact → Footer
+Best for: UX designers, product designers. NO loading screen, NO marquee. Clean editorial feel.
+
+**Layout C — One-Page Smooth Scroll (minimal, impactful)**
+Infinite scroll: Name/role → Brief intro → Project 1 (full-width image + caption) → Project 2 → Project 3 → About blurb → Contact email → End
+Best for: Photographers, illustrators, minimalists. Lenis smooth scroll, barely any effects.
+
+**Layout D — Case Study Deep-Dive (detailed, strategic)**
+Nav → Brief hero (name + title + what you do) → Featured case study 1 (problem → process → result, with images) → Case study 2 → Case study 3 → Testimonials → Skills → Contact → Footer
+Best for: Product designers, strategists. More text-heavy, shows thinking process.
+
+## Creative Agency Portfolio
+Structure: Custom cursor → Fixed bottom nav OR minimal top nav → Full-viewport hero (Playfair/serif headline) → Infinite marquee (project names or services) → Selected works grid (4-6 projects, hover reveals title) → Pricing (2-3 tiers) → Single large testimonial quote → Contact section → Footer
+Reference templates: T10 (vortex-creative), T04 (liquid-glass-agency), T20 (glassmorphism-agency)
+Effects: Custom cursor (mix-blend-mode:difference), marquee, testimonial carousel. Keep it elegant.
+Fonts: Playfair Display × Inter OR Instrument Serif × Barlow
+Theme: Black bg with white text. Minimal accent.
+
 ## E-Commerce
 Structure: Glass nav with cart badge → Hero with product video → Category grid → Featured products (card hover) → Social proof → Newsletter CTA → Footer
 Effects: Product card tilt, quick-view hover, image zoom, smooth cart animation, star rating component
 Accent: #f97316 orange | Fonts: Plus Jakarta Sans × DM Sans
+
+## Luxury / Fashion
+Structure: Minimal nav (no glass, thin border only) → Full-viewport hero (serif headline + video bg) → Editorial image + text sections (alternating L/R layout) → Product/Collection showcase (large images, near full-width) → Brand manifesto (large quote) → Lookbook gallery (masonry) → Newsletter (simple, elegant) → Minimal footer
+Effects: Custom cursor, parallax images, smooth hover zoom, elegant page transitions. FEWER is better — luxury = restraint.
+Style: NO gradient text, NO aurora bg, NO badges, NO bento grid. Clean editorial typography, generous whitespace, large type.
+Accent: #d97706 gold or #1a1a1a black or NONE (B&W) | Fonts: Playfair Display × Plus Jakarta Sans OR Bodoni Moda × Jost OR Cormorant Garamond × Inter
 
 ## Restaurant / Food
 Structure: Nav with reservation CTA → Full-bleed hero video → Menu sections → Chef spotlight → Gallery masonry → Reviews → Reservation form → Map + hours → Footer
