@@ -54,10 +54,11 @@ const DESIGN_SYSTEM = `
 # SMART THEME SELECTION (context-aware, NOT always dark)
 ## Decision tree — pick theme BEFORE writing any CSS:
 - Portfolio / Creative / Studio → DARK or WHITE (vary — alternate between generations)
-- SaaS / Tech / AI → DARK (default) or WHITE (if clean/minimal feel)
+- SaaS / Tech / AI → DARK or LIGHT (alternate — modern SaaS like Linear, Vercel, Clerk use LIGHT. Don't always default to dark.)
 - E-commerce / Healthcare / Education / Recipes → LIGHT
 - Agency → DARK (bold) or WHITE (minimal/editorial) — pick what fits the brand
-- Luxury / Finance → DARK
+- Luxury → DARK (classic) or WHITE (modern Celine-style)
+- Fintech BANK → DARK (navy, trust). Fintech STARTUP → LIGHT (modern) or DARK (bold)
 - Restaurant / Food → WARM LIGHT or DARK (moody)
 - Web3 / Gaming → DARK always
 
@@ -151,16 +152,19 @@ Pairings for GENERATED sites:
 ⚠️ FOR CLONE MODE: Use the EXACT fonts extracted from the source site (provided in FONT STACK enrichment). If the font is commercial/CORS-blocked, use the Google Fonts alternative from the mapping above.
 
 # INDUSTRY COLOR INTELLIGENCE
-SaaS: #6366F1 primary + clean whites + #10B981 success accents
-Fintech: #1E40AF navy + #059669 greens + gold #D97706 for trust
+⚠️ These are STARTING POINTS, not mandates. VARY the palette across generations.
+SaaS: #3b82f6 blue OR #8b5cf6 violet OR #0ea5e9 sky (DEPRIORITIZE #6366f1 indigo — overused in AI-generated sites)
+Fintech STARTUP: #10b981 green OR #6366f1 indigo OR #f97316 orange — NOT always navy+green (that's 2019 banking)
+Fintech BANK: #1E40AF navy + #059669 greens + gold #D97706 for trust
 E-commerce: neutral #FAFAFA bg + vibrant CTA #F97316 + product-focused
 Agency: brand-specific, often B&W + one vibrant accent #A855F7
-Tech Startup: #3B82F6/#6366F1 electric + dark #0F172A + neon accents
+Tech Startup: #3B82F6/#8b5cf6 electric + dark #0F172A + neon accents
 Healthcare: #3B82F6 blues + #06B6D4 teal + calming greens, 18px+ body
 Gaming: dark #0D0D0D + neon cyan/magenta/gold, condensed fonts
-Portfolio: high contrast, minimalist, one statement accent
+Portfolio: high contrast, minimalist, one statement accent. B&W + accent OR full dark
 Restaurant: warm #8B4513 + rich #D97706 + appetizing tones
-Legal: deep navy #1B2A4A + burgundy + gold, authoritative serif heads`;
+Legal: deep navy #1B2A4A + burgundy + gold, authoritative serif heads
+Luxury: #d97706 gold OR #1a1a1a pure black OR B&W (no accent). Clean, no gradients.`;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 3 — CDN ANIMATION STACK + PREMIUM LIBRARIES
@@ -264,7 +268,17 @@ Each pattern is SELF-CONTAINED inline CSS+JS — copy directly into your output.
 const TWENTY_FIRST_PATTERNS = `
 # 21st.dev PREMIUM COMPONENT PATTERNS
 21st.dev is the premium component registry (think shadcn/ui + stunning animations).
-Apply these EXACT patterns in every site:
+Apply these EXACT patterns in every site — but ADAPT colors to your chosen accent:
+
+## ⚠️ COLOR ADAPTATION RULE — CRITICAL
+The patterns below use #6366f1 indigo (RGB: 99,102,241) as EXAMPLE accent.
+You MUST replace ALL occurrences with YOUR CHOSEN ACCENT COLOR:
+- var(--accent,#6366f1) → var(--accent) (inherits from your :root value)
+- rgba(99,102,241,0.XX) → recalculate from YOUR accent RGB. Example: if accent=#a855f7 → rgba(168,85,247,0.XX)
+- All shadow/glow colors → must match your accent at the same opacity levels
+- rgba(167,139,250,...) → lighter tint of YOUR accent, not always lilac
+EVERY accent-colored element must match your chosen accent. Indigo is just the example.
+For LIGHT themes: swap all rgba(255,255,255,...) borders → rgba(0,0,0,...) and vice versa.
 
 ## Navigation (Sticky Glass Nav)
 \`\`\`css
@@ -283,8 +297,11 @@ Apply these EXACT patterns in every site:
   color:#fff; font-weight:600; font-size:0.85rem; cursor:pointer; transition:all 0.3s; }
 .nav-cta:hover { transform:translateY(-1px); box-shadow:0 8px 25px rgba(99,102,241,0.3); }
 \`\`\`
+LIGHT THEME nav variant: background:rgba(255,255,255,0.8); border-bottom:1px solid rgba(0,0,0,0.05); .nav-link{color:#666} .nav-link:hover{color:#1a1a1a}
+LIGHT scrolled: background:rgba(255,255,255,0.95); box-shadow:0 1px 3px rgba(0,0,0,0.05);
 
 ## Hero Section (Aurora + Gradient Text + Blur Fade)
+DARK THEME hero (default):
 \`\`\`css
 .hero { position:relative; min-height:100vh; display:flex; align-items:center; justify-content:center;
   overflow:hidden; padding:120px 24px 80px; text-align:center; }
@@ -309,8 +326,11 @@ Apply these EXACT patterns in every site:
 .hero-subtitle { font-size:clamp(1rem,2vw,1.25rem); color:#999; line-height:1.6; max-width:600px; margin:0 auto 40px; }
 .hero-buttons { display:flex; gap:16px; justify-content:center; flex-wrap:wrap; }
 \`\`\`
+LIGHT THEME hero: .hero{background:#fafafa} .hero-subtitle{color:#666} .gradient-text{background:linear-gradient(135deg,#1a1a1a 30%,var(--accent) 70%)}
+LIGHT hero bg options: subtle dot pattern, gentle radial gradient (white → accent 3% tint), or clean white with accent shape elements.
 
 ## Cards (Glassmorphism + Spotlight Hover + Tilt)
+DARK THEME cards:
 \`\`\`css
 .card { position:relative; overflow:hidden; padding:32px; border-radius:16px;
   background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06);
@@ -326,6 +346,7 @@ Apply these EXACT patterns in every site:
 .card-title { font-size:1.15rem; font-weight:600; margin-bottom:8px; color:#f5f5f5; }
 .card-desc { font-size:0.9rem; color:#888; line-height:1.6; }
 \`\`\`
+LIGHT THEME cards: .card{background:#fff; border:1px solid rgba(0,0,0,0.06); box-shadow:0 1px 3px rgba(0,0,0,0.04),0 8px 24px rgba(0,0,0,0.03)} .card:hover{box-shadow:0 12px 40px rgba(0,0,0,0.08); transform:translateY(-4px)} .card-title{color:#1a1a1a} .card-desc{color:#666}
 Card spotlight JS: document.querySelectorAll('.card').forEach(el=>{el.addEventListener('mousemove',e=>{const r=el.getBoundingClientRect();el.style.setProperty('--mx',(e.clientX-r.left)+'px');el.style.setProperty('--my',(e.clientY-r.top)+'px')})});
 
 ## Buttons (Glow + Magnetic)
@@ -573,7 +594,10 @@ Generate contextual prompts: car→"luxury sports car driving mountain road gold
 
 # GEMINI IMAGES — For important visuals
 Emit \`<<GEMINI_IMAGE:id|descriptive prompt 8+ words>>\`, use \`__GEMINI_IMAGE_id__\` as img src.
-Prefer over placehold.co. For cloned sites, use real scraped URLs instead.`;
+Prefer over placehold.co. For cloned sites, use real scraped URLs instead.
+⚠️ FALLBACK: Always add onerror to GEMINI_IMAGE img tags in case generation fails:
+\`<img src="__GEMINI_IMAGE_hero__" onerror="this.src='https://placehold.co/1200x600/1a1a2e/6366f1?text=Hero'" alt="...">\`
+Match the placehold.co colors to the site's accent. This prevents broken images if the API fails.`;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 8 — VISUAL GOD MODE (AWWWARDS-LEVEL)
@@ -585,33 +609,137 @@ const VISUAL_GOD_MODE = `
 
 ## YOUR STANDARD
 Would this site make a senior creative dev stop and study the code? If not, improve it.
-Reference: Linear.app, Stripe.com, Vercel.com, Lusion.co, Active Theory.
+Reference: Linear.app, Stripe.com, Vercel.com, Lusion.co, dennissnellenberg.com, Active Theory.
 
-## QUALITY CHECKLIST (aim for as many as context allows):
-1. Animated background in hero (aurora/particles/gradient mesh — dark or light per context)
-2. Premium font pairing (Syne×DM Sans, Clash Display×Satoshi, Playfair Display×Plus Jakarta Sans)
-3. clamp() fluid typography on ALL headings
-4. class="reveal" on sections for scroll fade-in
-5. Sticky glass navbar (backdrop-filter:blur(16px), mobile hamburger at 768px)
-6. Generous section padding (80-120px vertical)
-7. Hover transitions on buttons/cards (transform, shadow, subtle glow)
-8. Fully responsive layout
-9. Multi-column footer (brand|product|company|legal) + social icons
-10. Consistent accent color throughout
+## THE #1 RULE: RESTRAINT = PREMIUM
+The BEST sites use FEWER effects, executed PERFECTLY. More effects ≠ more impressive.
+- dennissnellenberg.com: Custom cursor + smooth scroll + clean typography. That's IT. Award-winning.
+- Linear.app: One hero gradient + clean cards + micro-interactions. No film grain, no aurora, no particles.
+- Stripe.com: Clean layout + beautiful gradients + one scroll animation. Timeless.
+- Vercel.com: B&W with ONE accent blue. Geometric patterns. Nothing flashy.
+DO NOT pile on every effect available. Pick 3-5 effects that SERVE the design. Less = More.
 
-## OPTIONAL PREMIUM ADD-ONS (for impressive sites):
-- Lenis smooth scroll + GSAP ScrollTrigger parallax
-- Custom cursor (desktop only)
-- Split text animation on h1/h2 (word-by-word blur-fade)
-- Magnetic hover buttons
-- Infinite marquee for logos
-- 3D card tilt on hover
-- Number counters animated on scroll
-- Film grain overlay on dark sites
+## DESIGN HIERARCHY — GET THESE RIGHT FIRST (order of impact):
+1. **TYPOGRAPHY** (60% of beauty): Perfect font choice + size rhythm + letter-spacing + line-height. If this is wrong, NOTHING else matters.
+   - h1: clamp(2.5rem,6vw,5rem), tracking -0.03em, line-height 1.05
+   - h2: clamp(1.8rem,4vw,3rem), tracking -0.02em, line-height 1.1
+   - body: 16-18px, line-height 1.6-1.7, color 60-70% opacity (not pure white on dark)
+   - Subtitle text: 1rem-1.25rem, color #999 or #666, max-width 600px, centered
+2. **SPACING** (20% of beauty): Consistent padding + margins + whitespace. Breathing room = premium.
+   - Section padding: 80-120px vertical (NEVER less than 60px)
+   - Card gap: 16-24px. Element gap within cards: 12-20px
+   - Hero content max-width: 800px centered. Body max-width: 1200px
+   - Always center-align hero content. Left-align feature sections.
+3. **COLOR** (15% of beauty): Right accent + contrast + consistency. ONE accent used everywhere.
+   - Accent should appear in: buttons, links, badge bg, icon bg, gradient text, selection color, hover states
+   - Text hierarchy: h1=#fff, h2=#f5f5f5, h3=#e5e5e5, body=#999, muted=#666 (dark theme)
+   - Text hierarchy light: h1=#1a1a1a, h2=#333, body=#666, muted=#999 (light theme)
+   - Cards/borders: barely visible (4-8% opacity). Not thick colored borders.
+4. **EFFECTS** (5% of beauty): Cherry on top, NOT the cake. Pick 3-5 max.
+   - If typography + spacing + color are perfect → even a site with ZERO animations looks premium
+   - If these are mediocre → no amount of aurora + glass + film grain will save it
+
+## QUALITY CHECKLIST (context-adapted):
+1. ✅ Premium font pairing (VARIED — see FONT SELECTION table)
+2. ✅ clamp() fluid typography on ALL headings with proper tracking
+3. ✅ class="reveal" on sections for scroll fade-in (+ stagger delay per child)
+4. ✅ Generous section padding (80-120px vertical, consistent rhythm)
+5. ✅ Hero with ONE standout effect (video bg OR aurora OR particles — not all)
+6. ✅ Hover transitions on buttons/cards (ONE effect per element: scale OR glow OR tilt)
+7. ✅ Fully responsive layout tested at 375px, 768px, 1024px, 1440px
+8. ✅ Multi-column footer + social icons
+9. ✅ Consistent accent color from :root variable throughout
+10. ✅ Proper text hierarchy (not everything white — use opacity stacking)
+11. ✅ Micro-interactions: button hover lift (translateY(-2px)), link underline slide, focus rings
+12. ✅ Smooth transitions everywhere (0.3s cubic-bezier(0.16,1,0.3,1), NEVER instant)
+
+## MICRO-INTERACTION POLISH (what separates 8/10 from 10/10):
+- Button hover: translateY(-2px) + box-shadow increase + slight brightness. Not just color change.
+- Card hover: translateY(-4px) + border-color brighten + shadow expand. Subtle, not dramatic.
+- Link hover: color transition + underline slide-in from left (width 0→100%). Not just color swap.
+- Nav scroll: background opacity increase + padding decrease + subtle shadow appear. Smooth 0.3s.
+- Image hover: scale(1.03) with overflow:hidden on parent. Slow zoom, not jump.
+- Input focus: border-color to accent + subtle glow (box-shadow: 0 0 0 3px rgba(accent, 0.1))
+- Page load: body opacity 0→1 over 0.5s. Sections stagger in as user scrolls.
+- Cursor: *, a, button must have appropriate cursor values.
+All transitions: cubic-bezier(0.16,1,0.3,1) or cubic-bezier(0.34,1.56,0.64,1). NEVER linear for UI elements.
+
+## LIGHT THEME MASTERY (when light theme is chosen):
+Light themes are HARDER to make beautiful. Follow these rules:
+- Background: #fafafa or #fff (NEVER #f0f0f0 or gray — it looks dirty)
+- Cards: #fff with box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 10px 30px rgba(0,0,0,0.04). NO dark borders.
+- Borders: rgba(0,0,0,0.06) only. Nearly invisible. Let shadows do the work.
+- Text: #1a1a1a for headings, #333 for subtitles, #666 for body, #999 for muted
+- Accent buttons: solid accent bg with white text. Hover: darken 10%.
+- Navbar: background:#fff/rgba(255,255,255,0.8) with backdrop-filter:blur(12px) + box-shadow: 0 1px 0 rgba(0,0,0,0.05)
+- NO glass morphism on light — use subtle shadows instead. Glass on light bg = muddy.
+- Hero bg: subtle gradient (white→very light accent tint) OR noise texture OR dot pattern. NOT aurora.
+- Scrollbar: scrollbar-color:#ccc transparent (not #333 on light bg)
+
+## COPY/CONTENT QUALITY (what you write matters as much as design):
+- Headlines: Short, punchy, benefit-focused. Max 6-8 words. "Ship faster. Build better." not "Our platform helps you..."
+- Subtitles: One sentence. 15-20 words max. Explain the value prop simply.
+- Button text: Action verbs. "Get Started" "View Projects" "Book a Call" — not "Click Here" "Submit"
+- Portfolio project titles: Creative, not generic. "E-commerce Reimagined" not "Project 1"
+- Stats: Use real-looking numbers. "10K+" "99.9%" "150ms" — not "100" "50" "10"
+- Testimonials: Write realistic quotes with name + role + company. Not "Great product!" 
+- Feature descriptions: 1-2 lines max. Be specific. "Real-time collaboration" not "Work together easily"
+- Footer links: Realistic — Product, Features, Pricing, About, Blog, Careers, Contact, Privacy, Terms
+
+## OPTIONAL PREMIUM ADD-ONS (choose 3-5 MAX based on context):
+- Lenis smooth scroll + GSAP ScrollTrigger parallax (SaaS, agency, portfolio)
+- Custom cursor with mix-blend-mode:difference (agency, creative portfolio ONLY)
+- Split text animation on h1 (word-by-word blur-fade, GSAP)
+- Magnetic hover buttons (creative sites only)
+- Infinite marquee for logos/partners (SaaS)
+- 3D card tilt on project hovers (portfolio)
+- Number counters animated on scroll (SaaS stats/fintech)
+- Film grain overlay (dark creative sites ONLY — opacity ≤ 0.08)
+- Scroll progress bar (blog, long-form, documentation)
+- Preloader/loading screen (portfolio, agency — NOT on every site type)
+
+## IMAGE STRATEGY (context-aware):
+- Portfolio: GEMINI_IMAGE for realistic project screenshots. NEVER placehold.co for projects.
+- SaaS: GEMINI_IMAGE for product UI mockups and dashboard previews.
+- E-commerce: GEMINI_IMAGE for product photos on clean background.
+- Generic: placehold.co/WIDTHxHEIGHT/1a1a2e/ACCENT_HEX?text=Label (match site colors, never gray)
+- Avatars: placehold.co/80x80/accent_bg/fff?text=initials (2 letter initials)
+- Icons: Font Awesome 6 OR inline SVGs. 48x48px in accent-tinted bg rounded boxes.
 
 ## STYLE BANS (for GENERATION — these look amateur):
-Fonts: Inter, Roboto, Open Sans, Arial alone (pair with premium if needed)
-Patterns: generic 3-card features only, no scroll animations at all, flat unstyled buttons`;
+- Fonts: Inter, Roboto, Open Sans, Arial ALONE (must pair with display font)
+- Patterns: generic 3-card row with no hover effects, zero scroll animations, flat unstyled buttons
+- Colors: all text pure #fff on dark (use hierarchy), bright neon accents (#00ff00), rainbow gradients
+- Layout: everything centered (mix alignments), no whitespace (sections crammed), inconsistent padding
+- Effects: ALL effects at once = Christmas tree. Aurora + glass + film grain + cursor + marquee + particles + gradient text = amateur hour
+- Copy: "Lorem ipsum", "Click here", "Product 1/2/3", "Person 1", generic placeholder text
+
+## RESPONSIVE COMPLEX COMPONENTS (the stuff that BREAKS on mobile):
+### Split hero (SaaS-B): Stack vertically. Text first, image/screenshot second. Image max-height:300px on mobile. Remove any horizontal padding excess.
+### Dashboard mockup (Fintech): Show simplified static version on mobile OR hide animated elements, show key metric cards stacked. Reduce to 2-3 key data points instead of full dashboard.
+### Before/after comparison (UX portfolio): Stack vertically with clear "Before" / "After" labels above each image. Never side-by-side below 768px.
+### Process diagram (horizontal Discover→Define→Design→Deliver): Convert to VERTICAL timeline on mobile with connecting line.
+### Bento grid: Single column below 768px. Reset all col-span/row-span. Consistent card height. Most important card first.
+### Masonry gallery: 2-col below 1024px, 1-col below 640px. Maintain aspect ratios.
+### Pricing 3-col: Stack vertically. Featured card first (not middle). Full-width cards with clear hierarchy.
+
+## INTERACTION STYLE VARIANTS (pick a DIFFERENT style per generation to avoid "Aurion fingerprint"):
+### Style A — Sharp & Precise (for SaaS, fintech, professional):
+Timing: cubic-bezier(0.83,0,0.17,1). Hover: border-color change + scale(1.01). No translateY. Transitions 200ms.
+### Style B — Bouncy & Playful (for creative, startup, portfolio):
+Timing: cubic-bezier(0.34,1.56,0.64,1). Hover: translateY(-6px) + shadow expand. Spring-like overshoot. Transitions 400ms.
+### Style C — Smooth & Elegant (for luxury, editorial, minimal):
+Timing: cubic-bezier(0.22,1,0.36,1). Hover: opacity 0.8→1 + subtle blur transition. No scale, no translateY. Transitions 500ms+.
+Match the interaction style to the site's personality. If the last generation used Style A, try B or C.
+
+## EDITORIAL PATTERNS (for portfolios, magazines, case studies, editorial layouts):
+### Pull Quote: large italic serif text, left border 3px var(--accent), margin 40px 0, padding-left 24px, font-size: 1.5em
+### Figure + Caption: <figure> with max-width:100%, <figcaption> font-size:0.85rem; color:#999; margin-top:8px; font-style:italic
+### Section Number: "01" in font-weight:200 font-size:4rem color:#ddd, followed by section title in 1.2rem font-weight:600 on next line
+### Asymmetric Grid: grid-template-columns: 1fr 2fr (text narrow left, image wide right) — ALTERNATE sides per section
+### Multi-column Text: column-count:2 at @media(min-width:1024px), column-gap:48px, for long-form text sections
+### Reading Progress Bar: position:fixed; top:0; height:3px; background:var(--accent); width:0→100% on scroll. For long-form content.
+### Drop Cap: first-letter { font-size:3.5em; float:left; line-height:0.8; margin-right:8px; font-family:var(--heading-font) }`;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 8B — CINEMATIC 3D SCROLL MODE (APPLE-STYLE)
@@ -849,10 +977,20 @@ Use animations that SERVE the design, not that show off. Pick based on site type
 - 5+ effects: fade-in-up, stagger entrance, marquee, hover glow, word reveal or split text
 - Full treatment: badge→heading→subtitle→CTAs with 0.1-0.15s delay stagger
 
-**For all sites, MUST include:**
-- Fade-in-up on scroll (IntersectionObserver or GSAP ScrollTrigger)
+**For luxury/fashion sites (ELEGANCE = restraint):**
+- Pick 2-3 effects MAXIMUM: smooth reveal, parallax on product images, subtle hover scale
+- NO custom cursor, NO particles, NO marquee, NO glass. Hermès and Chanel don't use gimmicks.
+- Focus on: elegant transitions (600ms+), generous whitespace, typographic precision
+
+**For fintech startup sites (ENERGY + TRUST):**
+- 4-5 effects: number counters, smooth reveals, card animations, dashboard data flow, hover states
+- More animation than luxury, less than SaaS. Professional but modern.
+
+**Baseline for ALL sites (NOT mandatory — adapt to context):**
+- Fade-in-up on scroll (IntersectionObserver or GSAP ScrollTrigger) — RECOMMENDED for all
 - Hover effects on cards (scale, glow, or 3D tilt — pick ONE, not all)
-- At LEAST one text effect: Word Reveal, Split Text, Blur Reveal, or Text Shimmer
+- OPTIONAL text effect: Word Reveal, Split Text, Blur Reveal, or Text Shimmer (skip if it doesn't serve the design)
+- ⚠️ If the design calls for minimalism (editorial portfolio, luxury), you may SKIP text effects and use only subtle reveals + hover states. RESTRAINT IS OK.
 
 IMPORTANT — HTML vs React mode:
 - HTML mode: Use ONLY CSS @keyframes + vanilla JS (IntersectionObserver, GSAP). NO Framer Motion, NO motion.div, NO useScroll/useTransform.
@@ -950,7 +1088,27 @@ const SITE_RECIPES = `
 ## SaaS / Tech Startup
 Structure: Preloader → Glass nav → Aurora hero + gradient text h1 + badge + 2 CTAs → Marquee logos → Bento feature grid (3-col, spotlight cards) → Stats section (counters) → Testimonials → Pricing (3 cards, shine-border featured) → FAQ accordion → CTA banner → 4-col footer
 Effects: Aurora bg, shimmer h1, blur-fade reveals, glow buttons, spotlight cards, marquee, number counters, shine-border pricing
-Accent: #6366f1 indigo | Fonts: Space Grotesk × Inter OR Outfit × DM Sans OR Lexend × Inter (VARY)
+Accent: #3b82f6 blue OR #8b5cf6 violet OR #0ea5e9 sky (ROTATE — #6366f1 indigo is DEPRIORITIZED, too common in AI-generated sites)
+Fonts: Space Grotesk × Inter OR Outfit × DM Sans OR Lexend × Inter (VARY)
+Copy examples: "Ship 10x faster with AI" / "Your codebase, understood" / "From idea to production in minutes"
+
+### SAAS LAYOUT VARIANTS (pick a DIFFERENT one each time)
+**SaaS-A — Classic Marketing (the standard)**
+Nav → Badge hero + gradient h1 + 2 CTAs → Logo marquee → Bento features → Stats → Testimonials → Pricing → FAQ → CTA → Footer
+Best for: General SaaS, broad audience. Use video bg OR aurora.
+
+**SaaS-B — Product-Led (show the product immediately)**
+Nav → Split hero (text left + product screenshot/demo right) → "How it works" 3-step → Feature deep-dives (alternating image+text L/R) → Integration logos → Stats → Testimonials → Pricing → Footer
+Best for: Developer tools, code assistants, dashboards. Hero shows the PRODUCT, not just text.
+Key sections: Code editor preview, terminal demo, before/after comparison.
+
+**SaaS-C — Storytelling (problem→solution narrative)**
+Nav → Problem statement hero (dark, emotional) → "The old way" vs "The new way" comparison → Product reveal (screenshot with glow) → Features grid → Case study callout → Stats → CTA → Footer
+Best for: Differentiation-heavy products. Emotional narrative arc.
+
+**SaaS-D — Data-Rich (numbers speak)**
+Nav → Hero with animated metric counters → Dashboard preview section → Feature cards with metric callouts → Benchmark comparison table → Testimonials with specific results → Pricing → Footer
+Best for: Analytics, monitoring, fintech-adjacent. Lots of numbers, charts, data visualization.
 
 ## Agency / Portfolio
 Structure: Preloader → Minimal nav → Spotlight hero + split text reveal + cursor follower → Horizontal project scroll (GSAP pin) → Services bento → About with parallax → Testimonials → Contact with gradient border → Footer
@@ -975,14 +1133,17 @@ Best for: Developers, creative technologists. Use GSAP ScrollTrigger pin.
 **Layout B — Editorial Grid (clean, professional)**
 Nav → Hero (text-only, large serif headline, no bg effect) → 2-column project grid (image left, text right, alternating) → About → Experience timeline → Contact → Footer
 Best for: UX designers, product designers. NO loading screen, NO marquee. Clean editorial feel.
+Light theme variant for editorial: Cards use thin borders (1px solid #e5e5e5) instead of box-shadows. Clean, print-inspired aesthetic.
 
 **Layout C — One-Page Smooth Scroll (minimal, impactful)**
 Infinite scroll: Name/role → Brief intro → Project 1 (full-width image + caption) → Project 2 → Project 3 → About blurb → Contact email → End
 Best for: Photographers, illustrators, minimalists. Lenis smooth scroll, barely any effects.
 
-**Layout D — Case Study Deep-Dive (detailed, strategic)**
-Nav → Brief hero (name + title + what you do) → Featured case study 1 (problem → process → result, with images) → Case study 2 → Case study 3 → Testimonials → Skills → Contact → Footer
-Best for: Product designers, strategists. More text-heavy, shows thinking process.
+**Layout D — Case Study Deep-Dive (detailed, strategic — DEFAULT for UX designers)**
+Nav → Brief hero (name + title + what you do) → Featured case study 1 (problem → research → wireframes → testing → outcome, with images at every step) → Case study 2 → Case study 3 → Testimonials → Skills + tools → Contact → Footer
+Best for: UX/Product designers, strategists. Shows the PROCESS, not just the result.
+Case study sections MUST include: Problem statement, Research/discovery, Wireframes/iterations, User testing insights, Final design + metrics ("Reduced checkout abandonment by 23%")
+UX-specific elements: Process diagram (Discover→Define→Design→Deliver), before/after comparisons, metrics callouts, tool badges (Figma, Maze, Notion)
 
 ## Creative Agency Portfolio
 Structure: Custom cursor → Fixed bottom nav OR minimal top nav → Full-viewport hero (Playfair/serif headline) → Infinite marquee (project names or services) → Selected works grid (4-6 projects, hover reveals title) → Pricing (2-3 tiers) → Single large testimonial quote → Contact section → Footer
@@ -998,9 +1159,11 @@ Accent: #f97316 orange | Fonts: Plus Jakarta Sans × DM Sans
 
 ## Luxury / Fashion
 Structure: Minimal nav (no glass, thin border only) → Full-viewport hero (serif headline + video bg) → Editorial image + text sections (alternating L/R layout) → Product/Collection showcase (large images, near full-width) → Brand manifesto (large quote) → Lookbook gallery (masonry) → Newsletter (simple, elegant) → Minimal footer
-Effects: Custom cursor, parallax images, smooth hover zoom, elegant page transitions. FEWER is better — luxury = restraint.
-Style: NO gradient text, NO aurora bg, NO badges, NO bento grid. Clean editorial typography, generous whitespace, large type.
+Effects: Parallax images, smooth hover zoom, elegant page transitions. FEWER is better — luxury = restraint. NO custom cursor (Hermès, Chanel, Bottega don't use them — they are a gimmick in this context).
+Style: NO gradient text, NO aurora bg, NO badges, NO bento grid, NO glass. Clean editorial typography, generous whitespace, large type.
 Accent: #d97706 gold or #1a1a1a black or NONE (B&W) | Fonts: Playfair Display × Plus Jakarta Sans OR Bodoni Moda × Jost OR Cormorant Garamond × Inter
+Copy: Use aspirational, poetic language. See COPY INTELLIGENCE luxury section. If Maison is French, ALL copy should be in French.
+Key sections: "La Collection" "Notre Savoir-Faire" "La Maison" "Atelier" — NOT "Products" "About Us"
 
 ## Restaurant / Food
 Structure: Nav with reservation CTA → Full-bleed hero video → Menu sections → Chef spotlight → Gallery masonry → Reviews → Reservation form → Map + hours → Footer
@@ -1018,9 +1181,100 @@ Effects: Gentle blur-fade reveals, soft hover states, subtle parallax, calming t
 Accent: #06b6d4 teal | Fonts: Plus Jakarta Sans × DM Sans (body 18px min)
 
 ## Fintech / Banking
-Structure: Trust nav + security badge → Data hero + number counters → Feature grid → Security section → Partner logos → Pricing → FAQ → Footer
+### Fintech STARTUP (modern disruptor — Mercury, Ramp, Arc, Brex energy)
+Structure: Clean nav (trust badge optional) → Bold hero with dashboard/card mockup (NOT just counters) → "How it works" 3-step flow → Feature deep-dives with product screenshots → Integration section (Quickbooks, Xero, Stripe logos) → Security & compliance (SOC2, PCI-DSS badges) → Stats with real-feeling metrics → Testimonials with specific results → Pricing → FAQ → Footer
+Effects: Smooth reveals, number counters, card-flip animations, dashboard preview with animated data. Modern, ENERGETIC — NOT subdued.
+Theme: LIGHT (#fff bg, clean) OR DARK (bold startup) — fintech startups increasingly use LIGHT themes (Mercury, Ramp)
+Accent: #10b981 green OR #6366f1 indigo OR #f97316 orange (NOT always blue+green — that's 2019 banking)
+Fonts: Outfit × Inter OR Space Grotesk × DM Sans OR Plus Jakarta Sans × Inter (VARY)
+Copy examples: "Your money, finally visible" / "Financial ops on autopilot" / "Save 40 hours/month on reconciliation" / "Banking that moves as fast as you"
+Key sections UNIQUE to fintech:
+- Dashboard preview (animated metrics, transaction list, balance chart)
+- Card mockup (physical/virtual card with brand on it, tilt on hover)
+- Security section (lock icon, SOC2 badge, encryption visual, "Bank-grade security" headline)
+- Integration grid (logo grid of accounting/banking/payment tools)
+- ROI calculator or savings estimate ("Companies save $XX,000/year")
+
+### Fintech BANK (traditional, trust-focused — established institution energy)
+Structure: Trust nav + security badge → Professional hero + number counters → Feature grid → Security section → Partner logos → Pricing → FAQ → Footer
 Effects: Subtle reveals only, number counters, clean card hovers, precise data presentation
 Accent: #0ea5e9 blue + #10b981 green | Fonts: Outfit × DM Sans`;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 10B — COPY INTELLIGENCE (INDUSTRY-SPECIFIC CONTENT QUALITY)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const COPY_INTELLIGENCE = `
+# COPY INTELLIGENCE — WHAT YOU WRITE MATTERS AS MUCH AS HOW IT LOOKS
+
+## GOLDEN RULES FOR ALL COPY:
+1. Headlines: 3-8 words MAX. Benefit-focused, not feature-focused. Punchy verbs.
+2. Subtitles: ONE sentence, 15-20 words. Explain the value prop simply.
+3. Button text: Action verbs. "Get Started" "View Projects" "Book a Call". NEVER "Click Here" "Submit" "Learn More"
+4. Body text: Short paragraphs (2-3 sentences). Scannable. No walls of text.
+5. NEVER use: "Lorem ipsum", "Welcome to...", "We are a leading...", "Click here to...", "Product 1/2/3", "Person 1/2/3"
+6. Match the user's LANGUAGE — if they write in French, ALL copy must be in French.
+
+## INDUSTRY HEADLINE TEMPLATES:
+
+### SaaS / AI / Developer Tools
+Hero: "Ship [X] [faster/better/smarter]" | "[Outcome] without the [pain point]" | "Your [thing], [transformed/supercharged/understood]"
+Examples: "Ship code 10x faster" / "Your codebase, fully understood" / "Debug in seconds, not hours" / "From prototype to production in minutes"
+Features: Use specific technical outcomes. "Real-time collaboration" "One-click deployments" "99.9% uptime guaranteed"
+Stats: "50K+ developers" "2M+ deployments" "150ms average response" "<0.1% error rate"
+
+### Portfolio / Creative
+Hero: First name only or full name. "[Name]." or "[Name] — [role]" or "I [verb] [what]"
+Examples: "Alexandre." / "Sarah Chen — Product Designer" / "I design systems that reduce friction" / "Making the complex feel simple"
+Projects: Creative, specific names. "E-commerce Reimagined" "Healthcare, Humanized" "Sound, Visualized" "The Future of Banking"
+About: Personal, confident, brief. "Based in Paris, I partner with startups and studios to design digital products people love. Currently at [Company]."
+Contact: "Let's work together." / "Have a project in mind?" / "Say hello." + email link
+
+### Luxury / Fashion
+Hero: Aspirational, poetic, short. NEVER corporate language. Often French or Italian terms.
+Examples: "L'Art de l'Éclat" / "Savoir-faire meets audacity" / "Since 1897, redefining elegance" / "Crafted for those who notice"
+Sections: "The Collection" "Our Savoir-Faire" "The Maison" "Atelier" — NOT "Products" "About Us" "Services"
+Style: Minimal punctuation. Short sentences. Imperatives. "Discover." "Explore the collection." "Visit our atelier."
+
+### Fintech / Startup
+Hero: Outcome-focused + specificity. Numbers build trust.
+Examples: "Your money, finally visible" / "Financial ops on autopilot" / "Banking that moves as fast as you" / "Save 40 hours/month on reconciliation"
+Features: Lead with the metric or outcome. "Reconcile 10K transactions in seconds" "3-click expense reports" "Real-time cash flow visibility"
+Trust: "SOC 2 Type II certified" "256-bit encryption" "Trusted by 5,000+ companies" "FDIC insured up to $250K"
+
+### Fintech B2B (Payments, Invoicing, AP/AR Automation)
+Hero: "[Process] on autopilot" | "One platform for all [B2B thing]" | "[Pain point] solved in [time]"
+Examples: "Invoice-to-cash in 24 hours, not 24 days" / "AP automation for growing teams" / "One API for every B2B payment rail" / "Reconciliation that handles itself"
+Features: "Automated 3-way matching" "Custom approval workflows" "Real-time float optimization" "Multi-currency settlement"
+Stats: "40h/month saved per AP clerk" "98% straight-through processing" "$2.4B in B2B transactions" "5,000+ mid-market companies"
+
+### Restaurant / Food
+Hero: Sensory, warm language. Evoke taste and experience.
+Examples: "A journey through flavors" / "Where East meets West, beautifully" / "Farm to table, flame to soul" / "Tokyo precision, Parisian soul"
+Sections: "The Menu" "Our Story" "The Chef" "Reserve a Table" — NOT "About" "Services" "Pricing"
+
+### Healthcare / Wellness
+Hero: Empathetic, reassuring. Patient-first language.
+Examples: "Your health, our priority" / "Care that comes to you" / "Modern medicine, personal touch"
+Tone: Warm, accessible, NEVER clinical jargon in headlines. Body text can be more specific.
+
+### E-Commerce
+Hero: Benefit + visual. Short tagline above product showcase.
+Examples: "Wear the revolution" / "Sound reimagined" / "Your space, perfected"
+CTA buttons: "Shop Now" "Add to Cart" "View Collection" — clear, direct, commercial
+
+## TESTIMONIAL TEMPLATES (NEVER generic):
+Write testimonials that sound REAL — specific name, role, company, and a concrete result:
+- "Aurion cut our deploy time from 4 hours to 12 minutes. Game changer." — Sarah Chen, CTO at Nexus AI
+- "The most intuitive financial dashboard I've used. Our CFO sends reports in half the time." — Marc Dubois, Head of Finance at Revolut
+- "Alexandre's redesign increased our conversion rate by 34%. Worth every penny." — Liam O'Brien, Founder at ShopBase
+NEVER: "Great product!" "Highly recommend." "5 stars."
+
+## STATS TEMPLATES (use realistic, specific numbers):
+SaaS: "50K+ developers" "2M+ deployments" "$500M+ processed" "99.99% uptime"
+Portfolio: "50+ projects" "8+ years experience" "20+ clients worldwide"
+Fintech: "$2.4B processed" "50K+ businesses" "40h/month saved" "3.2s average approval"
+E-commerce: "100K+ happy customers" "150+ countries" "4.8★ rating" "30-day returns"`;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 11 — CLONE METHODOLOGY (PIXEL-PERFECT)
@@ -1236,6 +1490,7 @@ export function buildSystemPrompt(): string {
     UX_GUIDELINES,
     GENERATION_RULES,
     SITE_RECIPES,
+    COPY_INTELLIGENCE,
     ADVANCED_TOOL_COMPOSITION,
     STREAMING_OPTIMIZATION,
     PROMPT_INJECTION_DEFENSE,
