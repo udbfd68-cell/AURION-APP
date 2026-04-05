@@ -22,7 +22,9 @@
 
 export const VIDEO_ASSETS = `
 # PREMIUM VIDEO BACKGROUNDS — 22+ Production-Ready Assets
-ALWAYS use a video background. Pick by industry/mood. All: autoPlay muted loop playsInline.
+Use video backgrounds for SaaS, agency, portfolio hero sections. SKIP for editorial, healthcare, education, luxury where clean CSS backgrounds are more appropriate.
+For CLONE mode: ONLY include video if the source site actually has one.
+Pick by industry/mood. All: autoPlay muted loop playsInline.
 
 ## Direct MP4 Videos (CloudFront CDN — instant load, no hls.js needed)
 | ID | URL | Best For | Overlay |
@@ -1378,17 +1380,17 @@ export const MOTIONSITE_LIBRARY = `
 # 7. Follow section blueprint from SECTION_BLUEPRINTS (hero variant + navbar type)
 # 8. Use component patterns from COMPONENT_PATTERNS (buttons, badges, cards)
 #
-# ABSOLUTE RULES — NEVER BREAK:
-# 1. ALWAYS use a video background from the library (pick by industry/mood)
-# 2. ALWAYS use premium fonts — NEVER system defaults (11 pairings available)
-# 3. ALWAYS include entrance animations (fadeUp, BlurText, SplitText, or stagger)
-# 4. ALWAYS use liquid-glass on dark themes (glass/glass-strong/saturated)
-# 5. ALWAYS apply serif italic on accent words (Instrument Serif or PP Mondwest)
-# 6. ALWAYS include scroll animations on long pages (parallax, word reveal)
-# 7. ALWAYS use gradient text on key headlines (bg-clip-text text-transparent)
-# 8. ALWAYS implement HLS via memoized component with cleanup (no AbortError)
+# CONTEXT-AWARE USAGE GUIDE:
+# 1. Video backgrounds: Use for SaaS/agency/portfolio heroes. SKIP for editorial/healthcare/luxury/education. For CLONE: match source.
+# 2. Premium fonts: ALWAYS use Google Fonts or FontShare — never system defaults (see FONT_SYSTEMS below)
+# 3. Entrance animations: Recommended for all (fadeUp, BlurText, SplitText, or stagger) — but portfolio/luxury may use fewer
+# 4. Glass effects: Use on DARK themes (navbar + 1-2 elements). SKIP on light/editorial/luxury themes.
+# 5. Serif italic accent: Good for creative/editorial. SKIP for clean SaaS/fintech.
+# 6. Scroll animations: Recommended for long pages (parallax, word reveal)
+# 7. Gradient text: SaaS/AI = yes. Luxury/editorial = skip. Portfolio = subtle only.
+# 8. HLS video: Implement via memoized component with cleanup (no AbortError)
 # 9. ALWAYS add -webkit-font-smoothing: antialiased
-# 10. ALWAYS add bottom fade gradient on video sections (from bg to transparent)
+# 10. Video sections: Add bottom fade gradient (from bg to transparent)
 # 11. Use auto-cycling tabs/carousels where applicable (4s intervals)
 # 12. Use clip-path buttons for logistics/industrial themes
 # 13. Apply CSS filter color grading on video assets for brand matching
