@@ -1,9 +1,11 @@
 import { NextRequest } from 'next/server';
 import { buildSystemPrompt } from '@/lib/system-prompts';
+import { classifyError, calculateBackoff } from '@/lib/claude-code-engine';
 
 export const runtime = 'edge';
 
 const SYSTEM_PROMPT = buildSystemPrompt();
+const MAX_RETRIES = 3;
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.GROQ_API_KEY;
@@ -46,26 +48,54 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model,
-            messages: groqMessages,
-            stream: true,
-            temperature: 0.7,
-            max_tokens: 131072,
-          }),
-          signal: AbortSignal.timeout(300000),
-        });
+        let res: Response | null = null;
+        let lastError = '';
 
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({ error: { message: `Groq HTTP ${res.status}` } }));
-          const errMsg = errData?.error?.message || `Groq API error ${res.status}`;
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: errMsg })}\n\n`));
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          try {
+            res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model,
+                messages: groqMessages,
+                stream: true,
+                temperature: 0.7,
+                max_tokens: 131072,
+              }),
+              signal: AbortSignal.timeout(300000),
+            });
+
+            if (res.ok) break;
+
+            const errData = await res.json().catch(() => ({ error: { message: `Groq HTTP ${res!.status}` } }));
+            lastError = errData?.error?.message || `Groq API error ${res.status}`;
+            const errorClass = classifyError(res.status, lastError);
+
+            // Don't retry on non-retriable errors
+            if (errorClass === 'auth_failure' || errorClass === 'invalid_input' || errorClass === 'context_overflow') {
+              break;
+            }
+
+            if (attempt < MAX_RETRIES) {
+              const delay = calculateBackoff(attempt, { baseDelay: 1000, maxDelay: 10000, jitterFactor: 0.3 });
+              await new Promise(resolve => setTimeout(resolve, delay));
+              res = null;
+            }
+          } catch (fetchErr: unknown) {
+            lastError = fetchErr instanceof Error ? fetchErr.message : 'Groq fetch error';
+            if (attempt < MAX_RETRIES) {
+              const delay = calculateBackoff(attempt, { baseDelay: 1000, maxDelay: 10000, jitterFactor: 0.3 });
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          }
+        }
+
+        if (!res || !res.ok) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: lastError || 'Groq request failed after retries' })}\n\n`));
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
           return;

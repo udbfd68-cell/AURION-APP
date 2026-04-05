@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const { messages, model = 'claude-opus-4-5-20250514', images } = body;
+  const { messages, model = 'claude-sonnet-4-20250514', images } = body;
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return new Response(JSON.stringify({ error: 'Messages array is required' }), {

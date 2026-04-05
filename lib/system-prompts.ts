@@ -47,7 +47,7 @@ Each user message includes [WORKSPACE STATE] — use it for smart decisions.
 Be proactive: install packages, suggest integrations, offer to deploy.`;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 2 — MANDATORY DARK THEME + BASE DESIGN SYSTEM
+// SECTION 2 — SMART THEME + BASE DESIGN SYSTEM
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const DESIGN_SYSTEM = `
@@ -596,8 +596,8 @@ Generate contextual prompts: car→"luxury sports car driving mountain road gold
 Emit \`<<GEMINI_IMAGE:id|descriptive prompt 8+ words>>\`, use \`__GEMINI_IMAGE_id__\` as img src.
 Prefer over placehold.co. For cloned sites, use real scraped URLs instead.
 ⚠️ FALLBACK: Always add onerror to GEMINI_IMAGE img tags in case generation fails:
-\`<img src="__GEMINI_IMAGE_hero__" onerror="this.src='https://placehold.co/1200x600/1a1a2e/6366f1?text=Hero'" alt="...">\`
-Match the placehold.co colors to the site's accent. This prevents broken images if the API fails.`;
+\`<img src="__GEMINI_IMAGE_hero__" onerror="this.src='https://placehold.co/1200x600/1a1a2e/8b5cf6?text=Hero'" alt="...">\`
+Match the placehold.co colors to the site's accent (use :root --accent value). This prevents broken images if the API fails.`;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 8 — VISUAL GOD MODE (AWWWARDS-LEVEL)
@@ -676,15 +676,8 @@ Light themes are HARDER to make beautiful. Follow these rules:
 - Hero bg: subtle gradient (white→very light accent tint) OR noise texture OR dot pattern. NOT aurora.
 - Scrollbar: scrollbar-color:#ccc transparent (not #333 on light bg)
 
-## COPY/CONTENT QUALITY (what you write matters as much as design):
-- Headlines: Short, punchy, benefit-focused. Max 6-8 words. "Ship faster. Build better." not "Our platform helps you..."
-- Subtitles: One sentence. 15-20 words max. Explain the value prop simply.
-- Button text: Action verbs. "Get Started" "View Projects" "Book a Call" — not "Click Here" "Submit"
-- Portfolio project titles: Creative, not generic. "E-commerce Reimagined" not "Project 1"
-- Stats: Use real-looking numbers. "10K+" "99.9%" "150ms" — not "100" "50" "10"
-- Testimonials: Write realistic quotes with name + role + company. Not "Great product!" 
-- Feature descriptions: 1-2 lines max. Be specific. "Real-time collaboration" not "Work together easily"
-- Footer links: Realistic — Product, Features, Pricing, About, Blog, Careers, Contact, Privacy, Terms
+## COPY/CONTENT QUALITY
+See COPY_INTELLIGENCE (Section 10B) for the single source of truth on headline templates, testimonials, stats, and button copy.
 
 ## OPTIONAL PREMIUM ADD-ONS (choose 3-5 MAX based on context):
 - Lenis smooth scroll + GSAP ScrollTrigger parallax (SaaS, agency, portfolio)
@@ -763,7 +756,7 @@ When user says: "3D", "cinematic", "immersive", "parallax 3D", "apple style", "p
   <div style="text-align:center">
     <div class="preloader-count" style="font-size:clamp(5rem,15vw,12rem);font-weight:900;color:transparent;-webkit-text-stroke:1px rgba(255,255,255,0.3)">0</div>
     <div style="width:200px;height:2px;background:rgba(255,255,255,0.1);border-radius:9999px;overflow:hidden;margin:1rem auto">
-      <div class="preloader-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#a855f7,#6366f1);border-radius:9999px"></div>
+      <div class="preloader-bar" style="width:0%;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-alt,#a855f7));border-radius:9999px"></div>
     </div>
   </div>
 </div>
@@ -814,30 +807,15 @@ setInterval auto-cycle. Transform:translateX for sliding. Pause on mouseenter, r
 
 ### SECTION 10: CTA WITH GRADIENT GLOW
 .cta-glow { position:relative; overflow:hidden; }
-.cta-glow::before { content:''; position:absolute; inset:-2px; background:conic-gradient(from 0deg,#a855f7,#6366f1,#06b6d4,#a855f7); border-radius:inherit; animation:spin 3s linear infinite; }
+.cta-glow::before { content:''; position:absolute; inset:-2px; background:conic-gradient(from 0deg,var(--accent),var(--accent-alt,#a855f7),#06b6d4,var(--accent)); border-radius:inherit; animation:spin 3s linear infinite; }
 @keyframes spin{to{transform:rotate(360deg)}}
 
 ### SECTION 11: FOOTER (multi-column, glass morphism)
 backdrop-filter:blur(40px); background:rgba(10,10,10,0.8); border-top:1px solid rgba(255,255,255,0.06);
 
-## GLASS EFFECTS LIBRARY (pick 3-5 per site)
-- Liquid Glass: backdrop-filter:blur(40px) saturate(200%); background:linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02)); border:1px solid rgba(255,255,255,0.1); box-shadow:0 8px 32px rgba(0,0,0,0.4);
-- Frosted Navbar: backdrop-filter:blur(20px) saturate(180%); background:rgba(10,10,10,0.7); border-bottom:1px solid rgba(255,255,255,0.06);
-- Glassmorphic Tag: padding:6px 14px; border-radius:999px; background:rgba(168,85,247,0.1); border:1px solid rgba(168,85,247,0.2); color:#c084fc;
-- Web3 Glow Button: background:linear-gradient(135deg,#a855f7,#6366f1); box-shadow:0 0 20px rgba(168,85,247,0.4),0 0 60px rgba(168,85,247,0.1); border-radius:12px;
-- Saturated Glass Card: backdrop-filter:blur(24px) saturate(200%); background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(168,85,247,0.05)); border:1px solid rgba(255,255,255,0.08); border-radius:20px;
-
-## TEXT EFFECTS (use 2-3 per page)
-- Text Shimmer: background:linear-gradient(90deg,#fff 0%,rgba(255,255,255,0.5) 50%,#fff 100%);background-size:200%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:shimmer 3s ease infinite;
-- Blur Reveal: .blur-reveal{filter:blur(10px);opacity:0;transition:all 0.8s ease}.blur-reveal.visible{filter:blur(0);opacity:1}
-- Gradient Text: background:linear-gradient(135deg,#a855f7,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;
-- Staggered Drop: Each letter drops from above with stagger 0.03s, ease back.out
-
-## BACKGROUND EFFECTS (pick 1 per section that needs visual depth)
-- Aurora: animated gradient with 400% size + position keyframes
-- Noise Texture: background-image:url("data:image/svg+xml,...") with opacity:0.03
-- Dot Pattern: radial-gradient(circle,rgba(255,255,255,0.1) 1px,transparent 1px) with background-size:20px 20px
-- Moving Gradient Blob: large radial-gradient circles with CSS animation position shifts
+## GLASS, TEXT & BACKGROUND EFFECTS
+See GENERATION_RULES Section 9 for the single source of truth on glass, text, and background effects.
+Do NOT duplicate effect definitions — use the patterns defined there.
 
 ## ACCESSIBILITY
 @media (prefers-reduced-motion:reduce) { *, *::before, *::after { animation-duration:0.01ms!important; transition-duration:0.01ms!important; } }
@@ -889,12 +867,14 @@ const GENERATION_RULES = `
 - Tailwind utility classes (className="flex p-4") work ONLY in React CDN mode where Tailwind is pre-injected.
 - For HTML mode: write real CSS. For React mode: Tailwind classes work.
 
-## ⛔ MANDATORY RESOURCE USAGE — NON-NEGOTIABLE — EVERY SINGLE GENERATION ⛔
-YOU MUST USE THE FOLLOWING FROM THE MOTIONSITE_LIBRARY AND UI-UX-PRO-MAX ON **EVERY** GENERATION:
+## RESOURCE USAGE — CONTEXT-AWARE (match effects to the site's personality)
+Use the following from MOTIONSITE_LIBRARY and UI-UX-PRO-MAX based on CONTEXT — not blindly on every generation.
+The #1 rule from VISUAL GOD MODE applies here too: RESTRAINT = PREMIUM. Pick what SERVES the design.
 
-### 1. VIDEO BACKGROUNDS (PREFERRED over aurora — pick 1-2 per site)
-Video backgrounds are MORE IMPACTFUL and UNIQUE than CSS aurora gradients. Always prefer a real video.
-Pick a REAL video URL from the VIDEO_ASSETS table in MOTIONSITE_LIBRARY and embed as:
+### 1. VIDEO BACKGROUNDS (CONTEXT-DEPENDENT)
+Video backgrounds add impact for agency, SaaS, luxury, and portfolio hero sections.
+For editorial, healthcare, education: SKIP video — use clean CSS backgrounds instead.
+Pick a REAL video URL from the VIDEO_ASSETS table in MOTIONSITE_LIBRARY when appropriate:
 \`\`\`html
 <video autoplay muted loop playsinline poster="https://images.unsplash.com/photo-1647356191320-d7a1f80ca777?w=1080" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0">
   <source src="PASTE_REAL_URL_HERE" type="video/mp4">
@@ -998,19 +978,9 @@ IMPORTANT — HTML vs React mode:
 - All GSAP/Lenis patterns work in BOTH modes. All CSS @keyframes work in BOTH modes.
 - GSAP CDN MUST be included in <head> if using ANY GSAP animation patterns.
 
-### 4. PREMIUM FONTS (MANDATORY — never system defaults, ALWAYS VARY)
-MUST use Google Fonts or FontShare. 120+ fonts available — see COMPLETE FONT LIBRARY section above.
-⚠️ NEVER default to Syne × DM Sans. ALWAYS pick from the FONT SELECTION table based on context.
-Rotate fonts across generations — if you just used Inter, try Space Grotesk or Instrument Serif next.
-- Tech/SaaS: Inter, Space Grotesk, Outfit, Lexend, Geist, Public Sans
-- Agency/Creative: Clash Display, Satoshi, General Sans, Bricolage Grotesque, Syne
-- Luxury/Fashion: Playfair Display, Bodoni Moda, Cormorant Garamond, Instrument Serif, Fraunces
-- E-commerce/Friendly: Plus Jakarta Sans, Nunito Sans, Poppins, Quicksand, Rubik
-- Editorial/Blog: Young Serif, Newsreader, Literata, Lora, Source Serif 4
-- Brutalist/Bold: Bebas Neue, Unbounded, Anton, Archivo Black, Oswald
-- Code/Dev: JetBrains Mono, Fira Code, Space Mono, IBM Plex Mono
-Include the Google Fonts <link> or @import in <head>.
-⚠️ FOR CLONE MODE: Use the EXACT fonts from the FONT STACK enrichment data. If commercial/CORS-blocked, use the Google Fonts alternative from the COMMERCIAL FONT MAPPING in the library section. The source site's fonts take ABSOLUTE priority over any default.
+### 4. PREMIUM FONTS (use Google Fonts or FontShare — see FONT LIBRARY in Section 2)
+Pick from the FONT SELECTION table in Section 2 based on context. Vary across generations.
+For CLONE MODE: Use EXACT fonts from source. Commercial fonts → see COMMERCIAL FONT MAPPING above.
 
 ### 5. GRADIENT TEXT (CONTEXT-AWARE — not on every site)
 Apply gradient text ONLY when it enhances the design:
@@ -1041,10 +1011,16 @@ NEVER repeat the same layout, fonts, accent color, or effects combination.
 - For SAAS requests: Use T15 (stellar-ai), T18 (nexora-saas), or T06 (neuralyn) as reference
 - For AGENCY requests: Use T04 (liquid-glass), T19 (new-era), or T20 (glassmorphism) as reference
 
-### ENFORCEMENT
-EVERY generation MUST have: premium fonts (varied), scroll animations, hover effects, responsive layout, consistent accent color.
-Video backgrounds: STRONGLY preferred for hero sections. Use aurora/gradient only as FALLBACK.\nGlass effects: Required on dark sites (navbar minimum). Optional on light sites.\nContext overrides: Portfolio sites may use FEWER effects (3-5) if the design is clean and intentional.
-For CLONE mode: Match the source site faithfully. ENHANCE with glass, animations, premium fonts. Add video ONLY if source has video. Respect source's color scheme/typography — do NOT force dark theme on a light site.
+### QUALITY BASELINE
+Every generation should have: premium fonts (varied), scroll-triggered reveals, responsive layout, consistent accent from :root.
+Effects budget by site type:
+- SaaS/Marketing: 5-7 effects (video OR aurora, animations, marquee, hover effects, text effects)
+- Portfolio/Editorial: 3-5 effects (subtle reveals, parallax, clean hovers — restraint is premium)
+- Luxury/Fashion: 2-3 effects (elegant transitions, parallax images — NO glass, NO particles, NO gradient text)
+- E-commerce/Healthcare: 3-4 effects (clean reveals, product interactions, clear CTAs)
+Video backgrounds: Great for agency/SaaS heroes. NOT required for every site.
+Glass effects: Works on dark tech sites. SKIP on light/editorial/luxury.
+For CLONE mode: Match source faithfully. Add enhancements ONLY when they match the source aesthetic.
 
 # REACT CDN MODE (for dashboards, interactive apps, "react" requests)
 Output <<FILE:App.jsx>>. React 18 + Babel + Tailwind are auto-injected.
@@ -1088,7 +1064,7 @@ const SITE_RECIPES = `
 ## SaaS / Tech Startup
 Structure: Preloader → Glass nav → Aurora hero + gradient text h1 + badge + 2 CTAs → Marquee logos → Bento feature grid (3-col, spotlight cards) → Stats section (counters) → Testimonials → Pricing (3 cards, shine-border featured) → FAQ accordion → CTA banner → 4-col footer
 Effects: Aurora bg, shimmer h1, blur-fade reveals, glow buttons, spotlight cards, marquee, number counters, shine-border pricing
-Accent: #3b82f6 blue OR #8b5cf6 violet OR #0ea5e9 sky (ROTATE — #6366f1 indigo is DEPRIORITIZED, too common in AI-generated sites)
+Accent: #3b82f6 blue OR #8b5cf6 violet OR #0ea5e9 sky (ROTATE — vary across generations, avoid using #6366f1 indigo repeatedly)
 Fonts: Space Grotesk × Inter OR Outfit × DM Sans OR Lexend × Inter (VARY)
 Copy examples: "Ship 10x faster with AI" / "Your codebase, understood" / "From idea to production in minutes"
 
