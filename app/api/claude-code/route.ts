@@ -79,7 +79,7 @@ export async function POST(req: Request) {
           ...(researchContext ? [{ name: 'research', content: researchContext, priority: 2 }] : []),
           ...(code ? [{ name: 'existing_code', content: compressHtmlForPrompt(code, 4000), priority: 3 }] : []),
         ];
-        const budgeted = budgetPromptSections(sections, 10000);
+        const budgeted = budgetPromptSections(sections, 25000);
         const userContent = Array.from(budgeted.values()).filter(Boolean).join('\n\n');
 
         // Stream to Gemini with smart retry

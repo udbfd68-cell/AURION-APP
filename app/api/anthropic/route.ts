@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ─── Claude Code pattern: Smart retry with error classification ────
-  const MAX_ATTEMPTS = 3;
+  const MAX_ATTEMPTS = 5;
   let lastError = '';
   let res: Response | null = null;
 
@@ -128,10 +128,10 @@ export async function POST(req: NextRequest) {
       // Context overflow: trim messages and retry once
       if (errorClass === 'context_overflow' && attempt === 0) {
         console.log(`[anthropic] context overflow — trimming messages`);
-        // Keep only last 3 messages, truncate content
-        const trimmed = anthropicMessages.slice(-3).map(m => ({
+        // Keep last 5 messages, generous content per message
+        const trimmed = anthropicMessages.slice(-5).map(m => ({
           ...m,
-          content: typeof m.content === 'string' ? m.content.slice(0, 8000) : m.content,
+          content: typeof m.content === 'string' ? m.content.slice(0, 32000) : m.content,
         }));
         anthropicMessages.length = 0;
         anthropicMessages.push(...trimmed);

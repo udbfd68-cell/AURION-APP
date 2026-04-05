@@ -370,7 +370,7 @@ export class ResearchOrchestrator {
     }
 
     // Budget and compose
-    const budgeted = budgetPromptSections(sections, 12000);
+    const budgeted = budgetPromptSections(sections, 30000);
     return Array.from(budgeted.values()).filter(Boolean).join('\n\n');
   }
 

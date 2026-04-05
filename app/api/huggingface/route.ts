@@ -67,10 +67,10 @@ async function streamWithOllama(
       model: modelId,
       messages,
       stream: true,
-      max_tokens: 65536,
+      max_tokens: 131072,
       temperature: 0.7,
     }),
-    signal: AbortSignal.timeout(120000), // 2 min timeout
+    signal: AbortSignal.timeout(300000), // 5 min timeout
   });
 
   if (!res.ok) {
@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
   for (const m of messages) {
     fullMessages.push({
       role: m.role as string,
-      content: m.content.slice(0, 16000),
+      content: m.content.slice(0, 64000),
     });
   }
 
@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
           lastError = err instanceof Error ? err.message : 'Unknown error';
           if (/401|auth/i.test(lastError)) break; // Don't retry auth errors
           // Rate limited or transient — wait and retry SAME model
-          const delay = Math.min(3000 * (attempt + 1), 15000);
+          const delay = Math.min(3000 * (attempt + 1), 30000);
           console.log(`[chat] ${modelId} attempt ${attempt + 1} failed: ${lastError.slice(0, 80)}, retrying in ${delay}ms...`);
           await new Promise(r => setTimeout(r, delay));
           continue;

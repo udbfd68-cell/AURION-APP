@@ -8605,7 +8605,7 @@ export default function HomePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'deep-research', query, urls }),
-        timeout: 60000,
+        timeout: 180000,
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Research failed');
@@ -8632,7 +8632,7 @@ export default function HomePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'enhance-tool', tool, prompt }),
-        timeout: 30000,
+        timeout: 60000,
       });
       const data = await res.json();
       if (data.success) {
@@ -12101,7 +12101,7 @@ ${code}
     if (researchMode && researchContext) {
       parts.push('');
       parts.push('[NOTEBOOKLM RESEARCH CONTEXT]');
-      parts.push(researchContext.slice(0, 4000));
+      parts.push(researchContext.slice(0, 12000));
       parts.push('[/NOTEBOOKLM RESEARCH CONTEXT]');
     }
     // Inject Claude Code mode
@@ -12250,7 +12250,7 @@ ${code}
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ messages: allMessages, model: abModelB, ...(imgs?.length ? { images: imgs } : {}) }),
             signal: abController.signal,
-            timeout: 120000,
+            timeout: 300000,
           }, 2);
           if (!res.ok) throw new Error('Model B request failed');
           const reader = res.body?.getReader();
@@ -12481,7 +12481,7 @@ ${code}
   const explainCurrentCode = useCallback(async () => {
     if (!selectedFile || !projectFiles[selectedFile] || isStreaming) return;
     setIsExplaining(true);
-    const code = projectFiles[selectedFile].content.slice(0, 3000);
+    const code = projectFiles[selectedFile].content.slice(0, 8000);
     const explainPrompt = `Explain this code concisely. What does it do, key patterns used, and any potential issues:\n\n\`\`\`${projectFiles[selectedFile].language || 'html'}\n${code}\n\`\`\``;
     sendPrompt(explainPrompt);
     setIsExplaining(false);
@@ -12833,7 +12833,7 @@ ${code}
   };
 
   const refineClone = useCallback(async () => {
-    const feedbackText = refineFeedback.trim().slice(0, 2000); // Cap feedback to prevent context overflow
+    const feedbackText = refineFeedback.trim().slice(0, 5000); // Cap feedback to prevent context overflow
     if (!feedbackText || !clonedHtml || !lastScrapeDataRef.current || isRefining) return;
 
     setIsRefining(true);
@@ -12937,7 +12937,7 @@ ${code}
     if (Date.now() - latestError.timestamp > 5000) return;
     autoFixInFlightRef.current = true;
     const currentHtml = rawPreviewHtml || '';
-    const codeSnippet = currentHtml.length > 6000 ? currentHtml.slice(0, 3000) + '\n... (truncated) ...\n' + currentHtml.slice(-3000) : currentHtml;
+    const codeSnippet = currentHtml.length > 12000 ? currentHtml.slice(0, 6000) + '\n... (truncated) ...\n' + currentHtml.slice(-6000) : currentHtml;
     const fixPrompt = `🔧 AUTO-FIX: Runtime error detected in the preview:\n\nError: ${latestError.message}${latestError.line ? `\nLine: ${latestError.line}` : ''}${latestError.source ? `\nSource: ${latestError.source}` : ''}\n\nCurrent code:\n\`\`\`html\n${codeSnippet}\n\`\`\`\n\nFix this error. Return the COMPLETE corrected HTML. Do not explain, just fix the code.`;
     sendToAI(fixPrompt);
     // Reset after sending (prevent loops)
@@ -12948,7 +12948,7 @@ ${code}
   const fixRuntimeError = useCallback((err: { message: string; source?: string; line?: number }) => {
     if (isStreaming) return;
     const currentHtml = rawPreviewHtml || '';
-    const codeSnippet = currentHtml.length > 6000 ? currentHtml.slice(0, 3000) + '\n... (truncated) ...\n' + currentHtml.slice(-3000) : currentHtml;
+    const codeSnippet = currentHtml.length > 12000 ? currentHtml.slice(0, 6000) + '\n... (truncated) ...\n' + currentHtml.slice(-6000) : currentHtml;
     const fixPrompt = `Fix this runtime error in my preview:\n\nError: ${err.message}${err.line ? `\nLine: ${err.line}` : ''}${err.source ? `\nSource: ${err.source}` : ''}\n\nCurrent code:\n\`\`\`html\n${codeSnippet}\n\`\`\`\n\nReturn the COMPLETE corrected HTML with the fix applied.`;
     sendToAI(fixPrompt);
   }, [isStreaming, rawPreviewHtml, sendToAI]);
@@ -13094,7 +13094,7 @@ ${code}
     setShow21stBrowser(false);
 
     const codeSnippet = component.code
-      ? `\`\`\`tsx\n${component.code.slice(0, 3000)}\n\`\`\``
+      ? `\`\`\`tsx\n${component.code.slice(0, 8000)}\n\`\`\``
       : '(source not available — use the name and description as inspiration)';
 
     const prompt = `I want to add a "${component.name}" component from 21st.dev to my current page.
@@ -14441,7 +14441,7 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
 
   // ── Image Generation (rate-limited) ──
   const pendingImageRef = useRef(0);
-  const MAX_CONCURRENT_IMAGES = 2;
+  const MAX_CONCURRENT_IMAGES = 4;
   const generateGeminiImage = useCallback(async (imageId: string, prompt: string) => {
     // Flood protection: skip if too many concurrent requests
     if (pendingImageRef.current >= MAX_CONCURRENT_IMAGES) {
@@ -14455,7 +14455,7 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt }),
-        timeout: 120000,
+        timeout: 300000,
       }, 0); // No retries — placeholder is returned on failure
       const data = await res.json();
       if (data.success && data.image_url) {

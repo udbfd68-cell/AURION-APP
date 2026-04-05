@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
         if (!libraryName) return NextResponse.json({ error: 'libraryName required' }, { status: 400 });
         const res = await fetch(`${CONTEXT7_API}/search?query=${encodeURIComponent(libraryName)}`, {
           headers: { 'Accept': 'application/json' },
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(30000),
         });
         if (!res.ok) {
           return NextResponse.json(
@@ -28,13 +28,13 @@ export async function POST(req: NextRequest) {
         if (!libraryId) return NextResponse.json({ error: 'libraryId required' }, { status: 400 });
         const params = new URLSearchParams();
         if (topic) params.set('topic', topic);
-        if (tokens) params.set('tokens', String(Math.min(Number(tokens) || 5000, 10000)));
-        else params.set('tokens', '5000');
+        if (tokens) params.set('tokens', String(Math.min(Number(tokens) || 10000, 25000)));
+        else params.set('tokens', '10000');
 
         const url = `${CONTEXT7_API}/${encodeURIComponent(libraryId)}?${params.toString()}`;
         const res = await fetch(url, {
           headers: { 'Accept': 'application/json' },
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(30000),
         });
         if (!res.ok) {
           return NextResponse.json(

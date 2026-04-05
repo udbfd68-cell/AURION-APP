@@ -49,9 +49,9 @@ export interface RetryConfig {
 }
 
 export const DEFAULT_RETRY_CONFIG: RetryConfig = {
-  maxAttempts: 3,
-  baseDelay: 2000,
-  maxDelay: 30000,
+  maxAttempts: 5,
+  baseDelay: 3000,
+  maxDelay: 60000,
   jitterFactor: 0.3,
   retryableClasses: new Set(['rate_limit', 'server_error', 'timeout', 'network', 'model_error']),
 };
@@ -260,7 +260,7 @@ export const HTML_QUALITY_CHECKS: QualityCheck[] = [
   { name: 'has_head', test: (o) => /<head>/i.test(o), severity: 'error' },
   { name: 'has_body', test: (o) => /<body/i.test(o), severity: 'error' },
   { name: 'has_meta_viewport', test: (o) => /viewport/i.test(o), severity: 'warning' },
-  { name: 'min_length', test: (o) => o.length > 400, severity: 'error' },
+  { name: 'min_length', test: (o) => o.length > 200, severity: 'error' },
   { name: 'no_markdown_fence', test: (o) => !/^```/m.test(o), severity: 'warning' },
   { name: 'has_style_tag', test: (o) => /<style/i.test(o), severity: 'warning' },
   { name: 'no_placeholder_text', test: (o) => !/lorem ipsum/i.test(o), severity: 'warning' },

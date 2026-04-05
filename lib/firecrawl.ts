@@ -407,7 +407,7 @@ export function extractDesignTokens(html: string): {
 
   // Extract rgb/rgba/hsl/hsla/oklch
   const colorFuncMatches = cssContent.match(/(?:rgb|rgba|hsl|hsla|oklch)\([^)]+\)/gi);
-  if (colorFuncMatches) colorFuncMatches.slice(0, 40).forEach(c => {
+  if (colorFuncMatches) colorFuncMatches.slice(0, 80).forEach(c => {
     colors.add(c);
     colorFrequency.set(c, (colorFrequency.get(c) || 0) + 1);
   });
@@ -415,7 +415,7 @@ export function extractDesignTokens(html: string): {
   // Extract named colors from CSS (common ones)
   const namedColorPattern = /(?:color|background|border-color|fill|stroke):\s*(white|black|transparent|currentColor|inherit)\b/gi;
   const namedMatches = cssContent.match(namedColorPattern);
-  if (namedMatches) namedMatches.slice(0, 10).forEach(c => {
+  if (namedMatches) namedMatches.slice(0, 20).forEach(c => {
     const val = c.split(':')[1]?.trim();
     if (val) colors.add(val);
   });
@@ -451,7 +451,7 @@ export function extractDesignTokens(html: string): {
   // Extract CSS custom properties (variables) — only from CSS content
   const varMatches = cssContent.match(/--[\w-]+:\s*[^;}"]+/g);
   if (varMatches) {
-    varMatches.slice(0, 80).forEach(v => {
+    varMatches.slice(0, 160).forEach(v => {
       const [key, ...rest] = v.split(':');
       cssVariables[key.trim()] = rest.join(':').trim();
     });
@@ -488,34 +488,34 @@ export function extractDesignTokens(html: string): {
 
   // Extract gradients
   const gradientMatches = cssContent.match(/(?:linear|radial|conic)-gradient\([^)]+\)/gi);
-  if (gradientMatches) gradientMatches.slice(0, 10).forEach(g => gradients.add(g));
+  if (gradientMatches) gradientMatches.slice(0, 25).forEach(g => gradients.add(g));
 
   // Extract box-shadow values
   const shadowMatches = cssContent.match(/box-shadow:\s*([^;}"]+)/gi);
-  if (shadowMatches) shadowMatches.slice(0, 10).forEach(s => {
+  if (shadowMatches) shadowMatches.slice(0, 25).forEach(s => {
     shadows.add(s.replace(/box-shadow:\s*/i, '').trim());
   });
 
   // Extract border-radius values
   const radiusMatches = cssContent.match(/border-radius:\s*([^;}"]+)/gi);
-  if (radiusMatches) radiusMatches.slice(0, 10).forEach(r => {
+  if (radiusMatches) radiusMatches.slice(0, 25).forEach(r => {
     borderRadii.add(r.replace(/border-radius:\s*/i, '').trim());
   });
 
   // Extract @media queries
   const mediaMatches = cssContent.match(/@media\s*\([^)]+\)/gi);
-  if (mediaMatches) mediaMatches.slice(0, 10).forEach(m => mediaQueries.add(m));
+  if (mediaMatches) mediaMatches.slice(0, 25).forEach(m => mediaQueries.add(m));
 
   // Extract @keyframes names
   const keyframeMatches = cssContent.match(/@keyframes\s+([\w-]+)/gi);
-  if (keyframeMatches) keyframeMatches.slice(0, 10).forEach(k => {
+  if (keyframeMatches) keyframeMatches.slice(0, 25).forEach(k => {
     keyframes.add(k.replace(/@keyframes\s+/i, '').trim());
   });
 
   return {
-    colors: [...colors].sort((a, b) => (colorFrequency.get(b) || 0) - (colorFrequency.get(a) || 0)).slice(0, 50),
-    colorFrequency: Object.fromEntries([...colorFrequency.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30)),
-    fonts: [...fonts].slice(0, 15),
+    colors: [...colors].sort((a, b) => (colorFrequency.get(b) || 0) - (colorFrequency.get(a) || 0)).slice(0, 100),
+    colorFrequency: Object.fromEntries([...colorFrequency.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60)),
+    fonts: [...fonts].slice(0, 30),
     cssVariables,
     gradients: [...gradients],
     shadows: [...shadows],
@@ -678,10 +678,10 @@ export function extractStyleBlocks(html: string): string {
   const blocks: string[] = [];
   const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
   let match;
-  while ((match = styleRegex.exec(html)) !== null && blocks.length < 10) {
+  while ((match = styleRegex.exec(html)) !== null && blocks.length < 20) {
     blocks.push(match[1].trim());
   }
-  return blocks.join('\n').slice(0, 25000);
+  return blocks.join('\n').slice(0, 60000);
 }
 
 // ─── Helper: Extract structured content map from HTML ───────────────────────
@@ -884,7 +884,7 @@ export function extractLinkedResources(html: string): { stylesheets: string[]; f
     }
   }
 
-  return { stylesheets: stylesheets.slice(0, 10), fonts: fonts.slice(0, 5) };
+  return { stylesheets: stylesheets.slice(0, 20), fonts: fonts.slice(0, 10) };
 }
 
 // ─── Helper: Extract key CSS patterns from style blocks ─────────────────────
@@ -900,13 +900,13 @@ export function extractKeyCSS(styleContent: string): string {
   const semanticRules: string[] = [];
   const semanticSelectors = /\.(hero|nav|navbar|header|footer|card|btn|button|cta|feature|pricing|testimonial|about|contact|section|container|wrapper|sidebar|banner|modal|dropdown|accordion|tab|form|input|badge|avatar|logo|menu|social|stat|faq|gallery|slider|carousel)[a-z-]*\s*\{([^}]+)\}/gi;
   let sm;
-  while ((sm = semanticSelectors.exec(styleContent)) !== null && semanticRules.length < 30) {
+  while ((sm = semanticSelectors.exec(styleContent)) !== null && semanticRules.length < 60) {
     const selector = '.' + sm[1];
     const decls = sm[2].split(';').map(d => d.trim()).filter(d => {
       if (!d || !d.includes(':')) return false;
       const prop = d.split(':')[0].trim();
       return !/^(content|cursor|pointer-events|user-select|visibility|appearance|will-change|-webkit-|-moz-|-ms-)/.test(prop);
-    }).slice(0, 8);
+    }).slice(0, 16);
     if (decls.length > 0) {
       semanticRules.push(`${selector} { ${decls.join('; ')} }`);
     }
@@ -944,7 +944,7 @@ export function extractKeyCSS(styleContent: string): string {
     for (const prop of props) {
       const vals = propValues.get(prop);
       if (vals && vals.size > 0) {
-        entries.push(`${prop}: ${[...vals].slice(0, 6).join(' | ')}`);
+        entries.push(`${prop}: ${[...vals].slice(0, 12).join(' | ')}`);
       }
     }
     if (entries.length > 0) {
@@ -1026,7 +1026,7 @@ export function extractSPAData(html: string): string[] {
   }
 
   // Deduplicate and return
-  return [...new Set(texts)].slice(0, 150);
+  return [...new Set(texts)].slice(0, 300);
 }
 
 // ─── Helper: Extract internal links from HTML ───────────────────────────────
@@ -1048,7 +1048,7 @@ export function extractInternalLinks(html: string, baseUrl: string): string[] {
       } catch { /* skip invalid */ }
     }
   }
-  return [...links].slice(0, 20);
+  return [...links].slice(0, 40);
 }
 
 // ─── Helper: Detect CSS framework used by the site ──────────────────────────
@@ -1101,7 +1101,7 @@ export function detectAnimationLibraries(html: string): string[] {
   const aosAttrs = html.match(/data-aos="([^"]+)"/gi);
   if (aosAttrs && aosAttrs.length > 0) {
     const effects = [...new Set(aosAttrs.map(a => a.match(/data-aos="([^"]+)"/i)?.[1]).filter(Boolean))];
-    libs.push(`AOS effects used: ${effects.slice(0, 8).join(', ')}`);
+    libs.push(`AOS effects used: ${effects.slice(0, 16).join(', ')}`);
   }
   return libs;
 }
@@ -1112,7 +1112,7 @@ export async function fetchExternalCSS(html: string, baseUrl: string): Promise<s
   const cssUrls: string[] = [];
   const linkRegex = /<link[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["']/gi;
   let match;
-  while ((match = linkRegex.exec(html)) !== null && cssUrls.length < 8) {
+  while ((match = linkRegex.exec(html)) !== null && cssUrls.length < 16) {
     const href = match[1];
     // Skip CDN libs (normalize, reset, font-awesome, etc.)
     if (/normalize|reset|font-awesome|fontawesome|bootstrap\.min|tailwind|cdnjs|unpkg|jsdelivr/i.test(href)) continue;
@@ -1128,7 +1128,7 @@ export async function fetchExternalCSS(html: string, baseUrl: string): Promise<s
     cssUrls.map(url =>
       fetch(url, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(10000),
       }).then(r => r.ok ? r.text() : '')
     )
   );
@@ -1137,7 +1137,7 @@ export async function fetchExternalCSS(html: string, baseUrl: string): Promise<s
     .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled' && r.value.length > 0)
     .map(r => r.value)
     .join('\n')
-    .slice(0, 50000);
+    .slice(0, 100000);
 }
 
 // ─── Helper: Detect interaction models per section ──────────────────────────
@@ -1284,7 +1284,7 @@ export function extractLayeredAssets(html: string): LayeredAsset[] {
 
     // Only report sections with multiple layers (the interesting ones)
     if (layers.length >= 2) {
-      layered.push({ container: containerClass.slice(0, 80), layers });
+      layered.push({ container: containerClass.slice(0, 160), layers });
     }
   }
 
@@ -1307,12 +1307,12 @@ export function extractMultiStateContent(html: string): MultiStateContent[] {
   // Detect tab interfaces
   const tabListRegex = /<(?:div|nav|ul)[^>]*(?:role="tablist"|class="[^"]*tab[^"]*")[^>]*>([\s\S]*?)<\/(?:div|nav|ul)>/gi;
   let match;
-  while ((match = tabListRegex.exec(html)) !== null && states.length < 10) {
+  while ((match = tabListRegex.exec(html)) !== null && states.length < 20) {
     const inner = match[1];
     const labels: string[] = [];
     const btnRegex = /<(?:button|a|li)[^>]*>([\s\S]*?)<\/(?:button|a|li)>/gi;
     let btnMatch;
-    while ((btnMatch = btnRegex.exec(inner)) !== null && labels.length < 12) {
+    while ((btnMatch = btnRegex.exec(inner)) !== null && labels.length < 24) {
       const text = btnMatch[1].replace(/<[^>]+>/g, '').trim();
       if (text.length > 0 && text.length < 50) labels.push(text);
     }
@@ -1330,12 +1330,12 @@ export function extractMultiStateContent(html: string): MultiStateContent[] {
 
   // Detect accordions
   const accordionRegex = /<(?:div|section)[^>]*(?:class="[^"]*accordion[^"]*"|data-accordion)[^>]*>([\s\S]*?)<\/(?:div|section)>/gi;
-  while ((match = accordionRegex.exec(html)) !== null && states.length < 15) {
+  while ((match = accordionRegex.exec(html)) !== null && states.length < 30) {
     const inner = match[1];
     const labels: string[] = [];
     const triggerRegex = /<(?:button|summary|h[2-6])[^>]*>([\s\S]*?)<\/(?:button|summary|h[2-6])>/gi;
     let trigMatch;
-    while ((trigMatch = triggerRegex.exec(inner)) !== null && labels.length < 20) {
+    while ((trigMatch = triggerRegex.exec(inner)) !== null && labels.length < 40) {
       const text = trigMatch[1].replace(/<[^>]+>/g, '').trim();
       if (text.length > 2 && text.length < 200) labels.push(text);
     }
@@ -1351,16 +1351,16 @@ export function extractMultiStateContent(html: string): MultiStateContent[] {
 
   // Detect carousels/sliders
   const carouselRegex = /<(?:div|section)[^>]*class="[^"]*(?:carousel|swiper|slider|slick|glide|splide)[^"]*"[^>]*>/gi;
-  while ((match = carouselRegex.exec(html)) !== null && states.length < 20) {
+  while ((match = carouselRegex.exec(html)) !== null && states.length < 40) {
     // Count slides
     const afterMatch = html.slice(match.index, match.index + 5000);
     const slideCount = (afterMatch.match(/(?:swiper-slide|carousel-item|slide|splide__slide)/gi) || []).length;
     if (slideCount >= 2) {
       states.push({
         type: 'carousel',
-        containerHint: match[0].match(/class="([^"]*)"/)?.[1]?.slice(0, 50) || 'carousel',
+        containerHint: match[0].match(/class="([^"]*)"/)?.[1]?.slice(0, 100) || 'carousel',
         stateCount: slideCount,
-        stateLabels: Array.from({ length: Math.min(slideCount, 10) }, (_, i) => `Slide ${i + 1}`),
+        stateLabels: Array.from({ length: Math.min(slideCount, 20) }, (_, i) => `Slide ${i + 1}`),
       });
     }
   }
@@ -1396,7 +1396,7 @@ export function extractScrollBehaviors(html: string, css: string): ScrollBehavio
     const aosEffects = [...new Set((html.match(/data-aos="([^"]+)"/gi) || []).map(a => a.match(/data-aos="([^"]+)"/i)?.[1]).filter(Boolean))];
     behaviors.push({
       type: 'scroll-reveal',
-      mechanism: /data-aos=/i.test(html) ? `AOS library (effects: ${aosEffects.slice(0, 5).join(', ')})` : 'IntersectionObserver',
+      mechanism: /data-aos=/i.test(html) ? `AOS library (effects: ${aosEffects.slice(0, 10).join(', ')})` : 'IntersectionObserver',
       elements: 'sections/cards',
     });
   }
@@ -1618,10 +1618,10 @@ export function extractPageTopology(html: string): PageTopologySection[] {
   let order = 0;
   const seen = new Set<string>();
 
-  while ((match = sectionRegex.exec(bodyHtml)) !== null && topology.length < 30) {
+  while ((match = sectionRegex.exec(bodyHtml)) !== null && topology.length < 60) {
     const tag = match[1].toLowerCase();
     const attrs = match[2];
-    const inner = match[3].slice(0, 5000); // cap inner content scan
+    const inner = match[3].slice(0, 15000); // cap inner content scan
 
     // For divs, only include significant ones (with class/id hinting at a section)
     if (tag === 'div') {
@@ -1869,13 +1869,13 @@ export function extractResponsiveBreakpoints(css: string): ResponsiveBreakpoint[
     const key = `${type}:${width}`;
     if (!breakpoints.has(key)) {
       // Extract selectors within this media query block
-      const afterQuery = css.slice(match.index + match[0].length, match.index + match[0].length + 2000);
+      const afterQuery = css.slice(match.index + match[0].length, match.index + match[0].length + 5000);
       const selectors: string[] = [];
       const selectorRegex = /([.#\w][\w\s.#>:,+-]*?)\s*\{/g;
       let selMatch;
-      while ((selMatch = selectorRegex.exec(afterQuery)) !== null && selectors.length < 10) {
+      while ((selMatch = selectorRegex.exec(afterQuery)) !== null && selectors.length < 20) {
         const sel = selMatch[1].trim();
-        if (sel && !sel.startsWith('@')) selectors.push(sel.slice(0, 40));
+        if (sel && !sel.startsWith('@')) selectors.push(sel.slice(0, 80));
       }
       breakpoints.set(key, { query: `@media (${type}: ${width}px)`, width, type, affectedSelectors: selectors });
     }

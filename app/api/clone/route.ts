@@ -124,19 +124,19 @@ async function streamClone(
     : [];
 
   // Budget system prompt to prevent context overflow
-  const maxContextChars = 200000;
+  const maxContextChars = 500000;
   let effectiveSystemPrompt = systemPrompt;
   if (systemPrompt.length > maxContextChars) {
     const sections = budgetPromptSections([
-      { name: 'methodology', content: systemPrompt.slice(0, 8000), priority: 10 },
-      { name: 'core', content: systemPrompt.slice(8000), priority: 5 },
+      { name: 'methodology', content: systemPrompt.slice(0, 16000), priority: 10 },
+      { name: 'core', content: systemPrompt.slice(16000), priority: 5 },
     ], maxContextChars);
     effectiveSystemPrompt = Array.from(sections.values()).join('\n');
   }
 
   console.log('[clone] System:', effectiveSystemPrompt.length, 'chars. User:', userPrompt.length, 'chars. Screenshots:', validScreenshots.length, 'Model:', modelId, '→', provider.apiModel, 'Provider:', provider.url.includes('ollama') ? 'Ollama' : 'Gemini');
   const errors: string[] = [];
-  const MAX_ATTEMPTS = 3;
+  const MAX_ATTEMPTS = 5;
   let skipScreenshots = false;
   let accumulatedOutput = '';
 
@@ -152,7 +152,7 @@ async function streamClone(
         const parts: any[] = [
           { type: 'text', text: userPrompt },
         ];
-        for (const ss of validScreenshots.slice(0, 3)) {
+        for (const ss of validScreenshots.slice(0, 6)) {
           const imgUrl = ss.startsWith('data:') ? ss : `data:image/png;base64,${ss}`;
           parts.push({
             type: 'image_url',
@@ -199,7 +199,7 @@ async function streamClone(
         // Context overflow — compress prompt and retry
         if (errorClass === 'context_overflow') {
           console.log(`[clone] ${modelId}: context overflow, compressing prompt`);
-          effectiveSystemPrompt = effectiveSystemPrompt.slice(0, Math.floor(effectiveSystemPrompt.length * 0.6));
+          effectiveSystemPrompt = effectiveSystemPrompt.slice(0, Math.floor(effectiveSystemPrompt.length * 0.75));
           continue;
         }
 
@@ -278,7 +278,7 @@ async function streamClone(
         console.log(`[clone] Sections: ${sectionCount}, nav: ${hasNav}, footer: ${hasFooter}, length: ${totalLen}`);
         
         // Fail if output is too incomplete (missing closing tag or too few sections)
-        const isIncomplete = !quality.passed || (sectionCount < 3 && totalLen < 5000);
+        const isIncomplete = !quality.passed || (sectionCount < 2 && totalLen < 2000);
         if (isIncomplete && attempt < MAX_ATTEMPTS - 1) {
           console.log(`[clone] Quality gate failed (sections:${sectionCount}, errors:${quality.errors.join(', ')}), retrying...`);
           errors.push(`${modelId}(${attempt + 1}): quality gate failed: sections=${sectionCount}, ${quality.errors.join(', ')}`);
@@ -459,7 +459,7 @@ export async function POST(req: NextRequest) {
   if (zIndexLayers && zIndexLayers.length > 0) {
     enrichmentSections.push(
       '## 📐 Z-INDEX STACKING (layer ordering from front to back):\n' +
-      zIndexLayers.slice(0, 10).map(l => `- ${l.element}: z-index:${l.zIndex} (${l.position})`).join('\n')
+      zIndexLayers.slice(0, 20).map(l => `- ${l.element}: z-index:${l.zIndex} (${l.position})`).join('\n')
     );
   }
 
@@ -498,7 +498,7 @@ export async function POST(req: NextRequest) {
 
   // ─── NEW: Hover Transitions from ai-website-cloner pipeline Phase 3 multi-state extraction ─────
   if (hoverTransitions && Array.isArray(hoverTransitions) && hoverTransitions.length > 0) {
-    const topTransitions = hoverTransitions.slice(0, 15);
+    const topTransitions = hoverTransitions.slice(0, 30);
     enrichmentSections.push(
       '## 🎯 HOVER STATE TRANSITIONS (exact before → after CSS changes):\n' +
       topTransitions.map(t =>
@@ -516,7 +516,7 @@ export async function POST(req: NextRequest) {
     enrichmentSections.push(
       '## 📱 RESPONSIVE BREAKPOINTS (actual media queries used by the site):\n' +
       responsiveBreakpoints.map(b =>
-        `- **${b.query}**: affects ${b.affectedSelectors.slice(0, 5).join(', ')}`
+        `- **${b.query}**: affects ${b.affectedSelectors.slice(0, 10).join(', ')}`
       ).join('\n') +
       '\n\nUse THESE exact breakpoints in your @media rules — not generic ones.'
     );
@@ -524,7 +524,7 @@ export async function POST(req: NextRequest) {
 
   // Color frequency — tell AI which colors are most used
   if (colorFrequency && Object.keys(colorFrequency).length > 0) {
-    const sorted = Object.entries(colorFrequency).sort((a, b) => b[1] - a[1]).slice(0, 15);
+    const sorted = Object.entries(colorFrequency).sort((a, b) => b[1] - a[1]).slice(0, 25);
     enrichmentSections.push('## COLOR USAGE FREQUENCY (use these exact colors, ranked by importance):\n' + sorted.map(([c, n]) => `${c} (${n} usages)`).join(', '));
   }
 
@@ -543,13 +543,13 @@ export async function POST(req: NextRequest) {
 
     if (structuredContent.headings.length > 0) {
       scParts.push('\nHEADING HIERARCHY (reproduce ALL of these VERBATIM):');
-      structuredContent.headings.slice(0, 60).forEach(h => {
+      structuredContent.headings.slice(0, 100).forEach(h => {
         scParts.push(`  ${'#'.repeat(h.level)} ${h.text}`);
       });
     }
 
     if (structuredContent.allButtonTexts.length > 0) {
-      scParts.push(`\nALL BUTTON/CTA TEXTS: ${structuredContent.allButtonTexts.slice(0, 40).map(t => `"${t}"`).join(', ')}`);
+      scParts.push(`\nALL BUTTON/CTA TEXTS: ${structuredContent.allButtonTexts.slice(0, 80).map(t => `"${t}"`).join(', ')}`);
     }
 
     if (structuredContent.sections.length > 0) {
@@ -557,9 +557,9 @@ export async function POST(req: NextRequest) {
       structuredContent.sections.forEach((s, i) => {
         const parts: string[] = [`${i + 1}. [${s.tag.toUpperCase()}]`];
         if (s.heading) parts.push(`Heading: "${s.heading}"`);
-        if (s.texts.length > 0) parts.push(`Text: ${s.texts.slice(0, 10).map(t => `"${t.slice(0, 250)}"`).join(' | ')}`);
+        if (s.texts.length > 0) parts.push(`Text: ${s.texts.slice(0, 20).map(t => `"${t.slice(0, 500)}"`).join(' | ')}`);
         if (s.buttons.length > 0) parts.push(`Buttons: ${s.buttons.map(b => `"${b}"`).join(', ')}`);
-        if (s.links.length > 0) parts.push(`Links: ${s.links.slice(0, 15).map(l => `"${l}"`).join(', ')}`);
+        if (s.links.length > 0) parts.push(`Links: ${s.links.slice(0, 30).map(l => `"${l}"`).join(', ')}`);
         if (s.images > 0) parts.push(`Images: ${s.images}`);
         scParts.push(parts.join(' | '));
       });
@@ -570,7 +570,7 @@ export async function POST(req: NextRequest) {
 
   if (images && images.length > 0) {
     // Resolve image URLs to absolute — pass up to 40 for maximum coverage
-    const resolvedImages = images.slice(0, 40).map(i => {
+    const resolvedImages = images.slice(0, 80).map(i => {
       let src = i.src;
       if (src && !src.startsWith('http') && !src.startsWith('data:')) {
         try { src = new URL(src, url).href; } catch { /* keep relative */ }
@@ -634,7 +634,7 @@ export async function POST(req: NextRequest) {
             // Keep concrete values: colors, sizes, fonts
             return /^#|^rgb|^hsl|^\d|^"|^'|^oklch|^var\(/.test(val);
           });
-      }).flat().slice(0, 50);
+      }).flat().slice(0, 100);
 
       if (allVars.length > 0) {
         enrichmentSections.push(`## CSS ROOT VARIABLES (use these EXACT values in your :root {}):\n:root {\n  ${allVars.join(';\n  ')};\n}`);
@@ -701,7 +701,7 @@ export async function POST(req: NextRequest) {
   let enrichmentBlock = enrichmentSections.join('\n\n') + '\n\n' + PREMIUM_UI_PATTERNS + '\n\n' + FRAMER_LEVEL_SYSTEM;
 
   // ─── Claude Code pattern: Smart context budget allocation ──────────────
-  const MAX_ENRICHMENT = 100000;
+  const MAX_ENRICHMENT = 250000;
   if (enrichmentBlock.length > MAX_ENRICHMENT) {
     // Budget allocation: prioritize design tokens > content map > CSS patterns > effects library
     const budgeted = budgetPromptSections([
@@ -827,9 +827,9 @@ export async function POST(req: NextRequest) {
             }
 
             if (rawContent.length > 200 || extractedTexts.length > 5) {
-              cloneParts.push(`\n## EXTRACTED PAGE CONTENT (this is a JS-rendered SPA — reconstruct ALL sections based on this text):\n${rawContent.slice(0, 60000)}`);
+              cloneParts.push(`\n## EXTRACTED PAGE CONTENT (this is a JS-rendered SPA — reconstruct ALL sections based on this text):\n${rawContent.slice(0, 120000)}`);
               if (extractedTexts.length > 0) {
-                cloneParts.push(`\n## EXTRACTED TEXT FROM PAGE DATA:\n${extractedTexts.slice(0, 100).join('\n')}`);
+                cloneParts.push(`\n## EXTRACTED TEXT FROM PAGE DATA:\n${extractedTexts.slice(0, 200).join('\n')}`);
               }
             }
           }
@@ -855,14 +855,14 @@ Use ALL provided design tokens, images, and navigation. ${isDarkTheme ? 'Dark th
         if (jinaTextMatch) {
           const readableText = jinaTextMatch[1].trim();
           if (readableText.length > 200) {
-            cloneParts.push(`\n## FULL PAGE TEXT (human-readable, rendered — this is the COMPLETE visible content of the page):\n${readableText.slice(0, 50000)}`);
+            cloneParts.push(`\n## FULL PAGE TEXT (human-readable, rendered — this is the COMPLETE visible content of the page):\n${readableText.slice(0, 100000)}`);
           }
         }
       }
 
       if (isRefine && currentHtml && feedback) {
-        const htmlSnippet = currentHtml.length > 10000
-          ? currentHtml.slice(0, 5000) + '\n<!-- ... -->\n' + currentHtml.slice(-5000)
+        const htmlSnippet = currentHtml.length > 20000
+          ? currentHtml.slice(0, 10000) + '\n<!-- ... -->\n' + currentHtml.slice(-10000)
           : currentHtml;
         cloneParts.push(`\n## CURRENT HTML TO REFINE:\n${htmlSnippet}`);
         cloneParts.push(`\n## USER FEEDBACK — APPLY THESE CHANGES:\n${feedback}`);

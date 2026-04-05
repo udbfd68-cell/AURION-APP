@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
         },
         target: 'production',
       }),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(60000),
     });
 
     if (!deployRes.ok) {
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           ssoProtection: null,
         }),
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(20000),
       });
     } catch {
       // Non-blocking — deploy still succeeded even if protection toggle fails

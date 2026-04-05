@@ -95,7 +95,7 @@ const FIRECRAWL_KEY = process.env.FIRECRAWL_API_KEY || '';
 async function queryAI(
   systemPrompt: string,
   userMessage: string,
-  maxTokens = 4096,
+  maxTokens = 16384,
 ): Promise<string> {
   if (!GOOGLE_KEY) return '[AI unavailable — GOOGLE_API_KEY not set]';
 
@@ -115,9 +115,9 @@ async function queryAI(
             { role: 'user', content: userMessage },
           ],
           max_tokens: maxTokens,
-          temperature: 0.3,
+          temperature: 0.25,
         }),
-        signal: AbortSignal.timeout(60000),
+        signal: AbortSignal.timeout(180000),
       },
     );
 
@@ -152,7 +152,7 @@ async function scrapeUrl(url: string): Promise<{ content: string; title: string 
         .replace(/<[^>]+>/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
-        .slice(0, 10000);
+        .slice(0, 30000);
       return { content: text, title };
     } catch {
       return { content: '', title: url };
@@ -170,9 +170,9 @@ async function scrapeUrl(url: string): Promise<{ content: string; title: string 
         url,
         formats: ['markdown'],
         onlyMainContent: true,
-        timeout: 20000,
+        timeout: 45000,
       }),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(60000),
     });
 
     if (!res.ok) return { content: '', title: url };
@@ -180,7 +180,7 @@ async function scrapeUrl(url: string): Promise<{ content: string; title: string 
     if (!data.success) return { content: '', title: url };
 
     return {
-      content: (data.data?.markdown || '').slice(0, 15000),
+      content: (data.data?.markdown || '').slice(0, 50000),
       title: data.data?.metadata?.title || url,
     };
   } catch {
@@ -321,15 +321,15 @@ export class NotebookLMEngine {
     const sources = nbId ? (this.sourceStore.get(nbId) || []) : [];
     const sourceContext = sources
       .filter(s => s.content && s.status === 'ready')
-      .map(s => `[Source: ${s.title}]\n${s.content!.slice(0, 3000)}`)
+      .map(s => `[Source: ${s.title}]\n${s.content!.slice(0, 8000)}`)
       .join('\n\n---\n\n')
-      .slice(0, 12000);
+      .slice(0, 40000);
 
     const systemPrompt = sourceContext
       ? `You are a research analyst with access to the following sources. Answer questions based on these sources. Cite specific source titles when possible.\n\nSOURCES:\n${sourceContext}`
       : 'You are a research analyst. Answer the question with detailed, actionable insights based on your knowledge.';
 
-    const answer = await queryAI(systemPrompt, question, 4096);
+    const answer = await queryAI(systemPrompt, question, 16384);
 
     return {
       answer,
@@ -384,7 +384,7 @@ Be specific and actionable.`;
     const result = await queryAI(
       'You are an expert research analyst. Provide thorough, specific, and actionable research findings. Always include real examples, specific tools/technologies, and practical implementation details.',
       researchPrompt,
-      mode === 'deep' ? 8000 : 3000,
+      mode === 'deep' ? 16000 : 8000,
     );
 
     // Parse out insights from the AI response
@@ -392,7 +392,7 @@ Be specific and actionable.`;
       .split('\n')
       .filter(line => /^\d+\.|^[-•*]|^[A-Z]/.test(line.trim()) && line.trim().length > 20)
       .map(line => line.trim())
-      .slice(0, 15);
+      .slice(0, 30);
 
     const sources = nbId ? (this.sourceStore.get(nbId) || []) : [];
 
@@ -431,16 +431,16 @@ Be specific and actionable.`;
     const sources = nbId ? (this.sourceStore.get(nbId) || []) : [];
     const sourceContext = sources
       .filter(s => s.content && s.status === 'ready')
-      .map(s => s.content!.slice(0, 2000))
+      .map(s => s.content!.slice(0, 5000))
       .join('\n---\n')
-      .slice(0, 8000);
+      .slice(0, 20000);
 
     if (!sourceContext) return { label: 'Root', children: [] };
 
     const result = await queryAI(
       'Generate a mind map as a JSON object with { label: string, children: MindMapNode[] } structure. Only output valid JSON, no markdown.',
       `Create a hierarchical mind map for the following content:\n\n${sourceContext}`,
-      2000,
+      8000,
     );
 
     try {
@@ -507,7 +507,7 @@ Be specific and actionable.`;
 
     // Ask each question with source context
     const questionResults = await Promise.allSettled(
-      defaultQuestions.slice(0, 6).map(q => this.ask(q, { notebookId: notebook.id })),
+      defaultQuestions.slice(0, 10).map(q => this.ask(q, { notebookId: notebook.id })),
     );
     for (const r of questionResults) {
       if (r.status === 'fulfilled' && r.value.answer && !r.value.answer.startsWith('[')) {
@@ -524,7 +524,7 @@ Be specific and actionable.`;
     // Step 6: Compile summary
     const summary = researchResult?.summary ||
       (insights.length > 0
-        ? insights.slice(0, 3).join('\n\n---\n\n')
+        ? insights.slice(0, 6).join('\n\n---\n\n')
         : `Analysis initiated for "${topic}" with ${sources.length} sources.`);
 
     // Calculate confidence based on real data quality
@@ -573,7 +573,7 @@ export function buildResearchContext(analysis: AnalysisResult): string {
     for (let i = 0; i < analysis.key_insights.length; i++) {
       const insight = analysis.key_insights[i];
       // Truncate very long insights
-      const truncated = insight.length > 1500 ? insight.slice(0, 1500) + '...' : insight;
+      const truncated = insight.length > 3000 ? insight.slice(0, 3000) + '...' : insight;
       parts.push(`${i + 1}. ${truncated}`);
     }
     parts.push('');
@@ -606,7 +606,7 @@ export function buildCompactResearchContext(analysis: AnalysisResult, maxChars =
 
   let charCount = parts[0].length;
   for (const insight of analysis.key_insights) {
-    const line = `• ${insight.slice(0, 300)}`;
+    const line = `• ${insight.slice(0, 500)}`;
     if (charCount + line.length > maxChars) break;
     parts.push(line);
     charCount += line.length;

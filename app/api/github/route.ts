@@ -239,7 +239,7 @@ export async function GET(req: NextRequest) {
       });
       if (!resp.ok) return NextResponse.json({ error: 'Failed to fetch diff' }, { status: resp.status });
       const diff = await resp.text();
-      return NextResponse.json({ sha, diff: diff.slice(0, 50000) });
+      return NextResponse.json({ sha, diff: diff.slice(0, 100000) });
     }
 
     if (action === 'create-branch') {

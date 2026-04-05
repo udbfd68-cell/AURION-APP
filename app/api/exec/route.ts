@@ -2,14 +2,14 @@ export const runtime = 'edge';
 
 export async function POST(req: Request) {
   try {
-    const { code, timeout = 5000 } = await req.json();
+    const { code, timeout = 15000 } = await req.json();
 
     if (!code || typeof code !== 'string') {
       return Response.json({ error: 'Missing code' }, { status: 400 });
     }
 
-    if (code.length > 5000) {
-      return Response.json({ error: 'Code too long (max 5KB)' }, { status: 400 });
+    if (code.length > 15000) {
+      return Response.json({ error: 'Code too long (max 15KB)' }, { status: 400 });
     }
 
     // Normalize code for pattern checking (collapse whitespace, lowercase for some checks)
@@ -86,8 +86,8 @@ export async function POST(req: Request) {
     try {
       const output = fn();
       // Limit output size to prevent oversized responses
-      const logs = Array.isArray(output?.logs) ? output.logs.slice(0, 200) : [];
-      const truncatedLogs = logs.map((l: string) => typeof l === 'string' && l.length > 5000 ? l.slice(0, 5000) + '...(truncated)' : l);
+      const logs = Array.isArray(output?.logs) ? output.logs.slice(0, 500) : [];
+      const truncatedLogs = logs.map((l: string) => typeof l === 'string' && l.length > 15000 ? l.slice(0, 15000) + '...(truncated)' : l);
       return Response.json({ logs: truncatedLogs, result: output?.result, error: output?.error });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

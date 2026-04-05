@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     const fw = framework || 'vitest';
     const lang = language || 'typescript';
 
-    const userPrompt = `Generate ${fw} tests for this ${lang} code:\n\nFile: ${fileName || 'unknown'}\n\n\`\`\`${lang}\n${code.slice(0, 15000)}\n\`\`\`\n\nGenerate comprehensive tests covering all functions, edge cases, and error scenarios.`;
+    const userPrompt = `Generate ${fw} tests for this ${lang} code:\n\nFile: ${fileName || 'unknown'}\n\n\`\`\`${lang}\n${code.slice(0, 50000)}\n\`\`\`\n\nGenerate comprehensive tests covering all functions, edge cases, and error scenarios.`;
 
     const res = await fetch(OLLAMA_URL, {
       method: 'POST',
@@ -59,10 +59,10 @@ export async function POST(req: NextRequest) {
           { role: 'user', content: userPrompt },
         ],
         stream: true,
-        max_tokens: 65536,
+        max_tokens: 131072,
         temperature: 0.3,
       }),
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(300000),
     });
 
     if (!res.ok) {

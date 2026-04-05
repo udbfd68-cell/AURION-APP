@@ -62,8 +62,8 @@ export async function POST(req: Request) {
       /* ── Quick Research ── */
       case 'quick-research': {
         const { query } = params;
-        if (!query || typeof query !== 'string' || query.length > 500) {
-          return Response.json({ error: 'Invalid query (max 500 chars)' }, { status: 400 });
+        if (!query || typeof query !== 'string' || query.length > 2000) {
+          return Response.json({ error: 'Invalid query (max 2000 chars)' }, { status: 400 });
         }
         const result = await orch.quickResearch(query);
         return Response.json({ success: true, data: result });
@@ -72,11 +72,11 @@ export async function POST(req: Request) {
       /* ── Deep Research ── */
       case 'deep-research': {
         const { query, urls = [] } = params;
-        if (!query || typeof query !== 'string' || query.length > 500) {
-          return Response.json({ error: 'Invalid query (max 500 chars)' }, { status: 400 });
+        if (!query || typeof query !== 'string' || query.length > 2000) {
+          return Response.json({ error: 'Invalid query (max 2000 chars)' }, { status: 400 });
         }
         // Validate URLs
-        const validUrls = (urls as string[]).filter(u => typeof u === 'string' && isValidUrl(u)).slice(0, 10);
+        const validUrls = (urls as string[]).filter(u => typeof u === 'string' && isValidUrl(u)).slice(0, 20);
         const analysis = await orch.deepResearch(query, validUrls);
         const context = buildResearchContext(analysis);
         return Response.json({ success: true, data: { analysis, context } });
@@ -89,9 +89,9 @@ export async function POST(req: Request) {
           return Response.json({ error: 'Missing tool or prompt' }, { status: 400 });
         }
         const enhancement = await orch.enhanceTool(
-          String(tool).slice(0, 50),
-          String(prompt).slice(0, 500),
-          currentContext ? String(currentContext).slice(0, 2000) : undefined,
+          String(tool).slice(0, 100),
+          String(prompt).slice(0, 2000),
+          currentContext ? String(currentContext).slice(0, 8000) : undefined,
         );
         return Response.json({ success: true, data: enhancement });
       }
@@ -102,14 +102,14 @@ export async function POST(req: Request) {
         if (!prompt || !type) {
           return Response.json({ error: 'Missing prompt or type' }, { status: 400 });
         }
-        const validUrls = (urls as string[] || []).filter(u => typeof u === 'string' && isValidUrl(u)).slice(0, 10);
+        const validUrls = (urls as string[] || []).filter(u => typeof u === 'string' && isValidUrl(u)).slice(0, 20);
         const result = await orch.enhancedGenerate({
-          prompt: String(prompt).slice(0, 2000),
+          prompt: String(prompt).slice(0, 5000),
           type,
           urls: validUrls,
-          existingCode: existingCode ? String(existingCode).slice(0, 5000) : undefined,
+          existingCode: existingCode ? String(existingCode).slice(0, 15000) : undefined,
           researchTemplate: researchTemplate as ResearchTemplate,
-          customQuestions: (customQuestions as string[] || []).slice(0, 5),
+          customQuestions: (customQuestions as string[] || []).slice(0, 10),
         });
         return Response.json({ success: true, data: result });
       }
@@ -121,7 +121,7 @@ export async function POST(req: Request) {
           return Response.json({ error: 'Missing question' }, { status: 400 });
         }
         const nlm = new NotebookLMEngine(process.env.NOTEBOOKLM_AUTH_JSON ? 'cli' : 'api');
-        const answer = await nlm.ask(String(question).slice(0, 1000), { notebookId });
+        const answer = await nlm.ask(String(question).slice(0, 3000), { notebookId });
         return Response.json({ success: true, data: answer });
       }
 

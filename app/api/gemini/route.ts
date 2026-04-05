@@ -46,10 +46,10 @@ async function streamWithGoogle(
       model: modelId,
       messages,
       stream: true,
-      max_tokens: 65536,
+      max_tokens: 131072,
       temperature: 0.7,
     }),
-    signal: AbortSignal.timeout(120000),
+    signal: AbortSignal.timeout(300000),
   });
 
   if (!res.ok) {
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
   const hasImages = images && images.length > 0;
 
   for (const m of messages) {
-    fullMessages.push({ role: m.role, content: m.content.slice(0, 16000) });
+    fullMessages.push({ role: m.role, content: m.content.slice(0, 64000) });
   }
 
   if (hasImages) {
@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
             const trimmed = fullMessages.slice(0, 1).concat(
               fullMessages.slice(Math.max(1, fullMessages.length - 3)).map(m => ({
                 ...m,
-                content: typeof m.content === 'string' ? m.content.slice(0, 8000) : m.content,
+                content: typeof m.content === 'string' ? m.content.slice(0, 32000) : m.content,
               }))
             );
             fullMessages.length = 0;
@@ -205,7 +205,7 @@ export async function POST(req: NextRequest) {
           // ─── Exponential backoff with jitter (Claude Code pattern) ────
           const delay = calculateBackoff(attempt, {
             baseDelay: lastErrorClass === 'rate_limit' ? 5000 : 2000,
-            maxDelay: 30000,
+            maxDelay: 60000,
             jitterFactor: 0.3,
           });
           console.log(`[gemini] ${modelId} attempt ${attempt + 1} failed [${lastErrorClass}]: ${lastError.slice(0, 80)}, retry in ${delay}ms`);

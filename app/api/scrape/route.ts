@@ -49,13 +49,13 @@ async function basicFetch(url: string): Promise<string> {
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9',
         },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(30000),
         redirect: 'follow',
       });
       if (!res.ok) throw new Error(`Fetch failed: HTTP ${res.status}`);
       return res.text();
     },
-    { maxAttempts: 3, baseDelay: 1000, maxDelay: 5000, jitterFactor: 0.3 },
+    { maxAttempts: 5, baseDelay: 1000, maxDelay: 5000, jitterFactor: 0.3 },
   );
 }
 
@@ -68,14 +68,14 @@ async function jinaFetch(url: string): Promise<string> {
           'Accept': 'text/html',
           'X-Return-Format': 'html',
           'X-Wait-For-Selector': 'main, section, footer, article, [class*=hero], [class*=feature], [class*=content], [role=main], #__next, #app, #root',
-          'X-Timeout': '25',
+          'X-Timeout': '45',
         },
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(60000),
       });
       if (!res.ok) throw new Error(`Jina HTTP ${res.status}`);
       return res.text();
     },
-    { maxAttempts: 2, baseDelay: 2000, maxDelay: 8000, jitterFactor: 0.3 },
+    { maxAttempts: 3, baseDelay: 2000, maxDelay: 8000, jitterFactor: 0.3 },
   );
 }
 
@@ -85,12 +85,12 @@ async function jinaMarkdownFetch(url: string): Promise<string> {
     async () => {
       const res = await fetch(`https://r.jina.ai/${url}`, {
         headers: { 'Accept': 'text/plain' },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(30000),
       });
       if (!res.ok) throw new Error(`Jina markdown HTTP ${res.status}`);
       return res.text();
     },
-    { maxAttempts: 2, baseDelay: 1500, maxDelay: 6000, jitterFactor: 0.3 },
+    { maxAttempts: 3, baseDelay: 1500, maxDelay: 6000, jitterFactor: 0.3 },
   );
 }
 
@@ -142,17 +142,17 @@ function buildFallbackResponse(html: string, url: string) {
   try { responsiveBreakpoints = extractResponsiveBreakpoints(styleBlocks); } catch { /* isolated */ }
 
   return {
-    html: cleaned.slice(0, 150000),
-    rawHtml: html.slice(0, 200000),
+    html: cleaned.slice(0, 300000),
+    rawHtml: html.slice(0, 400000),
     tokens,
     branding: null,
-    internalLinks: internalLinks.slice(0, 30),
+    internalLinks: internalLinks.slice(0, 60),
     screenshot: null,
     metadata: null,
     navigation,
-    images: images.slice(0, 60),
-    videos: videos.slice(0, 20),
-    styleBlocks: styleBlocks.slice(0, 25000),
+    images: images.slice(0, 120),
+    videos: videos.slice(0, 40),
+    styleBlocks: styleBlocks.slice(0, 60000),
     linkedResources,
     cssFramework,
     iconLibraries,
@@ -270,7 +270,7 @@ export async function POST(req: NextRequest) {
 
         // Use the source with more structural sections, fallback to text length
         const useJinaBody = jinaSections > basicSections || (jinaSections === basicSections && jinaTextLen > basicTextLen);
-        const primaryBody = useJinaBody ? (jinaBody?.[1] || jinaHtml.slice(0, 200000)) : (basicBody?.[1] || basicHtml);
+        const primaryBody = useJinaBody ? (jinaBody?.[1] || jinaHtml.slice(0, 400000)) : (basicBody?.[1] || basicHtml);
         const secondaryBody = useJinaBody ? basicBody?.[1] : jinaBody?.[1];
 
         // Combine: HEAD from basic + inline styles from both + primary BODY
@@ -283,7 +283,7 @@ export async function POST(req: NextRequest) {
           const primaryText = getVisibleTextLength(primaryBody);
           // Only enrich if secondary has >20% content not in primary (rough heuristic)
           if (secondaryText > primaryText * 0.2) {
-            finalHtml = finalHtml.replace(/<\/body>/i, `\n<!-- ENRICHMENT_SOURCE -->${secondaryBody.slice(0, 80000)}\n</body>`);
+            finalHtml = finalHtml.replace(/<\/body>/i, `\n<!-- ENRICHMENT_SOURCE -->${secondaryBody.slice(0, 160000)}\n</body>`);
           }
         }
       } else if (jinaHtml.length > 500) {
@@ -304,7 +304,7 @@ export async function POST(req: NextRequest) {
       try {
         const externalCSS = await fetchExternalCSS(finalHtml, url);
         if (externalCSS.length > 0) {
-          response.styleBlocks = ((response.styleBlocks || '') + '\n' + externalCSS).slice(0, 60000);
+          response.styleBlocks = ((response.styleBlocks || '') + '\n' + externalCSS).slice(0, 120000);
           // Re-extract tokens with enriched CSS
           const enrichedTokens = extractDesignTokens(finalHtml + '<style>' + externalCSS + '</style>');
           response.tokens = enrichedTokens;
@@ -315,7 +315,7 @@ export async function POST(req: NextRequest) {
       // Jina markdown: human-readable text of the full page
       // Critical for SPAs where HTML extraction misses dynamic/lazy-loaded content
       if (jinaText && jinaText.length > 200) {
-        const markdownBlock = `\n<!-- JINA_READABLE_TEXT_START -->\n${jinaText.slice(0, 60000)}\n<!-- JINA_READABLE_TEXT_END -->\n`;
+        const markdownBlock = `\n<!-- JINA_READABLE_TEXT_START -->\n${jinaText.slice(0, 120000)}\n<!-- JINA_READABLE_TEXT_END -->\n`;
         response.rawHtml = (response.rawHtml || '') + markdownBlock;
       }
 
@@ -338,7 +338,7 @@ export async function POST(req: NextRequest) {
       const data = await firecrawl.scrapeLight(url);
       const cleaned = cleanHtmlForClone(data.html);
       return new Response(JSON.stringify({
-        html: cleaned.slice(0, 50000),
+        html: cleaned.slice(0, 100000),
         rawHtml: null,
         tokens: extractDesignTokens(data.html),
         branding: null,
@@ -368,9 +368,9 @@ export async function POST(req: NextRequest) {
           const markdown = await jinaFetch(url);
           if (markdown.length > 200) {
             if (html && /<\/body>/i.test(html)) {
-              html = html.replace(/<\/body>/i, `\n<section class="rendered-content">\n${markdown.slice(0, 60000)}\n</section>\n</body>`);
+              html = html.replace(/<\/body>/i, `\n<section class="rendered-content">\n${markdown.slice(0, 120000)}\n</section>\n</body>`);
             } else {
-              html = `<html><body>\n<section class="rendered-content">${markdown.slice(0, 60000)}</section>\n</body></html>`;
+              html = `<html><body>\n<section class="rendered-content">${markdown.slice(0, 120000)}</section>\n</body></html>`;
             }
           }
         } catch { /* Jina also failed */ }
@@ -403,7 +403,7 @@ export async function POST(req: NextRequest) {
         .filter(p => p && p !== '/' && p !== new URL(url).pathname);
     }
 
-    const finalLinks = [...new Set([...htmlLinks, ...scrapeLinks, ...mapLinks])].slice(0, 20);
+    const finalLinks = [...new Set([...htmlLinks, ...scrapeLinks, ...mapLinks])].slice(0, 40);
 
     // Detect frameworks and libraries
     const cssFramework = detectCSSFramework(rawSource);
@@ -451,8 +451,8 @@ export async function POST(req: NextRequest) {
     const responsiveBreakpoints = extractionMap.get('responsiveBreakpoints')?.value ?? [];
 
     return new Response(JSON.stringify({
-      html: cleaned.slice(0, 100000),
-      rawHtml: (data.rawHtml || '').slice(0, 150000),
+      html: cleaned.slice(0, 200000),
+      rawHtml: (data.rawHtml || '').slice(0, 300000),
       tokens: enrichedTokens,
       branding: null,
       internalLinks: finalLinks,
@@ -460,9 +460,9 @@ export async function POST(req: NextRequest) {
       screenshots: data.screenshots || [],
       metadata: data.metadata,
       navigation,
-      images: images.slice(0, 40),
-      videos: extractVideos(data.rawHtml || '').slice(0, 15),
-      styleBlocks: enrichedStyleBlocks.slice(0, 40000),
+      images: images.slice(0, 80),
+      videos: extractVideos(data.rawHtml || '').slice(0, 30),
+      styleBlocks: enrichedStyleBlocks.slice(0, 80000),
       linkedResources,
       cssFramework,
       iconLibraries,
@@ -491,9 +491,9 @@ export async function POST(req: NextRequest) {
           const markdown = await jinaFetch(url);
           if (markdown.length > 200) {
             if (html && /<\/body>/i.test(html)) {
-              html = html.replace(/<\/body>/i, `\n<section class="rendered-content">\n${markdown.slice(0, 60000)}\n</section>\n</body>`);
+              html = html.replace(/<\/body>/i, `\n<section class="rendered-content">\n${markdown.slice(0, 120000)}\n</section>\n</body>`);
             } else {
-              html = `<html><body>\n<section class="rendered-content">${markdown.slice(0, 60000)}</section>\n</body></html>`;
+              html = `<html><body>\n<section class="rendered-content">${markdown.slice(0, 120000)}</section>\n</body></html>`;
             }
           }
         } catch { /* Jina also failed */ }

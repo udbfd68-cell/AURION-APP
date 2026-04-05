@@ -99,7 +99,7 @@ function extractTypography(node: FigmaNode): Array<{ font: string; weight: numbe
       font: node.style.fontFamily || 'sans-serif',
       weight: node.style.fontWeight || 400,
       size: node.style.fontSize || 16,
-      text: node.characters.slice(0, 100),
+      text: node.characters.slice(0, 250),
     });
   }
   if (node.children) {
@@ -120,7 +120,7 @@ function flattenNodes(node: FigmaNode, depth = 0): Array<{ type: string; name: s
     name: node.name,
     depth,
     bounds: node.absoluteBoundingBox ? { w: Math.round(node.absoluteBoundingBox.width), h: Math.round(node.absoluteBoundingBox.height) } : undefined,
-    text: node.characters?.slice(0, 200),
+    text: node.characters?.slice(0, 400),
     layout: node.layoutMode || undefined,
   });
 
@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
       ? `${FIGMA_API}/files/${parsed.fileKey}?ids=${encodeURIComponent(parsed.nodeId)}&depth=5`
       : `${FIGMA_API}/files/${parsed.fileKey}?depth=5`;
 
-    const fileResp = await fetch(fileUrl, { headers, signal: AbortSignal.timeout(30000) });
+    const fileResp = await fetch(fileUrl, { headers, signal: AbortSignal.timeout(60000) });
     if (!fileResp.ok) {
       const err = await fileResp.text().catch(() => '');
       if (fileResp.status === 403) {
@@ -231,9 +231,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Extract design data
-    const colors = extractColors(targetNode).slice(0, 20);
-    const typography = extractTypography(targetNode).slice(0, 30);
-    const structure = flattenNodes(targetNode).slice(0, 100);
+    const colors = extractColors(targetNode).slice(0, 40);
+    const typography = extractTypography(targetNode).slice(0, 60);
+    const structure = flattenNodes(targetNode).slice(0, 200);
     const bounds = targetNode.absoluteBoundingBox;
 
     // Extract components used in this frame
@@ -264,13 +264,13 @@ export async function POST(req: NextRequest) {
       if (node.children) node.children.forEach(c => extractEffects(c));
     };
     extractEffects(targetNode);
-    const uniqueEffects = [...new Map(effects.map(e => [`${e.type}-${e.radius}`, e])).values()].slice(0, 10);
+    const uniqueEffects = [...new Map(effects.map(e => [`${e.type}-${e.radius}`, e])).values()].slice(0, 20);
 
     // Get image exports for the frame
     const nodeId = targetNode.id;
     const imgResp = await fetch(`${FIGMA_API}/images/${parsed.fileKey}?ids=${encodeURIComponent(nodeId)}&format=png&scale=2`, {
       headers,
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(60000),
     });
     let screenshotUrl = '';
     if (imgResp.ok) {
@@ -290,8 +290,8 @@ export async function POST(req: NextRequest) {
       colors,
       fonts: fontFamilies,
       fontSizes,
-      typography: typography.slice(0, 15),
-      structure: structure.slice(0, 60),
+      typography: typography.slice(0, 30),
+      structure: structure.slice(0, 120),
       components,
       effects: uniqueEffects,
       layoutMode: targetNode.layoutMode || 'NONE',
@@ -321,20 +321,20 @@ function buildDesignPrompt(
   prompt += `\n## Color Palette (exact hex values — match these EXACTLY):\n${colors.join(', ')}\n`;
   prompt += `\n## Typography:\n- Fonts: ${fonts.join(', ')}\n- Size scale: ${fontSizes.join('px, ')}px\n`;
   prompt += `\n## Text Content (from design):\n`;
-  for (const t of typography.slice(0, 10)) {
+  for (const t of typography.slice(0, 25)) {
     prompt += `- "${t.text}" (${t.font} ${t.weight} ${t.size}px)\n`;
   }
   if (components && components.length > 0) {
     prompt += `\n## Components Used:\n`;
-    for (const c of components.slice(0, 15)) {
+    for (const c of components.slice(0, 30)) {
       prompt += `- ${c.name} (${c.type}) x${c.count}\n`;
     }
   }
   prompt += `\n## Layout Structure:\n`;
-  for (const s of structure.slice(0, 40)) {
+  for (const s of structure.slice(0, 80)) {
     const indent = '  '.repeat(s.depth);
     const sizeInfo = s.bounds ? ` [${s.bounds.w}x${s.bounds.h}]` : '';
-    const textInfo = s.text ? ` → "${s.text.slice(0, 50)}"` : '';
+    const textInfo = s.text ? ` → "${s.text.slice(0, 100)}"` : '';
     const layoutInfo = s.layout ? ` (${s.layout})` : '';
     prompt += `${indent}${s.type}: ${s.name}${sizeInfo}${layoutInfo}${textInfo}\n`;
   }

@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const sanitizedPrompt = prompt.slice(0, 200);
+  const sanitizedPrompt = prompt.slice(0, 500);
 
   // If no Pexels key, return placeholder immediately
   if (!pexelsKey) {
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     const url = `${PEXELS_URL}?query=${encodeURIComponent(query)}&per_page=5&orientation=landscape`;
     const response = await fetch(url, {
       headers: { 'Authorization': pexelsKey },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(20000),
     });
 
     if (!response.ok) {

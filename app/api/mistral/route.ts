@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
         max_tokens: 131072,
         temperature: 0.7,
       }),
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(300000),
     });
 
     if (!res.ok) {
