@@ -34,7 +34,14 @@ export async function POST(req: NextRequest) {
 
     // Block dangerous operations
     const sqlUpper = sql.toUpperCase().trim();
-    if (sqlUpper.startsWith('DROP DATABASE') || sqlUpper.startsWith('DROP ROLE') || sqlUpper.includes('pg_terminate_backend')) {
+    const BLOCKED_PATTERNS = [
+      'DROP DATABASE', 'DROP ROLE', 'DROP TABLE', 'DROP SCHEMA',
+      'TRUNCATE', 'ALTER USER', 'ALTER ROLE', 'CREATE ROLE', 'CREATE USER',
+      'GRANT ', 'REVOKE ', 'COPY ', 'LOAD ', 'CREATE EXTENSION',
+      'PG_TERMINATE_BACKEND', 'PG_CANCEL_BACKEND',
+      'SET ROLE', 'RESET ROLE', 'SET SESSION AUTHORIZATION',
+    ];
+    if (BLOCKED_PATTERNS.some(p => sqlUpper.includes(p))) {
       return NextResponse.json({ error: 'This SQL operation is not allowed for safety' }, { status: 400 });
     }
 

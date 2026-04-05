@@ -169,10 +169,11 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const action = searchParams.get('action') || 'repos';
-    const token = searchParams.get('token');
+    // Accept token from header (preferred) or query param (legacy fallback)
+    const token = req.headers.get('x-github-token') || searchParams.get('token');
 
     if (!token) {
-      return NextResponse.json({ error: 'Missing GitHub token' }, { status: 400 });
+      return NextResponse.json({ error: 'Missing GitHub token — pass via X-GitHub-Token header' }, { status: 400 });
     }
 
     const headers: Record<string, string> = {

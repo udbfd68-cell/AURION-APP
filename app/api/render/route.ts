@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const runtime = 'nodejs';
+
 const RENDER_API = 'https://api.render.com/v1';
 
 function getApiKey() {

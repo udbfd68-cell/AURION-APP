@@ -6,7 +6,9 @@ export const runtime = 'edge';
 import { VIDEO_PROVIDERS, MAX_POLL_ATTEMPTS, POLL_INTERVAL_MS, resolveGoogleKey } from '@/lib/cinematic/config';
 
 export async function POST(req: Request) {
-  const { prompt, imageUrl } = await req.json();
+  let body;
+  try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
+  const { prompt, imageUrl } = body;
   if (!prompt || typeof prompt !== 'string') {
     return Response.json({ error: 'Missing prompt' }, { status: 400 });
   }

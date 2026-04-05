@@ -60,7 +60,9 @@ export async function POST(req: NextRequest) {
       // Multi-file deployment
       for (const [filePath, content] of Object.entries(files)) {
         // Sanitize file path (prevent directory traversal)
-        const safePath = filePath.replace(/\.\./g, '').replace(/^\/+/, '');
+        let safePath = filePath;
+        while (safePath.includes('..')) safePath = safePath.replace(/\.\.\/?/g, '');
+        safePath = safePath.replace(/^\/+/, '');
         if (safePath && content) {
           deployFiles.push({ file: safePath, data: content, encoding: 'utf-8' });
         }

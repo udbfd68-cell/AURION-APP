@@ -6,7 +6,9 @@ export const runtime = 'edge';
 import { IMAGE_PROVIDERS, resolveGoogleKey } from '@/lib/cinematic/config';
 
 export async function POST(req: Request) {
-  const { prompt, width = 1920, height = 1080 } = await req.json();
+  let body;
+  try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
+  const { prompt, width = 1920, height = 1080 } = body;
   if (!prompt || typeof prompt !== 'string') {
     return Response.json({ error: 'Missing prompt' }, { status: 400 });
   }

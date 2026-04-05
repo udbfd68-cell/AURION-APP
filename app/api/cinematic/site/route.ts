@@ -8,7 +8,9 @@ import { CINEMATIC_TEMPLATES } from '@/lib/cinematic/templates';
 import { generateScrollSiteHtml } from '@/lib/cinematic/site-template';
 
 export async function POST(req: Request) {
-  const { enrichedPrompt, template: templateId, frameCount, fps, siteDescription } = await req.json();
+  let body;
+  try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
+  const { enrichedPrompt, template: templateId, frameCount, fps, siteDescription } = body;
 
   const template = CINEMATIC_TEMPLATES.find(t => t.id === templateId) || CINEMATIC_TEMPLATES[0];
 

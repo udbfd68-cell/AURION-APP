@@ -22,7 +22,9 @@ Tu dois retourner un JSON avec exactement ces 4 champs :
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans explication.`;
 
 export async function POST(req: Request) {
-  const { prompt, template: templateId } = await req.json();
+  let body;
+  try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
+  const { prompt, template: templateId } = body;
   if (!prompt || typeof prompt !== 'string') {
     return Response.json({ error: 'Missing prompt' }, { status: 400 });
   }
