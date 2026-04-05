@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portfolio — Creative Developer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
+  body{font-family:'Inter',sans-serif;background:#0a0a0a;color:#fff;overflow-x:hidden}
+
+  /* ═══════════════════ LOADING SCREEN ═══════════════════ */
+  .loading{position:fixed;inset:0;z-index:9999;background:#0a0a0a;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 0.6s}
+  .loading.done{opacity:0;pointer-events:none}
+  .loading-counter{font-size:120px;font-weight:900;color:#fff;font-variant-numeric:tabular-nums;letter-spacing:-0.05em}
+  @media(min-width:768px){.loading-counter{font-size:200px}}
+  .loading-bar{width:200px;height:2px;background:rgba(255,255,255,0.1);border-radius:1px;margin-top:24px;overflow:hidden}
+  .loading-fill{height:100%;background:#fff;width:0;transition:width 0.05s linear}
+
+  /* ═══════════════════ NAVBAR ═══════════════════ */
+  .navbar{position:fixed;top:0;left:0;width:100%;z-index:100;padding:24px;mix-blend-mode:difference}
+  @media(min-width:1024px){.navbar{padding:24px 80px}}
+  .nav-inner{max-width:1400px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+  .nav-name{font-size:14px;font-weight:500;color:#fff;text-decoration:none;letter-spacing:0.05em;text-transform:uppercase}
+  .nav-links{display:none;gap:28px}
+  @media(min-width:768px){.nav-links{display:flex}}
+  .nav-links a{font-size:13px;font-weight:400;color:rgba(255,255,255,0.5);text-decoration:none;transition:color 0.3s;text-transform:uppercase;letter-spacing:0.05em}
+  .nav-links a:hover{color:#fff}
+
+  /* ═══════════════════ HERO ═══════════════════ */
+  .hero{position:relative;min-height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .hero-video{position:absolute;inset:0;z-index:0}
+  .hero-video video{width:100%;height:100%;object-fit:cover;opacity:0.35}
+  .hero-overlay{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(10,10,10,0.3),rgba(10,10,10,0.8));z-index:1}
+  .hero-content{position:relative;z-index:2;text-align:center;padding:0 24px}
+  .hero-greeting{font-size:14px;text-transform:uppercase;letter-spacing:0.2em;color:rgba(255,255,255,0.3);margin-bottom:16px}
+  .hero-name{font-family:'Instrument Serif',serif;font-size:56px;line-height:1.05;color:#fff;margin-bottom:12px}
+  @media(min-width:768px){.hero-name{font-size:96px}}
+  @media(min-width:1200px){.hero-name{font-size:120px}}
+
+  /* Cycling roles */
+  .hero-role{font-size:18px;font-weight:300;color:rgba(255,255,255,0.5);height:28px;overflow:hidden;margin-bottom:40px}
+  .hero-role-track{transition:transform 0.6s cubic-bezier(0.4,0,0.2,1)}
+  .hero-role-item{height:28px;display:flex;align-items:center;justify-content:center}
+  .hero-scroll{font-size:12px;text-transform:uppercase;letter-spacing:0.15em;color:rgba(255,255,255,0.2);cursor:pointer}
+
+  /* ═══════════════════ BENTO GRID ═══════════════════ */
+  .bento{padding:120px 24px}
+  .bento-inner{max-width:1200px;margin:0 auto}
+  .section-label{font-size:12px;text-transform:uppercase;letter-spacing:0.2em;color:rgba(255,255,255,0.2);margin-bottom:16px}
+  .section-title{font-family:'Instrument Serif',serif;font-size:48px;color:#fff;margin-bottom:48px}
+  .bento-grid{display:grid;grid-template-columns:1fr;gap:16px}
+  @media(min-width:768px){.bento-grid{grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(3,minmax(200px,auto))}}
+  .bento-card{border-radius:16px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);padding:28px;position:relative;overflow:hidden;transition:all 0.4s;display:flex;flex-direction:column;justify-content:flex-end}
+  .bento-card:hover{border-color:rgba(255,255,255,0.08)}
+  @media(min-width:768px){
+    .bento-card:nth-child(1){grid-column:1/3;grid-row:1/2}
+    .bento-card:nth-child(2){grid-column:3/5;grid-row:1/2}
+    .bento-card:nth-child(3){grid-column:1/2;grid-row:2/4}
+    .bento-card:nth-child(4){grid-column:2/4;grid-row:2/3}
+    .bento-card:nth-child(5){grid-column:4/5;grid-row:2/4}
+    .bento-card:nth-child(6){grid-column:2/4;grid-row:3/4}
+  }
+  .bento-card-label{font-size:12px;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.2);margin-bottom:8px}
+  .bento-card-title{font-size:18px;font-weight:600;color:#fff}
+  .bento-card-desc{font-size:14px;font-weight:300;color:rgba(255,255,255,0.4);margin-top:4px;line-height:1.5}
+
+  /* ═══════════════════ JOURNAL ═══════════════════ */
+  .journal{padding:120px 24px;border-top:1px solid rgba(255,255,255,0.04)}
+  .journal-inner{max-width:1200px;margin:0 auto}
+  .journal-list{display:flex;flex-direction:column;gap:0}
+  .journal-entry{display:grid;grid-template-columns:1fr;gap:16px;padding:32px 0;border-bottom:1px solid rgba(255,255,255,0.04);transition:all 0.3s;cursor:pointer}
+  @media(min-width:768px){.journal-entry{grid-template-columns:100px 1fr auto;align-items:center}}
+  .journal-entry:hover{padding-left:12px}
+  .journal-date{font-size:13px;color:rgba(255,255,255,0.2);font-variant-numeric:tabular-nums}
+  .journal-title{font-size:20px;font-weight:600;color:#fff;transition:color 0.3s}
+  .journal-entry:hover .journal-title{color:rgba(255,255,255,0.8)}
+  .journal-tag{font-size:13px;color:rgba(255,255,255,0.2);padding:4px 12px;border-radius:99px;border:1px solid rgba(255,255,255,0.06);white-space:nowrap}
+
+  /* ═══════════════════ PARALLAX GALLERY ═══════════════════ */
+  .gallery{padding:120px 24px;border-top:1px solid rgba(255,255,255,0.04);overflow:hidden}
+  .gallery-inner{max-width:1400px;margin:0 auto}
+  .gallery-grid{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:768px){.gallery-grid{grid-template-columns:repeat(3,1fr)}}
+  .gallery-col{display:flex;flex-direction:column;gap:20px}
+  .gallery-item{border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);aspect-ratio:3/4;position:relative;transition:transform 0.4s}
+  .gallery-item:hover{transform:scale(1.02)}
+  .gallery-item-inner{position:absolute;inset:0;background:linear-gradient(145deg,rgba(255,255,255,0.03),rgba(255,255,255,0.005))}
+
+  /* ═══════════════════ MARQUEE FOOTER ═══════════════════ */
+  .marquee-footer{padding:80px 0;border-top:1px solid rgba(255,255,255,0.04);overflow:hidden}
+  .marquee-track{display:flex;animation:marquee 20s linear infinite;width:max-content}
+  .marquee-item{font-family:'Instrument Serif',serif;font-size:80px;color:rgba(255,255,255,0.04);white-space:nowrap;padding:0 40px;transition:color 0.3s}
+  @media(min-width:768px){.marquee-item{font-size:120px}}
+  .marquee-item:hover{color:rgba(255,255,255,0.2)}
+  @keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+  .footer{padding:40px 24px;border-top:1px solid rgba(255,255,255,0.04)}
+  .footer-inner{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px}
+  @media(min-width:768px){.footer-inner{flex-direction:row;justify-content:space-between}}
+  .footer-copy{font-size:13px;color:rgba(255,255,255,0.2)}
+  .footer-socials{display:flex;gap:24px}
+  .footer-socials a{font-size:13px;color:rgba(255,255,255,0.2);text-decoration:none}
+  .footer-socials a:hover{color:rgba(255,255,255,0.5)}
+
+  @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+
+<!-- Loading Screen -->
+<div class="loading" id="loading">
+  <div class="loading-counter" id="loadingCounter">0</div>
+  <div class="loading-bar"><div class="loading-fill" id="loadingFill"></div></div>
+</div>
+
+<!-- Navbar -->
+<nav class="navbar"><div class="nav-inner"><a href="#" class="nav-name">Alex Devlin</a><div class="nav-links"><a href="#works">Works</a><a href="#journal">Journal</a><a href="#">Contact</a></div></div></nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-video"><video id="heroVideo" autoplay muted loop playsinline></video></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="hero-greeting" style="opacity:0" data-gsap="greeting">Hello, I'm</div>
+    <h1 class="hero-name" style="opacity:0" data-gsap="name">Alex Devlin</h1>
+    <div class="hero-role" style="opacity:0" data-gsap="role">
+      <div class="hero-role-track" id="roleTrack">
+        <div class="hero-role-item">Creative Developer</div>
+        <div class="hero-role-item">UI Engineer</div>
+        <div class="hero-role-item">Motion Designer</div>
+        <div class="hero-role-item">Digital Craftsman</div>
+      </div>
+    </div>
+    <div class="hero-scroll" style="opacity:0" data-gsap="scroll">↓ Scroll to explore</div>
+  </div>
+</section>
+
+<!-- Bento Grid -->
+<section class="bento" id="works">
+  <div class="bento-inner">
+    <div class="section-label">Selected Works</div>
+    <h2 class="section-title">Projects</h2>
+    <div class="bento-grid">
+      <div class="bento-card"><div class="bento-card-label">Branding</div><div class="bento-card-title">Nexus Identity</div><div class="bento-card-desc">Complete brand system for AI startup</div></div>
+      <div class="bento-card"><div class="bento-card-label">Web App</div><div class="bento-card-title">Flux Dashboard</div><div class="bento-card-desc">Real-time analytics platform</div></div>
+      <div class="bento-card"><div class="bento-card-label">Motion</div><div class="bento-card-title">Orbit Studio</div><div class="bento-card-desc">3D motion showreel</div></div>
+      <div class="bento-card"><div class="bento-card-label">E-Commerce</div><div class="bento-card-title">Vessel Store</div><div class="bento-card-desc">Headless Shopify with GSAP</div></div>
+      <div class="bento-card"><div class="bento-card-label">Interactive</div><div class="bento-card-title">Prism WebGL</div><div class="bento-card-desc">Three.js immersive experience</div></div>
+      <div class="bento-card"><div class="bento-card-label">SaaS</div><div class="bento-card-title">Luma Cloud</div><div class="bento-card-desc">Cloud management platform</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Journal -->
+<section class="journal" id="journal">
+  <div class="journal-inner">
+    <div class="section-label">Thoughts</div>
+    <h2 class="section-title">Journal</h2>
+    <div class="journal-list">
+      <div class="journal-entry"><div class="journal-date">Mar 2026</div><div class="journal-title">On crafting micro-interactions that feel alive</div><div class="journal-tag">Design</div></div>
+      <div class="journal-entry"><div class="journal-date">Feb 2026</div><div class="journal-title">Why GSAP still matters in a React world</div><div class="journal-tag">Dev</div></div>
+      <div class="journal-entry"><div class="journal-date">Jan 2026</div><div class="journal-title">The case for custom cursors and spatial UI</div><div class="journal-tag">UX</div></div>
+      <div class="journal-entry"><div class="journal-date">Dec 2025</div><div class="journal-title">Building my portfolio: a creative developer's process</div><div class="journal-tag">Process</div></div>
+      <div class="journal-entry"><div class="journal-date">Nov 2025</div><div class="journal-title">Lessons from shipping 12 projects in 12 months</div><div class="journal-tag">Career</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Parallax Gallery -->
+<section class="gallery">
+  <div class="gallery-inner">
+    <div class="section-label">Visual Archive</div>
+    <h2 class="section-title">Gallery</h2>
+    <div class="gallery-grid">
+      <div class="gallery-col" id="col1">
+        <div class="gallery-item" style="aspect-ratio:3/4"><div class="gallery-item-inner"></div></div>
+        <div class="gallery-item" style="aspect-ratio:4/3"><div class="gallery-item-inner"></div></div>
+      </div>
+      <div class="gallery-col" id="col2">
+        <div class="gallery-item" style="aspect-ratio:1/1"><div class="gallery-item-inner"></div></div>
+        <div class="gallery-item" style="aspect-ratio:3/5"><div class="gallery-item-inner"></div></div>
+      </div>
+      <div class="gallery-col" id="col3">
+        <div class="gallery-item" style="aspect-ratio:4/3"><div class="gallery-item-inner"></div></div>
+        <div class="gallery-item" style="aspect-ratio:3/4"><div class="gallery-item-inner"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Marquee Footer -->
+<section class="marquee-footer">
+  <div class="marquee-track">
+    <span class="marquee-item">Let's Work Together</span>
+    <span class="marquee-item">•</span>
+    <span class="marquee-item">Say Hello</span>
+    <span class="marquee-item">•</span>
+    <span class="marquee-item">Let's Work Together</span>
+    <span class="marquee-item">•</span>
+    <span class="marquee-item">Say Hello</span>
+    <span class="marquee-item">•</span>
+  </div>
+</section>
+
+<footer class="footer"><div class="footer-inner"><div class="footer-copy">© 2026 Alex Devlin</div><div class="footer-socials"><a href="#">GitHub</a><a href="#">Twitter</a><a href="#">Dribbble</a><a href="#">LinkedIn</a></div></div></footer>
+
+<script>
+/* Loading Screen */
+(function(){
+  const counter=document.getElementById('loadingCounter');
+  const fill=document.getElementById('loadingFill');
+  const loading=document.getElementById('loading');
+  let c=0;
+  const interval=setInterval(()=>{c+=Math.floor(Math.random()*3)+1;if(c>100)c=100;counter.textContent=c;fill.style.width=c+'%';if(c>=100){clearInterval(interval);setTimeout(()=>{loading.classList.add('done');initGSAP()},400)}},30);
+})();
+
+/* HLS Video */
+(function(){
+  const v=document.getElementById('heroVideo');
+  const s='https://stream.mux.com/NcU3HlHeF7CUL86azTTzpy3Tlb00d6iF3BmCdFslMJYM.m3u8';
+  if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=s}else if(Hls.isSupported()){const h=new Hls();h.loadSource(s);h.attachMedia(v)}
+})();
+
+/* GSAP Timeline */
+function initGSAP(){
+  gsap.registerPlugin(ScrollTrigger);
+  const tl=gsap.timeline({defaults:{ease:'power3.out'}});
+  tl.to('[data-gsap="greeting"]',{opacity:1,y:0,duration:0.6})
+    .to('[data-gsap="name"]',{opacity:1,y:0,duration:0.8},'-=0.3')
+    .to('[data-gsap="role"]',{opacity:1,y:0,duration:0.6},'-=0.3')
+    .to('[data-gsap="scroll"]',{opacity:1,y:0,duration:0.6},'-=0.2');
+
+  /* Parallax gallery columns */
+  if(window.innerWidth>=768){
+    gsap.to('#col1',{y:-60,scrollTrigger:{trigger:'.gallery',start:'top bottom',end:'bottom top',scrub:1}});
+    gsap.to('#col2',{y:40,scrollTrigger:{trigger:'.gallery',start:'top bottom',end:'bottom top',scrub:1}});
+    gsap.to('#col3',{y:-30,scrollTrigger:{trigger:'.gallery',start:'top bottom',end:'bottom top',scrub:1}});
+  }
+}
+
+/* Cycling roles */
+(function(){
+  const track=document.getElementById('roleTrack');
+  const items=track.children;
+  let idx=0;
+  setInterval(()=>{idx=(idx+1)%items.length;track.style.transform='translateY(-'+(idx*28)+'px)'},2000);
+})();
+</script>
+</body>
+</html>

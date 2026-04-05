@@ -1,0 +1,90 @@
+﻿node.exe : [baseline-browser-mapping] The data in this module is over two months old. 
+ To ensure accurate Baseline data, please update: `npm i 
+baseline-browser-mapping@latest -D`
+Au caractère Ligne:1 : 1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([baseline-brows...ping@latest -D`:String 
+   ) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Ôû▓ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local
+- Experiments (use with caution):
+  Ô£ô scrollRestoration
+
+ÔÜá The "middleware" file convention is deprecated. Please use "proxy" instead. Learn 
+more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure 
+accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure 
+accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+Ô£ô Compiled successfully in 59s
+  Running TypeScript ...
+  Collecting page data using 7 workers ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure 
+accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure 
+accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure 
+accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure 
+accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure 
+accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure 
+accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure 
+accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ÔÜá Using edge runtime on a page currently disables static generation for that page
+  Generating static pages using 7 workers (0/8) ...
+  Generating static pages using 7 workers (2/8) 
+  Generating static pages using 7 workers (4/8) 
+  Generating static pages using 7 workers (6/8) 
+Ô£ô Generating static pages using 7 workers (8/8) in 679.2ms
+  Finalizing page optimization ...
+
+Route (app)
+Ôöî Ôùï /
+Ôö£ Ôùï /_not-found
+Ôö£ ãÆ /api/algolia
+Ôö£ ãÆ /api/anthropic
+Ôö£ ãÆ /api/clone
+Ôö£ ãÆ /api/contentful
+Ôö£ ãÆ /api/deepai
+Ôö£ ãÆ /api/deploy
+Ôö£ ãÆ /api/discord
+Ôö£ ãÆ /api/exec
+Ôö£ ãÆ /api/gemini
+Ôö£ ãÆ /api/github
+Ôö£ ãÆ /api/groq
+Ôö£ ãÆ /api/huggingface
+Ôö£ ãÆ /api/klaviyo
+Ôö£ ãÆ /api/lemonsqueezy
+Ôö£ ãÆ /api/ltx
+Ôö£ ãÆ /api/magic21st
+Ôö£ ãÆ /api/neon
+Ôö£ ãÆ /api/openai
+Ôö£ ãÆ /api/resend
+Ôö£ ãÆ /api/sanity
+Ôö£ ãÆ /api/scrape
+Ôö£ ãÆ /api/sendgrid
+Ôö£ ãÆ /api/slack
+Ôö£ ãÆ /api/stripe
+Ôö£ ãÆ /api/stripe/checkout
+Ôö£ ãÆ /api/stripe/webhook
+Ôö£ ãÆ /api/supabase
+Ôö£ ãÆ /api/twilio
+Ôö£ ãÆ /api/upstash
+Ôö£ Ôùï /gallery
+Ôö£ Ôùï /pricing
+Ôö£ ãÆ /sign-in/[[...sign-in]]
+Ôöö ãÆ /sign-up/[[...sign-up]]
+
+
+ãÆ Proxy (Middleware)
+
+Ôùï  (Static)   prerendered as static content
+ãÆ  (Dynamic)  server-rendered on demand
+

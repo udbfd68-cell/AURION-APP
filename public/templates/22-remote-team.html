@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teamflow — Remote Team Management</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
+  body{font-family:'Inter','Geist',sans-serif;background:#fff;color:#1a1a1a;overflow-x:hidden}
+
+  .navbar{position:fixed;top:0;left:0;width:100%;z-index:100;padding:16px 24px;background:rgba(255,255,255,0.9);backdrop-filter:blur(20px);border-bottom:1px solid rgba(0,0,0,0.04)}
+  @media(min-width:1024px){.navbar{padding:16px 80px}}
+  .nav-inner{max-width:1400px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+  .nav-logo{font-family:'Instrument Serif',serif;font-size:24px;color:#1a1a1a;text-decoration:none}
+  .nav-links{display:none;align-items:center;gap:28px}
+  @media(min-width:1024px){.nav-links{display:flex}}
+  .nav-links a{font-size:14px;color:rgba(0,0,0,0.4);text-decoration:none;transition:color 0.3s}
+  .nav-links a:hover{color:#1a1a1a}
+
+  /* Multi-layer gradient CTA button */
+  .gradient-cta{position:relative;display:inline-flex;align-items:center;gap:8px;padding:12px 28px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;border:none;cursor:pointer;background:linear-gradient(135deg,#1a1a1a,#374151);transition:all 0.3s;z-index:1;overflow:hidden}
+  .gradient-cta::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,#3b82f6,#8b5cf6);opacity:0;transition:opacity 0.4s;z-index:-1;border-radius:inherit}
+  .gradient-cta::after{content:'';position:absolute;inset:-2px;border-radius:14px;background:linear-gradient(135deg,#3b82f6,#8b5cf6,#ec4899);z-index:-2;opacity:0;transition:opacity 0.3s}
+  .gradient-cta:hover::before{opacity:1}
+  .gradient-cta:hover::after{opacity:0.3}
+  .gradient-cta:hover{transform:scale(1.03)}
+
+  .hero{position:relative;padding:140px 24px 60px;overflow:hidden}
+  .hero-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:1fr;gap:40px;align-items:center}
+  @media(min-width:1024px){.hero-inner{grid-template-columns:1fr 1fr}}
+  .hero-text{max-width:560px}
+  .hero-tag{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:99px;background:rgba(0,0,0,0.03);border:1px solid rgba(0,0,0,0.06);font-size:13px;color:rgba(0,0,0,0.5);margin-bottom:24px;opacity:0;animation:fadeUp 0.6s 0.1s ease forwards}
+  .hero-headline{font-family:'Instrument Serif',serif;font-size:48px;line-height:1.05;color:#1a1a1a;margin-bottom:20px;opacity:0;animation:fadeUp 0.6s 0.2s ease forwards}
+  @media(min-width:768px){.hero-headline{font-size:60px}}
+  .hero-headline em{font-style:italic}
+  .hero-subtitle{font-size:17px;font-weight:300;color:rgba(0,0,0,0.4);line-height:1.7;margin-bottom:32px;opacity:0;animation:fadeUp 0.6s 0.3s ease forwards}
+  .hero-buttons{display:flex;gap:12px;flex-wrap:wrap;opacity:0;animation:fadeUp 0.6s 0.4s ease forwards}
+  .btn-outline{padding:12px 28px;border-radius:12px;background:transparent;border:1px solid rgba(0,0,0,0.1);color:#1a1a1a;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.3s}
+  .btn-outline:hover{background:rgba(0,0,0,0.02);border-color:rgba(0,0,0,0.2)}
+
+  /* Flipped video */
+  .hero-video-wrapper{position:relative;border-radius:20px;overflow:hidden;opacity:0;animation:fadeUp 0.6s 0.3s ease forwards}
+  .hero-video-wrapper video{width:100%;height:auto;display:block;transform:scaleY(-1)}
+  .hero-video-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(255,255,255,0.8),rgba(255,255,255,0))}
+
+  .features{padding:120px 24px;border-top:1px solid rgba(0,0,0,0.04)}
+  .features-inner{max-width:1200px;margin:0 auto}
+  .section-title{font-family:'Instrument Serif',serif;font-size:48px;color:#1a1a1a;text-align:center;margin-bottom:16px}
+  .section-desc{font-size:18px;font-weight:300;color:rgba(0,0,0,0.4);text-align:center;max-width:480px;margin:0 auto 64px}
+  .features-grid{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:768px){.features-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(min-width:1024px){.features-grid{grid-template-columns:repeat(3,1fr)}}
+  .f-card{padding:36px 28px;border-radius:20px;border:1px solid rgba(0,0,0,0.04);background:#fafafa;transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .f-card.visible{opacity:1;transform:translateY(0)}
+  .f-card:hover{transform:translateY(-4px);box-shadow:0 20px 60px rgba(0,0,0,0.03)}
+  .f-card h3{font-size:18px;font-weight:600;color:#1a1a1a;margin-bottom:8px}
+  .f-card p{font-size:14px;font-weight:300;color:rgba(0,0,0,0.4);line-height:1.6}
+
+  .stats{padding:80px 24px;border-top:1px solid rgba(0,0,0,0.04);border-bottom:1px solid rgba(0,0,0,0.04);background:#fafafa}
+  .stats-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);gap:40px}
+  @media(min-width:768px){.stats-inner{grid-template-columns:repeat(4,1fr)}}
+  .stat{text-align:center;opacity:0;transform:translateY(20px)}
+  .stat.visible{opacity:1;transform:translateY(0);transition:all 0.6s}
+  .stat-num{font-size:48px;font-weight:700;color:#1a1a1a}
+  .stat-lbl{font-size:14px;font-weight:300;color:rgba(0,0,0,0.35);margin-top:4px}
+
+  .testimonials{padding:120px 24px}
+  .testimonials-inner{max-width:1200px;margin:0 auto}
+  .testimonials-grid{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:768px){.testimonials-grid{grid-template-columns:repeat(3,1fr)}}
+  .t-card{padding:32px 28px;border-radius:20px;border:1px solid rgba(0,0,0,0.04);background:#fafafa;opacity:0;transform:translateY(20px)}
+  .t-card.visible{opacity:1;transform:translateY(0);transition:all 0.6s}
+  .t-quote{font-family:'Instrument Serif',serif;font-size:18px;font-style:italic;color:#1a1a1a;line-height:1.6;margin-bottom:20px}
+  .t-author{font-size:14px;font-weight:600;color:#1a1a1a}
+  .t-role{font-size:13px;color:rgba(0,0,0,0.3)}
+
+  .cta{padding:120px 24px;text-align:center;background:#fafafa;border-top:1px solid rgba(0,0,0,0.04)}
+  .cta-inner{max-width:640px;margin:0 auto}
+  .cta-title{font-family:'Instrument Serif',serif;font-size:56px;color:#1a1a1a;margin-bottom:16px}
+  .cta-sub{font-size:18px;font-weight:300;color:rgba(0,0,0,0.4);margin-bottom:40px}
+
+  .footer{padding:40px 24px;border-top:1px solid rgba(0,0,0,0.04)}
+  .footer-inner{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px}
+  @media(min-width:768px){.footer-inner{flex-direction:row;justify-content:space-between}}
+  .footer-copy{font-size:13px;color:rgba(0,0,0,0.2)}
+  .footer-links{display:flex;gap:24px}
+  .footer-links a{font-size:13px;color:rgba(0,0,0,0.2);text-decoration:none}
+  .footer-links a:hover{color:rgba(0,0,0,0.5)}
+
+  @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+
+<nav class="navbar"><div class="nav-inner"><a href="#" class="nav-logo">Teamflow</a><div class="nav-links"><a href="#">Product</a><a href="#">Solutions</a><a href="#">Pricing</a><a href="#">Resources</a></div><button class="gradient-cta">Start Free Trial</button></div></nav>
+
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-text">
+      <div class="hero-tag">Remote-first team management</div>
+      <h1 class="hero-headline">Manage<br><em>distributed</em><br>teams</h1>
+      <p class="hero-subtitle">Teamflow brings your remote team together. Time zones, async standups, and project tracking — all in one beautiful workspace.</p>
+      <div class="hero-buttons"><button class="gradient-cta">Start Free Trial <span>→</span></button><button class="btn-outline">Watch Demo</button></div>
+    </div>
+    <div class="hero-video-wrapper">
+      <video autoplay muted loop playsinline>
+        <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260302_085640_276ea93b-8e60-4d64-9c67-68ba29ea4b2c.mp4" type="video/mp4">
+      </video>
+      <div class="hero-video-overlay"></div>
+    </div>
+  </div>
+</section>
+
+<section class="features">
+  <div class="features-inner">
+    <h2 class="section-title">Built for remote</h2>
+    <p class="section-desc">Everything your distributed team needs, nothing it doesn't.</p>
+    <div class="features-grid">
+      <div class="f-card" data-delay="0"><h3>Time Zone Sync</h3><p>See everyone's local time at a glance. Smart scheduling that respects overlap hours.</p></div>
+      <div class="f-card" data-delay="80"><h3>Async Standups</h3><p>Daily check-ins that don't require meetings. Video, text, or voice — your choice.</p></div>
+      <div class="f-card" data-delay="160"><h3>Project Boards</h3><p>Kanban, list, and timeline views. Drag-and-drop task management with real-time sync.</p></div>
+      <div class="f-card" data-delay="240"><h3>Focus Mode</h3><p>Block notifications, set deep work hours, and protect your team's flow state.</p></div>
+      <div class="f-card" data-delay="320"><h3>1:1 Templates</h3><p>Structured one-on-ones with agendas, notes, and action items that carry forward.</p></div>
+      <div class="f-card" data-delay="400"><h3>Integrations</h3><p>Connects with Slack, GitHub, Notion, Linear, Figma, and 200+ more tools.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="stats">
+  <div class="stats-inner">
+    <div class="stat" data-delay="0"><div class="stat-num">12K+</div><div class="stat-lbl">Teams</div></div>
+    <div class="stat" data-delay="100"><div class="stat-num">180+</div><div class="stat-lbl">Countries</div></div>
+    <div class="stat" data-delay="200"><div class="stat-num">94%</div><div class="stat-lbl">Retention Rate</div></div>
+    <div class="stat" data-delay="300"><div class="stat-num">4.9/5</div><div class="stat-lbl">G2 Rating</div></div>
+  </div>
+</section>
+
+<section class="testimonials">
+  <div class="testimonials-inner">
+    <h2 class="section-title">Loved by remote teams</h2>
+    <p class="section-desc">Hear from teams that made the switch.</p>
+    <div class="testimonials-grid">
+      <div class="t-card" data-delay="0"><div class="t-quote">"Teamflow replaced three different tools for us. Our distributed team has never been more aligned."</div><div class="t-author">Sarah Chen</div><div class="t-role">VP Engineering, Acme Inc</div></div>
+      <div class="t-card" data-delay="100"><div class="t-quote">"The async standup feature saved us 5 hours of meetings per week. Game changer."</div><div class="t-author">Marcus Rivera</div><div class="t-role">CTO, Vertex Labs</div></div>
+      <div class="t-card" data-delay="200"><div class="t-quote">"Finally a tool that understands remote work. Focus mode alone is worth the subscription."</div><div class="t-author">Aisha Patel</div><div class="t-role">Head of Product, Nova</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="cta"><div class="cta-inner"><h2 class="cta-title">Try Teamflow free</h2><p class="cta-sub">14-day trial, no credit card required. Set up in 2 minutes.</p><button class="gradient-cta">Start Free Trial <span>→</span></button></div></section>
+
+<footer class="footer"><div class="footer-inner"><div class="footer-copy">© 2026 Teamflow Inc.</div><div class="footer-links"><a href="#">Docs</a><a href="#">Blog</a><a href="#">Careers</a><a href="#">Security</a></div></div></footer>
+
+<script>
+(function(){const io=new IntersectionObserver(e=>{e.forEach(en=>{if(en.isIntersecting){const d=en.target.dataset.delay||0;setTimeout(()=>en.target.classList.add('visible'),parseInt(d));io.unobserve(en.target)}})},{threshold:0.1,rootMargin:'-50px'});document.querySelectorAll('.f-card,.stat,.t-card').forEach(el=>io.observe(el))})();
+</script>
+</body>
+</html>

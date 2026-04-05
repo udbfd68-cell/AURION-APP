@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Website Builder — Build Faster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"></script>
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+  body{font-family:'Instrument Sans',sans-serif;background:#000;color:#fff;overflow-x:hidden}
+
+  /* ═══════════════════════════ NAVBAR ═══════════════════════════ */
+  .navbar{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:16px 24px;background:transparent}
+  .navbar-logo svg{width:24px;height:24px;fill:none;stroke:#fff;stroke-width:2}
+  .navbar-center{display:none;align-items:center;gap:32px}
+  @media(min-width:768px){.navbar-center{display:flex}}
+  .navbar-center a{font-family:'Instrument Sans',sans-serif;font-size:14px;font-weight:500;color:rgba(255,255,255,0.8);text-decoration:none;transition:color 0.3s;display:flex;align-items:center;gap:4px}
+  .navbar-center a:hover{color:#fff}
+  .navbar-center a svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+  .navbar-right{display:flex;align-items:center;gap:16px}
+  .navbar-right .demo-link{display:none;font-size:14px;font-weight:500;color:rgba(255,255,255,0.8);text-decoration:none;transition:color 0.3s}
+  @media(min-width:640px){.navbar-right .demo-link{display:inline}}
+  .navbar-right .demo-link:hover{color:#fff}
+  .btn-get-started{background:#fff;color:#000;padding:10px 20px;border-radius:9999px;font-family:'Instrument Sans',sans-serif;font-size:14px;font-weight:600;border:none;cursor:pointer;transition:box-shadow 0.3s,transform 0.3s}
+  .btn-get-started:hover{box-shadow:0 0 20px rgba(255,255,255,0.2);transform:scale(1.02)}
+
+  /* ═══════════════════════════ HERO SECTION ═══════════════════════════ */
+  .hero{position:relative;width:100%;min-height:100vh;background:#000;color:#fff;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center}
+
+  /* Video Background */
+  .hero-video-container{position:absolute;inset:0;z-index:0}
+  .hero-video-container video{width:100%;height:100%;object-fit:cover;opacity:0.6}
+  .hero-video-overlay{position:absolute;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+  .hero-video-poster{position:absolute;inset:0;background-image:url('https://images.unsplash.com/photo-1647356191320-d7a1f80ca777?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGRhcmslMjB0ZWNobm9sb2d5JTIwbmV1cmFsJTIwbmV0d29ya3xlbnwxfHx8fDE3Njg5NzIyNTV8MA&ixlib=rb-4.1.0&q=80&w=1080');background-size:cover;background-position:center;opacity:0;transition:opacity 0.5s}
+
+  /* Decorative Gradients */
+  .gradient-tl{position:absolute;top:-20%;left:20%;width:600px;height:600px;background:rgba(30,58,138,0.2);border-radius:50%;filter:blur(120px);mix-blend-mode:screen;pointer-events:none}
+  .gradient-br{position:absolute;bottom:-10%;right:20%;width:500px;height:500px;background:rgba(49,46,129,0.2);border-radius:50%;filter:blur(120px);mix-blend-mode:screen;pointer-events:none}
+
+  /* Hero Content */
+  .hero-content{position:relative;z-index:10;max-width:64rem;margin:0 auto;padding:0 24px;margin-top:80px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:48px}
+
+  /* Pre-headline */
+  .pre-headline{font-family:'Instrument Serif',serif;font-size:30px;line-height:1.1;color:#fff;opacity:0;transform:translateY(20px);animation:fadeUp 0.6s ease forwards}
+  @media(min-width:640px){.pre-headline{font-size:48px}}
+  @media(min-width:1024px){.pre-headline{font-size:48px}}
+
+  /* Main Headline */
+  .main-headline{font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:60px;line-height:0.9;letter-spacing:-0.04em;background:linear-gradient(to bottom,#fff,#fff 50%,#b4c0ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;opacity:0;transform:scale(0.9);animation:scaleIn 0.6s 0.2s ease forwards}
+  @media(min-width:640px){.main-headline{font-size:96px}}
+  @media(min-width:1024px){.main-headline{font-size:136px}}
+
+  /* Subheadline */
+  .subheadline{font-family:'Instrument Sans',sans-serif;font-size:18px;line-height:1.65;color:rgba(255,255,255,0.7);max-width:36rem;opacity:0;animation:fadeIn 0.6s 0.4s ease forwards}
+  @media(min-width:640px){.subheadline{font-size:20px}}
+
+  /* CTA Buttons */
+  .cta-container{display:flex;flex-direction:column;align-items:center;gap:24px;opacity:0;transform:translateY(20px);animation:fadeUp 0.5s 0.6s ease forwards}
+  @media(min-width:640px){.cta-container{flex-direction:row}}
+  .btn-primary{display:inline-flex;align-items:center;gap:12px;background:#fff;border:none;border-radius:9999px;padding:8px 8px 8px 24px;cursor:pointer;text-decoration:none;transition:all 0.3s;font-family:'Instrument Sans',sans-serif}
+  .btn-primary:hover{box-shadow:0 0 20px rgba(255,255,255,0.3);transform:scale(1.05)}
+  .btn-primary-text{font-size:18px;font-weight:500;color:#0a0400}
+  .btn-primary-arrow{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#3054ff;transition:background 0.3s}
+  .btn-primary:hover .btn-primary-arrow{background:#2040e0}
+  .btn-primary-arrow svg{width:20px;height:20px;stroke:#fff;stroke-width:2;fill:none}
+
+  .btn-secondary{display:inline-flex;align-items:center;gap:8px;background:transparent;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:none;border-radius:8px;padding:8px 16px;color:rgba(255,255,255,0.7);font-family:'Instrument Sans',sans-serif;font-size:16px;font-weight:500;cursor:pointer;text-decoration:none;transition:all 0.3s}
+  .btn-secondary:hover{color:#fff;background:rgba(255,255,255,0.05)}
+  .btn-secondary svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;transition:transform 0.3s}
+  .btn-secondary:hover svg{transform:translateX(4px)}
+
+  /* ═══════════════════════════ FEATURES SECTION ═══════════════════════════ */
+  .features{position:relative;padding:120px 24px;background:#000;overflow:hidden}
+  .features-inner{max-width:72rem;margin:0 auto}
+  .features-header{text-align:center;margin-bottom:80px}
+  .features-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:9999px;padding:8px 16px;font-size:13px;color:rgba(255,255,255,0.6);margin-bottom:24px}
+  .features-badge-dot{width:6px;height:6px;border-radius:50%;background:#3054ff;box-shadow:0 0 8px rgba(48,84,255,0.5)}
+  .features-title{font-family:'Instrument Serif',serif;font-size:48px;line-height:1.1;color:#fff;margin-bottom:16px}
+  @media(min-width:768px){.features-title{font-size:64px}}
+  .features-subtitle{font-size:18px;color:rgba(255,255,255,0.5);max-width:32rem;margin:0 auto}
+
+  .features-grid{display:grid;grid-template-columns:1fr;gap:24px}
+  @media(min-width:768px){.features-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(min-width:1024px){.features-grid{grid-template-columns:repeat(3,1fr)}}
+
+  .feature-card{position:relative;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:24px;padding:40px 32px;overflow:hidden;transition:all 0.4s;opacity:0;transform:translateY(30px)}
+  .feature-card.visible{opacity:1;transform:translateY(0)}
+  .feature-card:hover{border-color:rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);transform:translateY(-4px)}
+  .feature-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.1),transparent);opacity:0;transition:opacity 0.4s}
+  .feature-card:hover::before{opacity:1}
+  .feature-icon{width:48px;height:48px;border-radius:12px;background:rgba(48,84,255,0.1);border:1px solid rgba(48,84,255,0.2);display:flex;align-items:center;justify-content:center;margin-bottom:24px}
+  .feature-icon svg{width:24px;height:24px;stroke:#3054ff;stroke-width:1.5;fill:none}
+  .feature-card h3{font-family:'Instrument Sans',sans-serif;font-size:20px;font-weight:600;color:#fff;margin-bottom:12px}
+  .feature-card p{font-size:15px;line-height:1.6;color:rgba(255,255,255,0.5)}
+
+  /* ═══════════════════════════ SHOWCASE SECTION ═══════════════════════════ */
+  .showcase{position:relative;padding:120px 24px;background:#000;overflow:hidden}
+  .showcase-inner{max-width:80rem;margin:0 auto}
+  .showcase-header{text-align:center;margin-bottom:64px}
+  .showcase-title{font-family:'Instrument Serif',serif;font-size:48px;line-height:1.1;color:#fff;margin-bottom:16px}
+  @media(min-width:768px){.showcase-title{font-size:56px}}
+  .showcase-subtitle{font-size:18px;color:rgba(255,255,255,0.5);max-width:40rem;margin:0 auto}
+
+  .showcase-grid{display:grid;grid-template-columns:1fr;gap:32px}
+  @media(min-width:768px){.showcase-grid{grid-template-columns:repeat(2,1fr)}}
+
+  .showcase-card{position:relative;border-radius:24px;overflow:hidden;aspect-ratio:16/10;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);cursor:pointer;transition:all 0.5s}
+  .showcase-card:hover{border-color:rgba(255,255,255,0.12);transform:scale(1.02)}
+  .showcase-card-bg{position:absolute;inset:0;background-size:cover;background-position:center;transition:transform 0.6s}
+  .showcase-card:hover .showcase-card-bg{transform:scale(1.08)}
+  .showcase-card-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.8) 0%,transparent 60%);z-index:1}
+  .showcase-card-content{position:absolute;bottom:0;left:0;right:0;padding:32px;z-index:2}
+  .showcase-card-tag{display:inline-block;font-size:12px;font-weight:500;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px}
+  .showcase-card-title{font-family:'Instrument Sans',sans-serif;font-size:24px;font-weight:600;color:#fff;margin-bottom:8px}
+  .showcase-card-desc{font-size:14px;color:rgba(255,255,255,0.5);line-height:1.5}
+
+  /* ═══════════════════════════ STATS SECTION ═══════════════════════════ */
+  .stats{position:relative;padding:100px 24px;background:#000;border-top:1px solid rgba(255,255,255,0.05);border-bottom:1px solid rgba(255,255,255,0.05)}
+  .stats-inner{max-width:72rem;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);gap:48px}
+  @media(min-width:768px){.stats-inner{grid-template-columns:repeat(4,1fr)}}
+  .stat-item{text-align:center;opacity:0;transform:translateY(20px)}
+  .stat-item.visible{opacity:1;transform:translateY(0);transition:all 0.6s ease}
+  .stat-number{font-family:'Instrument Serif',serif;font-size:48px;line-height:1;color:#fff;margin-bottom:8px}
+  @media(min-width:768px){.stat-number{font-size:56px}}
+  .stat-label{font-size:14px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.05em}
+
+  /* ═══════════════════════════ TESTIMONIALS ═══════════════════════════ */
+  .testimonials{position:relative;padding:120px 24px;background:#000;overflow:hidden}
+  .testimonials-inner{max-width:72rem;margin:0 auto}
+  .testimonials-header{text-align:center;margin-bottom:64px}
+  .testimonials-title{font-family:'Instrument Serif',serif;font-size:48px;line-height:1.1;color:#fff;margin-bottom:16px}
+  .testimonials-subtitle{font-size:18px;color:rgba(255,255,255,0.5)}
+
+  .testimonials-grid{display:grid;grid-template-columns:1fr;gap:24px}
+  @media(min-width:768px){.testimonials-grid{grid-template-columns:repeat(3,1fr)}}
+
+  .testimonial-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:32px;transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .testimonial-card.visible{opacity:1;transform:translateY(0)}
+  .testimonial-card:hover{border-color:rgba(255,255,255,0.1);background:rgba(255,255,255,0.04)}
+  .testimonial-stars{display:flex;gap:4px;margin-bottom:16px}
+  .testimonial-stars svg{width:16px;height:16px;fill:#b4c0ff;stroke:none}
+  .testimonial-text{font-size:15px;line-height:1.7;color:rgba(255,255,255,0.7);margin-bottom:24px;font-style:italic}
+  .testimonial-author{display:flex;align-items:center;gap:12px}
+  .testimonial-avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#3054ff,#b4c0ff);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;color:#fff}
+  .testimonial-name{font-size:14px;font-weight:600;color:#fff}
+  .testimonial-role{font-size:13px;color:rgba(255,255,255,0.4)}
+
+  /* ═══════════════════════════ PRICING SECTION ═══════════════════════════ */
+  .pricing{position:relative;padding:120px 24px;background:#000}
+  .pricing-inner{max-width:72rem;margin:0 auto}
+  .pricing-header{text-align:center;margin-bottom:64px}
+  .pricing-title{font-family:'Instrument Serif',serif;font-size:48px;line-height:1.1;color:#fff;margin-bottom:16px}
+  .pricing-subtitle{font-size:18px;color:rgba(255,255,255,0.5);max-width:32rem;margin:0 auto}
+  .pricing-grid{display:grid;grid-template-columns:1fr;gap:24px;max-width:56rem;margin:0 auto}
+  @media(min-width:768px){.pricing-grid{grid-template-columns:repeat(3,1fr)}}
+
+  .pricing-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:24px;padding:40px 32px;text-align:center;transition:all 0.4s;position:relative;overflow:hidden}
+  .pricing-card:hover{border-color:rgba(255,255,255,0.12);transform:translateY(-4px)}
+  .pricing-card.popular{border-color:rgba(48,84,255,0.3);background:rgba(48,84,255,0.05)}
+  .pricing-card.popular::before{content:'Most Popular';position:absolute;top:16px;right:-28px;background:#3054ff;color:#fff;font-size:11px;font-weight:600;padding:4px 32px;transform:rotate(45deg);text-transform:uppercase;letter-spacing:0.05em}
+  .pricing-plan{font-size:14px;font-weight:500;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:16px}
+  .pricing-price{font-family:'Instrument Serif',serif;font-size:56px;line-height:1;color:#fff;margin-bottom:8px}
+  .pricing-price span{font-size:18px;color:rgba(255,255,255,0.4);font-family:'Instrument Sans',sans-serif}
+  .pricing-desc{font-size:14px;color:rgba(255,255,255,0.4);margin-bottom:32px}
+  .pricing-features{list-style:none;text-align:left;margin-bottom:32px}
+  .pricing-features li{display:flex;align-items:center;gap:12px;padding:10px 0;font-size:14px;color:rgba(255,255,255,0.6);border-bottom:1px solid rgba(255,255,255,0.04)}
+  .pricing-features li svg{width:16px;height:16px;stroke:#3054ff;stroke-width:2;fill:none;flex-shrink:0}
+  .pricing-btn{display:block;width:100%;padding:14px;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;transition:all 0.3s;border:none;font-family:'Instrument Sans',sans-serif}
+  .pricing-btn-outline{background:transparent;border:1px solid rgba(255,255,255,0.1);color:#fff}
+  .pricing-btn-outline:hover{border-color:rgba(255,255,255,0.2);background:rgba(255,255,255,0.04)}
+  .pricing-btn-solid{background:#3054ff;color:#fff}
+  .pricing-btn-solid:hover{background:#2040e0;box-shadow:0 0 20px rgba(48,84,255,0.3)}
+
+  /* ═══════════════════════════ CTA SECTION ═══════════════════════════ */
+  .cta-section{position:relative;padding:120px 24px;background:#000;text-align:center;overflow:hidden}
+  .cta-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:600px;height:400px;background:rgba(48,84,255,0.1);filter:blur(120px);border-radius:50%;pointer-events:none}
+  .cta-section-inner{position:relative;z-index:1;max-width:48rem;margin:0 auto}
+  .cta-section-title{font-family:'Instrument Serif',serif;font-size:48px;line-height:1.1;color:#fff;margin-bottom:16px}
+  @media(min-width:768px){.cta-section-title{font-size:64px}}
+  .cta-section-subtitle{font-size:18px;color:rgba(255,255,255,0.5);margin-bottom:40px;max-width:32rem;margin-left:auto;margin-right:auto}
+  .cta-section-btns{display:flex;flex-direction:column;align-items:center;gap:16px}
+  @media(min-width:640px){.cta-section-btns{flex-direction:row;justify-content:center}}
+
+  /* ═══════════════════════════ FOOTER ═══════════════════════════ */
+  .footer{padding:40px 24px;border-top:1px solid rgba(255,255,255,0.05);background:#000}
+  .footer-inner{max-width:72rem;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:24px}
+  @media(min-width:768px){.footer-inner{flex-direction:row;justify-content:space-between}}
+  .footer-copy{font-size:13px;color:rgba(255,255,255,0.3)}
+  .footer-links{display:flex;gap:24px}
+  .footer-links a{font-size:13px;color:rgba(255,255,255,0.3);text-decoration:none;transition:color 0.3s}
+  .footer-links a:hover{color:rgba(255,255,255,0.6)}
+
+  /* ═══════════════════════════ ANIMATIONS ═══════════════════════════ */
+  @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes scaleIn{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:scale(1)}}
+  @keyframes fadeIn{from{opacity:0}to{opacity:0.7}}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+  @keyframes pulse-glow{0%,100%{opacity:0.2}50%{opacity:0.35}}
+  .gradient-tl{animation:pulse-glow 4s ease-in-out infinite}
+  .gradient-br{animation:pulse-glow 4s ease-in-out infinite 2s}
+
+  /* ═══════════════════════════ LOGOS SECTION ═══════════════════════════ */
+  .logos{padding:60px 24px;background:#000;border-top:1px solid rgba(255,255,255,0.04)}
+  .logos-inner{max-width:72rem;margin:0 auto;text-align:center}
+  .logos-label{font-size:13px;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:32px}
+  .logos-row{display:flex;align-items:center;justify-content:center;gap:48px;flex-wrap:wrap;opacity:0.4}
+  .logos-row span{font-family:'Instrument Sans',sans-serif;font-size:18px;font-weight:600;color:rgba(255,255,255,0.5);letter-spacing:0.02em}
+
+  /* ═══════════════════════════ HOW IT WORKS ═══════════════════════════ */
+  .how-it-works{position:relative;padding:120px 24px;background:#000;overflow:hidden}
+  .how-it-works-inner{max-width:72rem;margin:0 auto}
+  .how-it-works-header{text-align:center;margin-bottom:80px}
+  .steps-grid{display:grid;grid-template-columns:1fr;gap:32px}
+  @media(min-width:768px){.steps-grid{grid-template-columns:repeat(3,1fr)}}
+  .step-card{text-align:center;padding:40px 24px;opacity:0;transform:translateY(30px)}
+  .step-card.visible{opacity:1;transform:translateY(0);transition:all 0.6s ease}
+  .step-number{font-family:'Instrument Serif',serif;font-size:64px;color:rgba(48,84,255,0.2);line-height:1;margin-bottom:16px}
+  .step-title{font-family:'Instrument Sans',sans-serif;font-size:20px;font-weight:600;color:#fff;margin-bottom:12px}
+  .step-desc{font-size:15px;line-height:1.6;color:rgba(255,255,255,0.5)}
+  .step-connector{display:none;position:absolute;top:50%;width:100%;height:1px;background:linear-gradient(90deg,transparent,rgba(48,84,255,0.2),transparent)}
+
+  /* ═══════════════════════════ FAQ SECTION ═══════════════════════════ */
+  .faq{position:relative;padding:120px 24px;background:#000}
+  .faq-inner{max-width:48rem;margin:0 auto}
+  .faq-header{text-align:center;margin-bottom:64px}
+  .faq-title{font-family:'Instrument Serif',serif;font-size:48px;line-height:1.1;color:#fff;margin-bottom:16px}
+  .faq-items{}
+  .faq-item{border-bottom:1px solid rgba(255,255,255,0.06);overflow:hidden}
+  .faq-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;padding:24px 0;background:none;border:none;color:#fff;font-size:17px;font-weight:500;font-family:'Instrument Sans',sans-serif;cursor:pointer;text-align:left;transition:color 0.3s}
+  .faq-trigger:hover{color:rgba(255,255,255,0.8)}
+  .faq-trigger svg{width:20px;height:20px;stroke:rgba(255,255,255,0.4);stroke-width:2;fill:none;transition:transform 0.3s;flex-shrink:0}
+  .faq-item.open .faq-trigger svg{transform:rotate(180deg)}
+  .faq-answer{max-height:0;overflow:hidden;transition:max-height 0.4s ease,padding 0.4s ease}
+  .faq-item.open .faq-answer{max-height:300px;padding-bottom:24px}
+  .faq-answer p{font-size:15px;line-height:1.7;color:rgba(255,255,255,0.5)}
+
+  /* Scroll reveal */
+  .reveal{opacity:0;transform:translateY(30px);transition:opacity 0.8s ease,transform 0.8s ease}
+  .reveal.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ NAVBAR ═══════════════════════════ -->
+<nav class="navbar">
+  <div class="navbar-logo">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="22"/><path d="M4.93 4.93l14.14 14.14"/><path d="M19.07 4.93L4.93 19.07"/></svg>
+  </div>
+  <div class="navbar-center">
+    <a href="#">Products <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></a>
+    <a href="#">Customer Stories</a>
+    <a href="#">Resources</a>
+    <a href="#">Pricing</a>
+  </div>
+  <div class="navbar-right">
+    <a href="#" class="demo-link">Book A Demo</a>
+    <button class="btn-get-started">Get Started</button>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════ HERO SECTION ═══════════════════════════ -->
+<section class="hero">
+  <div class="hero-video-container">
+    <video id="heroVideo" muted loop playsinline></video>
+    <div class="hero-video-overlay"></div>
+    <div class="hero-video-poster" id="videoPoster"></div>
+  </div>
+  <div class="gradient-tl"></div>
+  <div class="gradient-br"></div>
+  <div class="hero-content">
+    <div class="pre-headline">Design at the speed of thought</div>
+    <h1 class="main-headline">Build Faster</h1>
+    <p class="subheadline">Create fully functional, SEO-optimized websites in seconds with our advanced AI engine.</p>
+    <div class="cta-container">
+      <a href="#" class="btn-primary">
+        <span class="btn-primary-text">Start Building Free</span>
+        <span class="btn-primary-arrow">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+        </span>
+      </a>
+      <a href="#" class="btn-secondary">
+        See Examples
+        <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ LOGOS ═══════════════════════════ -->
+<section class="logos">
+  <div class="logos-inner">
+    <p class="logos-label">Trusted by innovative teams worldwide</p>
+    <div class="logos-row">
+      <span>Vercel</span><span>Stripe</span><span>Linear</span><span>Notion</span><span>Figma</span><span>Shopify</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ FEATURES ═══════════════════════════ -->
+<section class="features" id="features">
+  <div class="features-inner">
+    <div class="features-header reveal">
+      <div class="features-badge"><span class="features-badge-dot"></span> Capabilities</div>
+      <h2 class="features-title">Everything you need to build</h2>
+      <p class="features-subtitle">Professional tools powered by AI that make web development accessible to everyone.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card" data-delay="0">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <h3>Lightning Fast</h3>
+        <p>Generate complete websites in under 30 seconds. Our AI understands your vision and builds at unprecedented speed.</p>
+      </div>
+      <div class="feature-card" data-delay="100">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+        </div>
+        <h3>Pixel-Perfect Design</h3>
+        <p>Every layout is crafted with attention to detail. Responsive, accessible, and visually stunning by default.</p>
+      </div>
+      <div class="feature-card" data-delay="200">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <h3>SEO Optimized</h3>
+        <p>Built-in SEO best practices ensure your site ranks well from day one. Meta tags, schema markup, and more.</p>
+      </div>
+      <div class="feature-card" data-delay="300">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0022 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </div>
+        <h3>Component Library</h3>
+        <p>Access hundreds of pre-built components. Navbars, heroes, pricing tables, testimonials, and more.</p>
+      </div>
+      <div class="feature-card" data-delay="400">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        </div>
+        <h3>Full Customization</h3>
+        <p>Every element is customizable. Colors, fonts, spacing, animations — tweak everything to match your brand.</p>
+      </div>
+      <div class="feature-card" data-delay="500">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        </div>
+        <h3>One-Click Deploy</h3>
+        <p>Deploy to Vercel, Netlify, or your own server with a single click. Zero configuration needed.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ HOW IT WORKS ═══════════════════════════ -->
+<section class="how-it-works" id="how-it-works">
+  <div class="how-it-works-inner">
+    <div class="how-it-works-header reveal">
+      <div class="features-badge"><span class="features-badge-dot"></span> Process</div>
+      <h2 class="features-title">Three steps to launch</h2>
+      <p class="features-subtitle">From idea to live website in minutes, not months.</p>
+    </div>
+    <div class="steps-grid">
+      <div class="step-card" data-delay="0">
+        <div class="step-number">01</div>
+        <h3 class="step-title">Describe Your Vision</h3>
+        <p class="step-desc">Tell our AI what you need in plain language. A SaaS landing page, portfolio, e-commerce store — anything.</p>
+      </div>
+      <div class="step-card" data-delay="200">
+        <div class="step-number">02</div>
+        <h3 class="step-title">AI Builds It</h3>
+        <p class="step-desc">Watch as our engine generates a complete, responsive website with professional design, animations, and SEO.</p>
+      </div>
+      <div class="step-card" data-delay="400">
+        <div class="step-number">03</div>
+        <h3 class="step-title">Customize & Deploy</h3>
+        <p class="step-desc">Fine-tune every detail with our visual editor, then deploy to your favorite hosting with one click.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ SHOWCASE ═══════════════════════════ -->
+<section class="showcase" id="showcase">
+  <div class="showcase-inner">
+    <div class="showcase-header reveal">
+      <div class="features-badge"><span class="features-badge-dot"></span> Portfolio</div>
+      <h2 class="showcase-title">Sites built with our AI</h2>
+      <p class="showcase-subtitle">Real examples of what's possible. Each generated in under 60 seconds.</p>
+    </div>
+    <div class="showcase-grid">
+      <div class="showcase-card reveal">
+        <div class="showcase-card-bg" style="background-image:url('https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&q=80')"></div>
+        <div class="showcase-card-overlay"></div>
+        <div class="showcase-card-content">
+          <span class="showcase-card-tag">SaaS Platform</span>
+          <h3 class="showcase-card-title">Analytics Dashboard</h3>
+          <p class="showcase-card-desc">Complete analytics platform with real-time metrics</p>
+        </div>
+      </div>
+      <div class="showcase-card reveal">
+        <div class="showcase-card-bg" style="background-image:url('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&q=80')"></div>
+        <div class="showcase-card-overlay"></div>
+        <div class="showcase-card-content">
+          <span class="showcase-card-tag">Portfolio</span>
+          <h3 class="showcase-card-title">Creative Studio</h3>
+          <p class="showcase-card-desc">Immersive portfolio with scroll-driven animations</p>
+        </div>
+      </div>
+      <div class="showcase-card reveal">
+        <div class="showcase-card-bg" style="background-image:url('https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=800&q=80')"></div>
+        <div class="showcase-card-overlay"></div>
+        <div class="showcase-card-content">
+          <span class="showcase-card-tag">E-Commerce</span>
+          <h3 class="showcase-card-title">Fashion Store</h3>
+          <p class="showcase-card-desc">Premium storefront with product showcase</p>
+        </div>
+      </div>
+      <div class="showcase-card reveal">
+        <div class="showcase-card-bg" style="background-image:url('https://images.unsplash.com/photo-1551434678-e076c223a692?w=800&q=80')"></div>
+        <div class="showcase-card-overlay"></div>
+        <div class="showcase-card-content">
+          <span class="showcase-card-tag">Startup</span>
+          <h3 class="showcase-card-title">AI Product Launch</h3>
+          <p class="showcase-card-desc">High-conversion landing page with video hero</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ STATS ═══════════════════════════ -->
+<section class="stats">
+  <div class="stats-inner">
+    <div class="stat-item" data-delay="0"><div class="stat-number">50K+</div><div class="stat-label">Sites Created</div></div>
+    <div class="stat-item" data-delay="100"><div class="stat-number">98%</div><div class="stat-label">Satisfaction Rate</div></div>
+    <div class="stat-item" data-delay="200"><div class="stat-number">3.2x</div><div class="stat-label">Faster Than Manual</div></div>
+    <div class="stat-item" data-delay="300"><div class="stat-number">30s</div><div class="stat-label">Average Build Time</div></div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ TESTIMONIALS ═══════════════════════════ -->
+<section class="testimonials" id="testimonials">
+  <div class="testimonials-inner">
+    <div class="testimonials-header reveal">
+      <h2 class="testimonials-title">What builders say</h2>
+      <p class="testimonials-subtitle">Join thousands of satisfied creators and businesses.</p>
+    </div>
+    <div class="testimonials-grid">
+      <div class="testimonial-card" data-delay="0">
+        <div class="testimonial-stars"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+        <p class="testimonial-text">"I built my entire agency website in 45 seconds. The AI understood exactly what I wanted and delivered a site that looks like it cost thousands."</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">SC</div>
+          <div><div class="testimonial-name">Sarah Chen</div><div class="testimonial-role">CEO, Luminary Agency</div></div>
+        </div>
+      </div>
+      <div class="testimonial-card" data-delay="100">
+        <div class="testimonial-stars"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+        <p class="testimonial-text">"Our conversion rate jumped 4x after switching from our hand-coded site. The AI-generated animations and layout are genuinely better than what we had."</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">MW</div>
+          <div><div class="testimonial-name">Marcus Webb</div><div class="testimonial-role">Head of Growth, Arcline</div></div>
+        </div>
+      </div>
+      <div class="testimonial-card" data-delay="200">
+        <div class="testimonial-stars"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+        <p class="testimonial-text">"They didn't just design our site — they fundamentally changed how we think about our online presence. The quality is indistinguishable from a top agency."</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">EV</div>
+          <div><div class="testimonial-name">Elena Voss</div><div class="testimonial-role">Brand Director, Helix</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ PRICING ═══════════════════════════ -->
+<section class="pricing" id="pricing">
+  <div class="pricing-inner">
+    <div class="pricing-header reveal">
+      <h2 class="pricing-title">Simple, transparent pricing</h2>
+      <p class="pricing-subtitle">Start free, scale when you're ready. No hidden fees.</p>
+    </div>
+    <div class="pricing-grid">
+      <div class="pricing-card reveal">
+        <div class="pricing-plan">Starter</div>
+        <div class="pricing-price">$0<span>/mo</span></div>
+        <p class="pricing-desc">Perfect for personal projects</p>
+        <ul class="pricing-features">
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>5 sites per month</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Basic templates</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Community support</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Vercel deploy</li>
+        </ul>
+        <button class="pricing-btn pricing-btn-outline">Get Started Free</button>
+      </div>
+      <div class="pricing-card popular reveal">
+        <div class="pricing-plan">Professional</div>
+        <div class="pricing-price">$29<span>/mo</span></div>
+        <p class="pricing-desc">For serious builders and teams</p>
+        <ul class="pricing-features">
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Unlimited sites</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>All premium templates</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Priority support</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Custom domains</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Analytics dashboard</li>
+        </ul>
+        <button class="pricing-btn pricing-btn-solid">Start Pro Trial</button>
+      </div>
+      <div class="pricing-card reveal">
+        <div class="pricing-plan">Enterprise</div>
+        <div class="pricing-price">$99<span>/mo</span></div>
+        <p class="pricing-desc">For agencies and large teams</p>
+        <ul class="pricing-features">
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Everything in Pro</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>White-label option</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>API access</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Dedicated account manager</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>SLA guarantee</li>
+        </ul>
+        <button class="pricing-btn pricing-btn-outline">Contact Sales</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ FAQ ═══════════════════════════ -->
+<section class="faq" id="faq">
+  <div class="faq-inner">
+    <div class="faq-header reveal">
+      <h2 class="faq-title">Frequently Asked</h2>
+    </div>
+    <div class="faq-items">
+      <div class="faq-item">
+        <button class="faq-trigger" onclick="toggleFaq(this)">How does the AI generate websites?<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="faq-answer"><p>Our AI analyzes your description, selects the optimal layout patterns, generates responsive HTML/CSS with animations, and applies industry-specific design best practices — all in under 30 seconds.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-trigger" onclick="toggleFaq(this)">Can I customize the generated code?<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="faq-answer"><p>Absolutely! Every generated site outputs clean, well-structured HTML, CSS, and JavaScript. You can edit directly in our visual editor or export the code and modify it in your preferred IDE.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-trigger" onclick="toggleFaq(this)">What about SEO and performance?<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="faq-answer"><p>Every site includes semantic HTML, meta tags, schema markup, optimized images, lazy loading, and scores 90+ on Lighthouse by default. Performance is a first-class priority.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-trigger" onclick="toggleFaq(this)">Do you support website cloning?<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="faq-answer"><p>Yes! Paste any URL and our AI will analyze the design, extract fonts, colors, layout patterns, and recreate a pixel-perfect clone with all animations and responsive behavior.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-trigger" onclick="toggleFaq(this)">Is there a free plan?<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="faq-answer"><p>Yes! Our Starter plan is completely free, allowing you to create up to 5 sites per month with access to basic templates and community support. No credit card required.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ CTA SECTION ═══════════════════════════ -->
+<section class="cta-section">
+  <div class="cta-glow"></div>
+  <div class="cta-section-inner reveal">
+    <h2 class="cta-section-title">Ready to build?</h2>
+    <p class="cta-section-subtitle">Start creating stunning websites today. No credit card required.</p>
+    <div class="cta-section-btns">
+      <a href="#" class="btn-primary" style="display:inline-flex">
+        <span class="btn-primary-text">Start Building Free</span>
+        <span class="btn-primary-arrow"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
+      </a>
+      <a href="#" class="btn-secondary">Book A Demo <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></a>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-copy">© 2026 AI Builder. All rights reserved.</div>
+    <div class="footer-links">
+      <a href="#">Privacy</a>
+      <a href="#">Terms</a>
+      <a href="#">Contact</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ═══════════════════ HLS VIDEO ═══════════════════ */
+(function(){
+  const video = document.getElementById('heroVideo');
+  const poster = document.getElementById('videoPoster');
+  const videoSrc = 'https://stream.mux.com/T6oQJQ02cQ6N01TR6iHwZkKFkbepS34dkkIc9iukgy400g.m3u8';
+  if(!video) return;
+  function showPoster(){poster.style.opacity='1'}
+  function hidePoster(){poster.style.opacity='0'}
+  if(Hls.isSupported()){
+    const hls = new Hls({enableWorker:true,lowLatencyMode:true});
+    hls.loadSource(videoSrc);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED,()=>{video.play().then(hidePoster).catch(e=>{console.log('Auto-play prevented:',e);showPoster()})});
+    hls.on(Hls.Events.ERROR,(e,data)=>{if(data.fatal)showPoster()});
+  } else if(video.canPlayType('application/vnd.apple.mpegurl')){
+    video.src=videoSrc;
+    video.addEventListener('loadedmetadata',()=>{video.play().then(hidePoster).catch(showPoster)});
+  } else {
+    showPoster();
+  }
+})();
+
+/* ═══════════════════ SCROLL REVEAL ═══════════════════ */
+(function(){
+  const observer = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){
+        const delay = entry.target.dataset.delay || 0;
+        setTimeout(()=>{entry.target.classList.add('visible')}, parseInt(delay));
+        observer.unobserve(entry.target);
+      }
+    });
+  },{threshold:0.1,rootMargin:'-50px'});
+  document.querySelectorAll('.reveal,.feature-card,.testimonial-card,.stat-item,.step-card').forEach(el=>observer.observe(el));
+})();
+
+/* ═══════════════════ FAQ TOGGLE ═══════════════════ */
+function toggleFaq(btn){
+  const item = btn.parentElement;
+  const isOpen = item.classList.contains('open');
+  document.querySelectorAll('.faq-item.open').forEach(i=>i.classList.remove('open'));
+  if(!isOpen) item.classList.add('open');
+}
+
+/* ═══════════════════ NAVBAR SCROLL ═══════════════════ */
+(function(){
+  const navbar = document.querySelector('.navbar');
+  let lastScroll = 0;
+  window.addEventListener('scroll',()=>{
+    const scrollY = window.scrollY;
+    if(scrollY > 50){
+      navbar.style.background='rgba(0,0,0,0.85)';
+      navbar.style.backdropFilter='blur(20px)';
+      navbar.style.webkitBackdropFilter='blur(20px)';
+    } else {
+      navbar.style.background='transparent';
+      navbar.style.backdropFilter='none';
+      navbar.style.webkitBackdropFilter='none';
+    }
+    lastScroll = scrollY;
+  });
+})();
+
+/* ═══════════════════ SMOOTH SCROLL ═══════════════════ */
+document.querySelectorAll('a[href^="#"]').forEach(anchor=>{
+  anchor.addEventListener('click',function(e){
+    e.preventDefault();
+    const target=document.querySelector(this.getAttribute('href'));
+    if(target)target.scrollIntoView({behavior:'smooth',block:'start'});
+  });
+});
+</script>
+</body>
+</html>

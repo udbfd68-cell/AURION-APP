@@ -1,9 +1,15 @@
 ﻿/**
  * Scrape API Route — Firecrawl v2 with basic fetch fallback
  * If Firecrawl fails or is not configured, falls back to a direct fetch.
+ *
+ * Enhanced with Claude Code patterns:
+ * - Parallel extraction: all 6 advanced extractors run concurrently
+ * - Smart retry with error classification for fetch operations
+ * - Error isolation: one extractor failure doesn't break the whole scrape
  */
 
 import { NextRequest } from 'next/server';
+import { executeParallel, withSmartRetry } from '@/lib/claude-code-engine';
 import {
   FirecrawlClient,
   cleanHtmlForClone,
@@ -18,51 +24,74 @@ import {
   detectCSSFramework,
   detectIconLibrary,
   detectAnimationLibraries,
+  extractInteractionModels,
+  extractLayeredAssets,
+  extractMultiStateContent,
+  extractScrollBehaviors,
+  extractComputedStylePatterns,
+  extractZIndexLayers,
+  extractPageTopology,
+  extractFontStack,
+  extractHoverTransitions,
+  extractResponsiveBreakpoints,
 } from '@/lib/firecrawl';
 
 export const runtime = 'nodejs';
 export const maxDuration = 45;
 
-/** Fallback: fetch HTML directly when Firecrawl is unavailable */
+/** Fallback: fetch HTML directly when Firecrawl is unavailable — with smart retry */
 async function basicFetch(url: string): Promise<string> {
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
+  return withSmartRetry(
+    async () => {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        signal: AbortSignal.timeout(15000),
+        redirect: 'follow',
+      });
+      if (!res.ok) throw new Error(`Fetch failed: HTTP ${res.status}`);
+      return res.text();
     },
-    signal: AbortSignal.timeout(15000),
-    redirect: 'follow',
-  });
-  if (!res.ok) throw new Error(`Fetch failed: HTTP ${res.status}`);
-  return res.text();
+    { maxAttempts: 3, baseDelay: 1000, maxDelay: 5000, jitterFactor: 0.3 },
+  );
 }
 
-/** Jina Reader: renders JS-heavy pages and returns full rendered HTML (free, no API key needed) */
+/** Jina Reader: renders JS-heavy pages — with smart retry */
 async function jinaFetch(url: string): Promise<string> {
-  // Request HTML format — gives us rendered DOM that the extraction pipeline can parse properly
-  // Wait for common SPA containers: React (#root, #__next), Vue (#app), sections, footer
-  const res = await fetch(`https://r.jina.ai/${url}`, {
-    headers: {
-      'Accept': 'text/html',
-      'X-Return-Format': 'html',
-      'X-Wait-For-Selector': 'main, section, footer, article, [class*=hero], [class*=feature], [class*=content], [role=main], #__next, #app, #root',
-      'X-Timeout': '25',
+  return withSmartRetry(
+    async () => {
+      const res = await fetch(`https://r.jina.ai/${url}`, {
+        headers: {
+          'Accept': 'text/html',
+          'X-Return-Format': 'html',
+          'X-Wait-For-Selector': 'main, section, footer, article, [class*=hero], [class*=feature], [class*=content], [role=main], #__next, #app, #root',
+          'X-Timeout': '25',
+        },
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) throw new Error(`Jina HTTP ${res.status}`);
+      return res.text();
     },
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!res.ok) throw new Error(`Jina HTTP ${res.status}`);
-  return res.text();
+    { maxAttempts: 2, baseDelay: 2000, maxDelay: 8000, jitterFactor: 0.3 },
+  );
 }
 
-/** Jina Reader in markdown mode: human-readable text extraction for SPAs */
+/** Jina Reader in markdown mode — with smart retry */
 async function jinaMarkdownFetch(url: string): Promise<string> {
-  const res = await fetch(`https://r.jina.ai/${url}`, {
-    headers: { 'Accept': 'text/plain' },
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) throw new Error(`Jina markdown HTTP ${res.status}`);
-  return res.text();
+  return withSmartRetry(
+    async () => {
+      const res = await fetch(`https://r.jina.ai/${url}`, {
+        headers: { 'Accept': 'text/plain' },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) throw new Error(`Jina markdown HTTP ${res.status}`);
+      return res.text();
+    },
+    { maxAttempts: 2, baseDelay: 1500, maxDelay: 6000, jitterFactor: 0.3 },
+  );
 }
 
 /** Count visible text chars in HTML (excluding scripts/styles/tags) */
@@ -88,6 +117,30 @@ function buildFallbackResponse(html: string, url: string) {
   const cssFramework = detectCSSFramework(html);
   const iconLibraries = detectIconLibrary(html);
   const animationLibraries = detectAnimationLibraries(html);
+
+  // ─── Claude Code pattern: Parallel extraction with error isolation ────
+  // Each extractor runs independently — one failure doesn't break others
+  let interactionModels = {} as ReturnType<typeof extractInteractionModels>;
+  let layeredAssets = {} as ReturnType<typeof extractLayeredAssets>;
+  let multiStateContent = {} as ReturnType<typeof extractMultiStateContent>;
+  let scrollBehaviors = {} as ReturnType<typeof extractScrollBehaviors>;
+  let computedPatterns = {} as ReturnType<typeof extractComputedStylePatterns>;
+  let zIndexLayers = {} as ReturnType<typeof extractZIndexLayers>;
+  let pageTopology = {} as ReturnType<typeof extractPageTopology>;
+  let fontStack = {} as ReturnType<typeof extractFontStack>;
+  let hoverTransitions = {} as ReturnType<typeof extractHoverTransitions>;
+  let responsiveBreakpoints = {} as ReturnType<typeof extractResponsiveBreakpoints>;
+  try { interactionModels = extractInteractionModels(html, styleBlocks); } catch { /* isolated */ }
+  try { layeredAssets = extractLayeredAssets(html); } catch { /* isolated */ }
+  try { multiStateContent = extractMultiStateContent(html); } catch { /* isolated */ }
+  try { scrollBehaviors = extractScrollBehaviors(html, styleBlocks); } catch { /* isolated */ }
+  try { computedPatterns = extractComputedStylePatterns(html, styleBlocks); } catch { /* isolated */ }
+  try { zIndexLayers = extractZIndexLayers(html, styleBlocks); } catch { /* isolated */ }
+  try { pageTopology = extractPageTopology(html); } catch { /* isolated */ }
+  try { fontStack = extractFontStack(html, styleBlocks); } catch { /* isolated */ }
+  try { hoverTransitions = extractHoverTransitions(styleBlocks); } catch { /* isolated */ }
+  try { responsiveBreakpoints = extractResponsiveBreakpoints(styleBlocks); } catch { /* isolated */ }
+
   return {
     html: cleaned.slice(0, 150000),
     rawHtml: html.slice(0, 200000),
@@ -105,6 +158,16 @@ function buildFallbackResponse(html: string, url: string) {
     iconLibraries,
     animationLibraries,
     colorFrequency: tokens.colorFrequency,
+    interactionModels,
+    layeredAssets,
+    multiStateContent,
+    scrollBehaviors,
+    computedPatterns,
+    zIndexLayers,
+    pageTopology,
+    fontStack,
+    hoverTransitions,
+    responsiveBreakpoints,
     fallback: true,
   };
 }
@@ -146,8 +209,13 @@ export async function POST(req: NextRequest) {
   }
   // Block internal/private IPs (comprehensive SSRF protection)
   const hostname = parsedUrl.hostname.replace(/^\[|\]$/g, '');
-  const normalizedHost = hostname.replace(/^0+(?=\d)/g, ''); // Strip leading zeros (e.g., 127.000.000.001)
+  // Strip leading zeros (e.g., 127.000.000.001) and normalize each octet
+  const normalizedHost = hostname.replace(/^0+(?=\d)/g, '');
+  // Block decimal IP (e.g., 2130706433 = 127.0.0.1) and hex IP (e.g., 0x7f000001)
+  const isDecimalIP = /^\d{8,}$/.test(hostname);
+  const isHexIP = /^0x[0-9a-f]+$/i.test(hostname);
   if (
+    isDecimalIP || isHexIP ||
     /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|0\.|0\.0\.0\.0|::1|fc00:|fe80:|fd)/.test(normalizedHost) ||
     hostname === '[::1]' || hostname === '0.0.0.0' ||
     /^(?:169\.254\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(normalizedHost)
@@ -353,6 +421,35 @@ export async function POST(req: NextRequest) {
       }
     } catch { /* continue with inline styles */ }
 
+    // ─── Claude Code pattern: Parallel advanced extraction with error isolation ────
+    const extractionTasks = [
+      { name: 'interactionModels', fn: () => extractInteractionModels(rawSource, enrichedStyleBlocks), critical: false },
+      { name: 'layeredAssets', fn: () => extractLayeredAssets(rawSource), critical: false },
+      { name: 'multiStateContent', fn: () => extractMultiStateContent(rawSource), critical: false },
+      { name: 'scrollBehaviors', fn: () => extractScrollBehaviors(rawSource, enrichedStyleBlocks), critical: false },
+      { name: 'computedPatterns', fn: () => extractComputedStylePatterns(rawSource, enrichedStyleBlocks), critical: false },
+      { name: 'zIndexLayers', fn: () => extractZIndexLayers(rawSource, enrichedStyleBlocks), critical: false },
+      { name: 'pageTopology', fn: () => extractPageTopology(rawSource), critical: false },
+      { name: 'fontStack', fn: () => extractFontStack(rawSource, enrichedStyleBlocks), critical: false },
+      { name: 'hoverTransitions', fn: () => extractHoverTransitions(enrichedStyleBlocks), critical: false },
+      { name: 'responsiveBreakpoints', fn: () => extractResponsiveBreakpoints(enrichedStyleBlocks), critical: false },
+    ];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const extractionResults = await executeParallel<any>(extractionTasks, 10);
+    const extractionMap = new Map(extractionResults.map(r => [r.name, r]));
+
+    const interactionModels = extractionMap.get('interactionModels')?.value ?? {};
+    const layeredAssets = extractionMap.get('layeredAssets')?.value ?? {};
+    const multiStateContent = extractionMap.get('multiStateContent')?.value ?? {};
+    const scrollBehaviors = extractionMap.get('scrollBehaviors')?.value ?? {};
+    const computedPatterns = extractionMap.get('computedPatterns')?.value ?? {};
+    const zIndexLayers = extractionMap.get('zIndexLayers')?.value ?? {};
+    const pageTopology = extractionMap.get('pageTopology')?.value ?? [];
+    const fontStack = extractionMap.get('fontStack')?.value ?? [];
+    const hoverTransitions = extractionMap.get('hoverTransitions')?.value ?? [];
+    const responsiveBreakpoints = extractionMap.get('responsiveBreakpoints')?.value ?? [];
+
     return new Response(JSON.stringify({
       html: cleaned.slice(0, 100000),
       rawHtml: (data.rawHtml || '').slice(0, 150000),
@@ -371,6 +468,16 @@ export async function POST(req: NextRequest) {
       iconLibraries,
       animationLibraries,
       colorFrequency: enrichedTokens.colorFrequency,
+      interactionModels,
+      layeredAssets,
+      multiStateContent,
+      scrollBehaviors,
+      computedPatterns,
+      zIndexLayers,
+      pageTopology,
+      fontStack,
+      hoverTransitions,
+      responsiveBreakpoints,
     }), {
       headers: { 'Content-Type': 'application/json' },
     });

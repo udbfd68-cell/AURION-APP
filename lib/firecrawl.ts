@@ -457,6 +457,35 @@ export function extractDesignTokens(html: string): {
     });
   }
 
+  // Resolve CSS var chains: --color-bg: var(--gray-900) → resolve to actual value
+  for (const [key, value] of Object.entries(cssVariables)) {
+    const varRef = value.match(/var\(\s*(--[\w-]+)\s*(?:,\s*([^)]+))?\)/);
+    if (varRef) {
+      const refKey = varRef[1];
+      const fallback = varRef[2]?.trim();
+      if (cssVariables[refKey]) {
+        cssVariables[key] = cssVariables[refKey];
+      } else if (fallback) {
+        cssVariables[key] = fallback;
+      }
+    }
+  }
+
+  // Extract colors from resolved CSS variables too
+  for (const value of Object.values(cssVariables)) {
+    const hexInVar = value.match(/#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/);
+    if (hexInVar) {
+      const lc = hexInVar[0].toLowerCase();
+      colors.add(lc);
+      colorFrequency.set(lc, (colorFrequency.get(lc) || 0) + 1);
+    }
+    const funcInVar = value.match(/(?:rgb|rgba|hsl|hsla|oklch)\([^)]+\)/i);
+    if (funcInVar) {
+      colors.add(funcInVar[0]);
+      colorFrequency.set(funcInVar[0], (colorFrequency.get(funcInVar[0]) || 0) + 1);
+    }
+  }
+
   // Extract gradients
   const gradientMatches = cssContent.match(/(?:linear|radial|conic)-gradient\([^)]+\)/gi);
   if (gradientMatches) gradientMatches.slice(0, 10).forEach(g => gradients.add(g));
@@ -803,11 +832,26 @@ export function extractStructuredContent(html: string): {
 
   // If no <section> tags found, try <div> with meaningful roles/classes
   if (sectionIdx === 0) {
-    const divRegex = /<div[^>]*(?:class|id|role)="[^"]*(?:hero|feature|pricing|testimonial|footer|cta|about|contact|faq|banner|showcase)[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
+    const divRegex = /<div[^>]*(?:class|id|role)="[^"]*(?:hero|feature|pricing|testimonial|footer|cta|about|contact|faq|banner|showcase|services|team|portfolio|gallery|stats|blog|news|partners|clients|benefits)[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
     let dMatch;
     while ((dMatch = divRegex.exec(mainContent)) !== null && sections.length < 25) {
-      const tag = dMatch[0].match(/(?:class|id|role)="[^"]*?(hero|feature|pricing|testimonial|cta|about|contact|faq|banner|showcase)/i)?.[1] || 'section';
+      const tag = dMatch[0].match(/(?:class|id|role)="[^"]*?(hero|feature|pricing|testimonial|cta|about|contact|faq|banner|showcase|services|team|portfolio|gallery|stats|blog|news|partners|clients|benefits)/i)?.[1] || 'section';
       parseSection(tag.toLowerCase(), dMatch[1]);
+    }
+
+    // Still nothing? Find large divs with headings (generic sections)
+    if (sections.length < 3) {
+      const genericDivRegex = /<div[^>]*>([\s\S]*?)<\/div>/gi;
+      let gdMatch;
+      while ((gdMatch = genericDivRegex.exec(mainContent)) !== null && sections.length < 20) {
+        const content = gdMatch[1];
+        // Only keep divs that have at least a heading AND some text (i.e., real content sections)
+        const hasHeading = /<h[1-4][^>]*>/i.test(content);
+        const textLen = content.replace(/<[^>]+>/g, '').trim().length;
+        if (hasHeading && textLen > 100) {
+          parseSection('section', content);
+        }
+      }
     }
   }
 
@@ -1094,4 +1138,748 @@ export async function fetchExternalCSS(html: string, baseUrl: string): Promise<s
     .map(r => r.value)
     .join('\n')
     .slice(0, 50000);
+}
+
+// ─── Helper: Detect interaction models per section ──────────────────────────
+// Identifies whether sections are scroll-driven, click-driven, time-driven etc.
+// Inspired by ai-website-cloner-template Phase 1 methodology
+
+export interface InteractionModel {
+  section: string;
+  model: 'static' | 'scroll-driven' | 'click-driven' | 'time-driven' | 'hover-driven' | 'hybrid';
+  triggers: string[];
+  details: string;
+}
+
+export function extractInteractionModels(html: string, css: string): InteractionModel[] {
+  const models: InteractionModel[] = [];
+  const combined = html + '\n' + css;
+
+  // Detect scroll-driven patterns
+  const scrollPatterns: string[] = [];
+  if (/scroll-snap-type/i.test(combined)) scrollPatterns.push('scroll-snap');
+  if (/IntersectionObserver/i.test(html)) scrollPatterns.push('IntersectionObserver');
+  if (/ScrollTrigger|gsap.*scroll/i.test(html)) scrollPatterns.push('GSAP ScrollTrigger');
+  if (/animation-timeline:\s*view\(\)|animation-timeline:\s*scroll\(\)/i.test(combined)) scrollPatterns.push('CSS scroll-driven animation');
+  if (/position:\s*sticky/i.test(combined)) scrollPatterns.push('sticky positioning');
+  if (/parallax|data-speed|data-rellax/i.test(combined)) scrollPatterns.push('parallax');
+  if (/locomotive-scroll|\.lenis|lenis/i.test(combined)) scrollPatterns.push('smooth scroll library');
+  if (/data-aos=/i.test(html)) scrollPatterns.push('AOS scroll animations');
+  if (/scrollreveal/i.test(html)) scrollPatterns.push('ScrollReveal');
+  if (/onscroll|addEventListener.*scroll|window\.scroll/i.test(html)) scrollPatterns.push('JS scroll listener');
+
+  if (scrollPatterns.length > 0) {
+    models.push({
+      section: 'page-level',
+      model: 'scroll-driven',
+      triggers: scrollPatterns,
+      details: `Page uses scroll-driven interactions: ${scrollPatterns.join(', ')}`,
+    });
+  }
+
+  // Detect click-driven interactive components
+  const clickPatterns: string[] = [];
+  if (/role="tablist"|data-tab|tab-content|\.tab-pane/i.test(html)) clickPatterns.push('tabs');
+  if (/accordion|data-accordion|collapsible/i.test(html)) clickPatterns.push('accordion');
+  if (/modal|dialog|data-modal/i.test(html)) clickPatterns.push('modal/dialog');
+  if (/dropdown|data-dropdown|popover/i.test(html)) clickPatterns.push('dropdown');
+  if (/carousel|swiper|slick|data-slide/i.test(html)) clickPatterns.push('carousel/slider');
+
+  if (clickPatterns.length > 0) {
+    models.push({
+      section: 'interactive-components',
+      model: 'click-driven',
+      triggers: clickPatterns,
+      details: `Click-driven components detected: ${clickPatterns.join(', ')}`,
+    });
+  }
+
+  // Detect time-driven animations
+  const timePatterns: string[] = [];
+  if (/setInterval|setTimeout.*animate/i.test(html)) timePatterns.push('JS timer animation');
+  if (/animation:\s*[^;]*\binfinite\b/i.test(combined)) timePatterns.push('infinite CSS animation');
+  if (/autoplay|data-autoplay/i.test(html)) timePatterns.push('autoplay carousel/video');
+  if (/typed\.js|typewriter/i.test(html)) timePatterns.push('typewriter effect');
+  if (/marquee|animation:.*scroll.*linear.*infinite/i.test(combined)) timePatterns.push('marquee/ticker');
+
+  if (timePatterns.length > 0) {
+    models.push({
+      section: 'auto-animated',
+      model: 'time-driven',
+      triggers: timePatterns,
+      details: `Time-driven animations: ${timePatterns.join(', ')}`,
+    });
+  }
+
+  // Detect hover-driven patterns
+  const hoverPatterns: string[] = [];
+  const hoverCount = (css.match(/:hover\s*\{/gi) || []).length;
+  if (hoverCount > 5) hoverPatterns.push(`${hoverCount} hover rules in CSS`);
+  if (/transform.*scale|:hover.*scale|hover.*transform/i.test(combined)) hoverPatterns.push('scale on hover');
+  if (/mousemove|mouseenter|mouseleave/i.test(html)) hoverPatterns.push('JS mouse tracking');
+  if (/tilt|magnetic|perspective.*rotate/i.test(combined)) hoverPatterns.push('3D tilt/magnetic effect');
+
+  if (hoverPatterns.length > 0) {
+    models.push({
+      section: 'hover-effects',
+      model: 'hover-driven',
+      triggers: hoverPatterns,
+      details: `Hover interactions: ${hoverPatterns.join(', ')}`,
+    });
+  }
+
+  return models;
+}
+
+// ─── Helper: Detect layered/stacked assets per container ────────────────────
+// Identifies sections where multiple images/backgrounds are layered (common in premium sites)
+
+export interface LayeredAsset {
+  container: string;
+  layers: Array<{ type: 'img' | 'background' | 'video' | 'svg' | 'overlay'; src: string; position?: string; zIndex?: string }>;
+}
+
+export function extractLayeredAssets(html: string): LayeredAsset[] {
+  const layered: LayeredAsset[] = [];
+
+  // Find containers that have multiple images/backgrounds
+  // Look for sections/divs with positioned children + multiple images
+  const sectionRegex = /<(?:section|div|figure|article)[^>]*(?:class|id)="([^"]*(?:hero|banner|showcase|feature|card|slide|cover|background|overlay|parallax)[^"]*)"[^>]*>([\s\S]*?)<\/(?:section|div|figure|article)>/gi;
+  let match;
+  while ((match = sectionRegex.exec(html)) !== null && layered.length < 20) {
+    const containerClass = match[1];
+    const inner = match[2];
+
+    const layers: LayeredAsset['layers'] = [];
+
+    // Count images inside
+    const imgRegex = /<img[^>]*src=["']([^"']+)["'][^>]*/gi;
+    let imgMatch;
+    while ((imgMatch = imgRegex.exec(inner)) !== null) {
+      const styleAttr = imgMatch[0].match(/style="([^"]*)"/)?.[1] || '';
+      layers.push({
+        type: 'img',
+        src: imgMatch[1],
+        position: /absolute|fixed/i.test(styleAttr) ? 'absolute' : 'static',
+      });
+    }
+
+    // Check for background images in inline styles
+    const bgRegex = /background(?:-image)?\s*:\s*url\(\s*["']?([^"')]+)["']?\s*\)/gi;
+    let bgMatch;
+    while ((bgMatch = bgRegex.exec(inner)) !== null) {
+      layers.push({ type: 'background', src: bgMatch[1] });
+    }
+
+    // Check for videos
+    if (/<video\b/i.test(inner)) {
+      const videoSrc = inner.match(/<video[^>]*src=["']([^"']+)["']/i)?.[1] ||
+                       inner.match(/<source[^>]*src=["']([^"']+)["']/i)?.[1];
+      if (videoSrc) layers.push({ type: 'video', src: videoSrc });
+    }
+
+    // Check for SVG overlays
+    const svgCount = (inner.match(/<svg\b/gi) || []).length;
+    if (svgCount > 0) layers.push({ type: 'svg', src: `${svgCount} inline SVGs` });
+
+    // Only report sections with multiple layers (the interesting ones)
+    if (layers.length >= 2) {
+      layered.push({ container: containerClass.slice(0, 80), layers });
+    }
+  }
+
+  return layered;
+}
+
+// ─── Helper: Detect multi-state content (tabs, accordions, carousels) ───────
+
+export interface MultiStateContent {
+  type: 'tabs' | 'accordion' | 'carousel' | 'toggle' | 'dropdown';
+  containerHint: string;
+  stateCount: number;
+  stateLabels: string[];
+  defaultState?: string;
+}
+
+export function extractMultiStateContent(html: string): MultiStateContent[] {
+  const states: MultiStateContent[] = [];
+
+  // Detect tab interfaces
+  const tabListRegex = /<(?:div|nav|ul)[^>]*(?:role="tablist"|class="[^"]*tab[^"]*")[^>]*>([\s\S]*?)<\/(?:div|nav|ul)>/gi;
+  let match;
+  while ((match = tabListRegex.exec(html)) !== null && states.length < 10) {
+    const inner = match[1];
+    const labels: string[] = [];
+    const btnRegex = /<(?:button|a|li)[^>]*>([\s\S]*?)<\/(?:button|a|li)>/gi;
+    let btnMatch;
+    while ((btnMatch = btnRegex.exec(inner)) !== null && labels.length < 12) {
+      const text = btnMatch[1].replace(/<[^>]+>/g, '').trim();
+      if (text.length > 0 && text.length < 50) labels.push(text);
+    }
+    if (labels.length >= 2) {
+      const activeMatch = match[0].match(/(?:active|selected|aria-selected="true")[^>]*>([\s\S]*?)</i);
+      states.push({
+        type: 'tabs',
+        containerHint: match[0].slice(0, 100).replace(/</, '').replace(/>.*/, ''),
+        stateCount: labels.length,
+        stateLabels: labels,
+        defaultState: activeMatch ? activeMatch[1].replace(/<[^>]+>/g, '').trim() : labels[0],
+      });
+    }
+  }
+
+  // Detect accordions
+  const accordionRegex = /<(?:div|section)[^>]*(?:class="[^"]*accordion[^"]*"|data-accordion)[^>]*>([\s\S]*?)<\/(?:div|section)>/gi;
+  while ((match = accordionRegex.exec(html)) !== null && states.length < 15) {
+    const inner = match[1];
+    const labels: string[] = [];
+    const triggerRegex = /<(?:button|summary|h[2-6])[^>]*>([\s\S]*?)<\/(?:button|summary|h[2-6])>/gi;
+    let trigMatch;
+    while ((trigMatch = triggerRegex.exec(inner)) !== null && labels.length < 20) {
+      const text = trigMatch[1].replace(/<[^>]+>/g, '').trim();
+      if (text.length > 2 && text.length < 200) labels.push(text);
+    }
+    if (labels.length >= 2) {
+      states.push({
+        type: 'accordion',
+        containerHint: 'accordion',
+        stateCount: labels.length,
+        stateLabels: labels,
+      });
+    }
+  }
+
+  // Detect carousels/sliders
+  const carouselRegex = /<(?:div|section)[^>]*class="[^"]*(?:carousel|swiper|slider|slick|glide|splide)[^"]*"[^>]*>/gi;
+  while ((match = carouselRegex.exec(html)) !== null && states.length < 20) {
+    // Count slides
+    const afterMatch = html.slice(match.index, match.index + 5000);
+    const slideCount = (afterMatch.match(/(?:swiper-slide|carousel-item|slide|splide__slide)/gi) || []).length;
+    if (slideCount >= 2) {
+      states.push({
+        type: 'carousel',
+        containerHint: match[0].match(/class="([^"]*)"/)?.[1]?.slice(0, 50) || 'carousel',
+        stateCount: slideCount,
+        stateLabels: Array.from({ length: Math.min(slideCount, 10) }, (_, i) => `Slide ${i + 1}`),
+      });
+    }
+  }
+
+  return states;
+}
+
+// ─── Helper: Extract scroll behaviors & animation patterns ──────────────────
+
+export interface ScrollBehavior {
+  type: string;
+  mechanism: string;
+  elements: string;
+}
+
+export function extractScrollBehaviors(html: string, css: string): ScrollBehavior[] {
+  const behaviors: ScrollBehavior[] = [];
+  const combined = html + '\n' + css;
+
+  // Sticky header
+  if (/(?:nav|header)[^}]*position:\s*(?:sticky|fixed)/i.test(css) || /<(?:nav|header)[^>]*style="[^"]*(?:position:\s*sticky|position:\s*fixed)/i.test(html)) {
+    behaviors.push({ type: 'sticky-header', mechanism: 'CSS sticky/fixed', elements: 'nav/header' });
+  }
+
+  // Scroll-snap sections
+  const snapMatch = css.match(/scroll-snap-type:\s*([^;]+)/i);
+  if (snapMatch) {
+    behaviors.push({ type: 'scroll-snap', mechanism: `scroll-snap-type: ${snapMatch[1].trim()}`, elements: 'page/section container' });
+  }
+
+  // Fade-in on scroll (IntersectionObserver or AOS)
+  if (/IntersectionObserver/i.test(html) || /data-aos=/i.test(html) || /\.fade-in|\.reveal|\.animate-on-scroll/i.test(combined)) {
+    const aosEffects = [...new Set((html.match(/data-aos="([^"]+)"/gi) || []).map(a => a.match(/data-aos="([^"]+)"/i)?.[1]).filter(Boolean))];
+    behaviors.push({
+      type: 'scroll-reveal',
+      mechanism: /data-aos=/i.test(html) ? `AOS library (effects: ${aosEffects.slice(0, 5).join(', ')})` : 'IntersectionObserver',
+      elements: 'sections/cards',
+    });
+  }
+
+  // Parallax effects
+  if (/parallax|data-speed|data-rellax|transform.*translateZ/i.test(combined)) {
+    behaviors.push({ type: 'parallax', mechanism: 'CSS/JS parallax', elements: 'background layers' });
+  }
+
+  // GSAP ScrollTrigger
+  if (/ScrollTrigger|gsap.*scroll/i.test(html)) {
+    const pinMatch = html.match(/pin:\s*true/g);
+    behaviors.push({
+      type: 'gsap-scroll',
+      mechanism: `GSAP ScrollTrigger${pinMatch ? ` (${pinMatch.length} pinned sections)` : ''}`,
+      elements: 'animated sections',
+    });
+  }
+
+  // CSS scroll-driven animations (modern)
+  if (/animation-timeline:\s*(?:view|scroll)\(\)/i.test(combined)) {
+    behaviors.push({ type: 'css-scroll-animation', mechanism: 'CSS animation-timeline: view()/scroll()', elements: 'elements with scroll-driven keyframes' });
+  }
+
+  // Smooth scroll library
+  if (/lenis/i.test(combined)) {
+    behaviors.push({ type: 'smooth-scroll', mechanism: 'Lenis', elements: 'page container' });
+  } else if (/locomotive-scroll/i.test(combined)) {
+    behaviors.push({ type: 'smooth-scroll', mechanism: 'Locomotive Scroll', elements: 'page container' });
+  } else if (/scroll-behavior:\s*smooth/i.test(combined)) {
+    behaviors.push({ type: 'smooth-scroll', mechanism: 'CSS scroll-behavior: smooth', elements: 'html/body' });
+  }
+
+  // Progress bar on scroll
+  if (/scroll.*progress|progress.*scroll|reading-progress/i.test(combined)) {
+    behaviors.push({ type: 'scroll-progress', mechanism: 'scroll progress indicator', elements: 'top bar/indicator' });
+  }
+
+  // Horizontal scroll gallery
+  if (/overflow-x:\s*(?:scroll|auto)|scroll-snap-type:\s*x/i.test(css)) {
+    behaviors.push({ type: 'horizontal-scroll', mechanism: 'horizontal scroll container', elements: 'gallery/cards container' });
+  }
+
+  // Counter/number animation on scroll
+  if (/countUp|counter.*animate|animateValue/i.test(html)) {
+    behaviors.push({ type: 'count-up', mechanism: 'number counter animation', elements: 'stats/metrics' });
+  }
+
+  return behaviors;
+}
+
+// ─── Helper: Extract computed-style-level CSS patterns from style blocks ────
+// Emulates getComputedStyle extraction by parsing CSS rules with granular detail
+
+export function extractComputedStylePatterns(html: string, css: string): Record<string, Record<string, string>> {
+  const patterns: Record<string, Record<string, string>> = {};
+  const cssContent = css || '';
+
+  // Comprehensive property list matching ai-website-cloner getComputedStyle extraction
+  const importantProps = [
+    'font-size', 'font-weight', 'font-family', 'line-height', 'letter-spacing', 'color',
+    'text-transform', 'text-decoration', 'text-align',
+    'background', 'background-color', 'background-image',
+    'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+    'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+    'display', 'flex-direction', 'justify-content', 'align-items', 'gap',
+    'grid-template-columns', 'grid-template-rows',
+    'border-radius', 'box-shadow', 'border', 'border-top', 'border-bottom',
+    'max-width', 'min-width', 'max-height', 'min-height', 'height', 'width',
+    'position', 'top', 'right', 'bottom', 'left', 'z-index',
+    'opacity', 'transform', 'transition', 'cursor',
+    'backdrop-filter', '-webkit-backdrop-filter', 'filter',
+    'overflow', 'overflow-x', 'overflow-y',
+    'object-fit', 'object-position', 'mix-blend-mode',
+    'white-space', 'text-overflow', '-webkit-line-clamp',
+  ];
+
+  // Target semantic element selectors that represent key components
+  const targetSelectors = [
+    // Navigation
+    { pattern: /(?:\.nav(?:bar|igation)?|header|\.header|nav)\s*\{([^}]+)\}/gi, name: 'navbar' },
+    // Hero
+    { pattern: /(?:\.hero|\.banner|\.jumbotron|\.splash|\.landing)\s*\{([^}]+)\}/gi, name: 'hero' },
+    // Buttons
+    { pattern: /(?:\.btn|\.button|\.cta|button(?:\[type|\.)|a\.btn)\s*\{([^}]+)\}/gi, name: 'button' },
+    // Button hover states (critical for clone fidelity)
+    { pattern: /(?:\.btn|\.button|\.cta|button):hover\s*\{([^}]+)\}/gi, name: 'button:hover' },
+    // Cards
+    { pattern: /\.card\s*\{([^}]+)\}/gi, name: 'card' },
+    { pattern: /\.card:hover\s*\{([^}]+)\}/gi, name: 'card:hover' },
+    // Footer
+    { pattern: /(?:\.footer|footer)\s*\{([^}]+)\}/gi, name: 'footer' },
+    // Headings
+    { pattern: /h1\s*\{([^}]+)\}/gi, name: 'h1' },
+    { pattern: /h2\s*\{([^}]+)\}/gi, name: 'h2' },
+    { pattern: /h3\s*\{([^}]+)\}/gi, name: 'h3' },
+    // Body
+    { pattern: /body\s*\{([^}]+)\}/gi, name: 'body' },
+    // Links
+    { pattern: /a\s*\{([^}]+)\}/gi, name: 'link' },
+    { pattern: /a:hover\s*\{([^}]+)\}/gi, name: 'link:hover' },
+    // Sections
+    { pattern: /(?:\.section|section)\s*\{([^}]+)\}/gi, name: 'section' },
+    // Inputs
+    { pattern: /(?:input|\.input|textarea)\s*\{([^}]+)\}/gi, name: 'input' },
+    // Badge/tag
+    { pattern: /(?:\.badge|\.tag|\.chip|\.pill)\s*\{([^}]+)\}/gi, name: 'badge' },
+    // Container
+    { pattern: /(?:\.container|\.wrapper|\.max-w)\s*\{([^}]+)\}/gi, name: 'container' },
+    // Features/pricing/testimonial sections
+    { pattern: /(?:\.feature|\.pricing|\.testimonial|\.review)\s*\{([^}]+)\}/gi, name: 'feature-card' },
+  ];
+
+  for (const { pattern, name } of targetSelectors) {
+    let match;
+    while ((match = pattern.exec(cssContent)) !== null) {
+      if (!match[1]) continue;
+      const props: Record<string, string> = {};
+      const decls = match[1].split(';');
+      for (const decl of decls) {
+        const colonIdx = decl.indexOf(':');
+        if (colonIdx === -1) continue;
+        const prop = decl.slice(0, colonIdx).trim().toLowerCase();
+        const val = decl.slice(colonIdx + 1).trim();
+        if (importantProps.includes(prop) && val && val !== 'inherit' && val !== 'initial' && val !== 'unset') {
+          props[prop] = val;
+        }
+      }
+      if (Object.keys(props).length > 0) {
+        patterns[name] = { ...patterns[name], ...props };
+      }
+    }
+  }
+
+  // Also extract from inline styles on key elements in HTML
+  const inlineTargets = [
+    { pattern: /<nav[^>]*style="([^"]+)"/gi, name: 'navbar' },
+    { pattern: /<header[^>]*style="([^"]+)"/gi, name: 'navbar' },
+    { pattern: /<footer[^>]*style="([^"]+)"/gi, name: 'footer' },
+    { pattern: /<main[^>]*style="([^"]+)"/gi, name: 'main' },
+    { pattern: /<section[^>]*style="([^"]+)"/gi, name: 'section' },
+  ];
+
+  for (const { pattern, name } of inlineTargets) {
+    let match;
+    while ((match = pattern.exec(html)) !== null) {
+      const props: Record<string, string> = {};
+      const decls = match[1].split(';');
+      for (const decl of decls) {
+        const colonIdx = decl.indexOf(':');
+        if (colonIdx === -1) continue;
+        const prop = decl.slice(0, colonIdx).trim().toLowerCase();
+        const val = decl.slice(colonIdx + 1).trim();
+        if (importantProps.includes(prop) && val) {
+          props[prop] = val;
+        }
+      }
+      if (Object.keys(props).length > 0) {
+        patterns[name] = { ...patterns[name], ...props };
+      }
+    }
+  }
+
+  return patterns;
+}
+
+// ─── Helper: Detect page composition layers (z-index stacking) ──────────────
+
+export function extractZIndexLayers(html: string, css: string): Array<{ element: string; zIndex: string; position: string }> {
+  const layers: Array<{ element: string; zIndex: string; position: string }> = [];
+  const combined = css || '';
+
+  // Extract z-index from CSS rules
+  const zRegex = /([.#][\w-]+(?:\s+[\w.#-]+)?)\s*\{[^}]*z-index:\s*(\d+)[^}]*position:\s*([\w]+)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = zRegex.exec(combined)) !== null && layers.length < 20) {
+    layers.push({ element: match[1], zIndex: match[2], position: match[3] });
+  }
+
+  // Also try reversed order (position before z-index)
+  const zRegex2 = /([.#][\w-]+(?:\s+[\w.#-]+)?)\s*\{[^}]*position:\s*([\w]+)[^}]*z-index:\s*(\d+)/gi;
+  while ((match = zRegex2.exec(combined)) !== null && layers.length < 30) {
+    if (!layers.find(l => l.element === match![1])) {
+      layers.push({ element: match![1], zIndex: match![3], position: match![2] });
+    }
+  }
+
+  // Sort by z-index descending
+  return layers.sort((a, b) => parseInt(b.zIndex) - parseInt(a.zIndex));
+}
+
+// ─── Page Topology Extractor ────────────────────────────────────────────────
+// Maps every distinct section of the page from top to bottom with its role,
+// interaction model, content summary, and dependencies.
+// Inspired by ai-website-cloner-template Phase 1: Page Topology.
+
+export interface PageTopologySection {
+  order: number;
+  tag: string;
+  role: string;
+  position: 'flow' | 'sticky' | 'fixed' | 'absolute';
+  interactionModel: 'static' | 'scroll-driven' | 'click-driven' | 'time-driven' | 'hybrid';
+  contentSummary: string;
+  hasImages: boolean;
+  hasVideo: boolean;
+  headingText?: string;
+}
+
+export function extractPageTopology(html: string): PageTopologySection[] {
+  const topology: PageTopologySection[] = [];
+
+  // Extract body content
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  const bodyHtml = bodyMatch ? bodyMatch[1] : html;
+
+  // Find top-level semantic sections
+  const sectionRegex = /<(nav|header|main|section|article|aside|footer|div)\b([^>]*)>([\s\S]*?)(?=<\/\1>)/gi;
+  let match;
+  let order = 0;
+  const seen = new Set<string>();
+
+  while ((match = sectionRegex.exec(bodyHtml)) !== null && topology.length < 30) {
+    const tag = match[1].toLowerCase();
+    const attrs = match[2];
+    const inner = match[3].slice(0, 5000); // cap inner content scan
+
+    // For divs, only include significant ones (with class/id hinting at a section)
+    if (tag === 'div') {
+      const cls = attrs.match(/class="([^"]*)"/i)?.[1] || '';
+      const id = attrs.match(/id="([^"]*)"/i)?.[1] || '';
+      const combined = cls + ' ' + id;
+      if (!/hero|banner|section|feature|pricing|testimonial|cta|contact|team|about|faq|partner|stat|metric|gallery|showcase|portfolio|blog|service|footer-area|content-area|main-area/i.test(combined)) {
+        continue;
+      }
+    }
+
+    // Deduplicate by first heading or class
+    const heading = inner.match(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i)?.[1]?.replace(/<[^>]*>/g, '').trim().slice(0, 80);
+    const sectionId = heading || (attrs.match(/(?:class|id)="([^"]*)"/i)?.[1] || '').slice(0, 60);
+    if (seen.has(sectionId) && sectionId) continue;
+    if (sectionId) seen.add(sectionId);
+
+    // Determine role
+    let role = tag;
+    const cls = (attrs.match(/class="([^"]*)"/i)?.[1] || '').toLowerCase();
+    const id = (attrs.match(/id="([^"]*)"/i)?.[1] || '').toLowerCase();
+    const hints = cls + ' ' + id;
+    if (/hero|banner|splash|landing|jumbotron/i.test(hints)) role = 'hero';
+    else if (/feature|benefit|service|solution/i.test(hints)) role = 'features';
+    else if (/pricing|plan/i.test(hints)) role = 'pricing';
+    else if (/testimonial|review|quote/i.test(hints)) role = 'testimonials';
+    else if (/cta|call-to-action|signup|subscribe/i.test(hints)) role = 'cta';
+    else if (/faq|question|accordion/i.test(hints)) role = 'faq';
+    else if (/team|people|about/i.test(hints)) role = 'about/team';
+    else if (/partner|logo|client|brand|trusted/i.test(hints)) role = 'logos/partners';
+    else if (/stat|metric|number|count/i.test(hints)) role = 'stats';
+    else if (/gallery|portfolio|showcase|case/i.test(hints)) role = 'gallery';
+    else if (/contact|form/i.test(hints)) role = 'contact';
+    else if (/blog|article|post/i.test(hints)) role = 'blog';
+    else if (tag === 'nav' || tag === 'header') role = 'navigation';
+    else if (tag === 'footer') role = 'footer';
+
+    // Determine position
+    let position: PageTopologySection['position'] = 'flow';
+    const style = attrs.match(/style="([^"]*)"/i)?.[1] || '';
+    if (/sticky/i.test(style) || /sticky/i.test(cls)) position = 'sticky';
+    else if (/fixed/i.test(style) || /fixed/i.test(cls)) position = 'fixed';
+
+    // Determine interaction model
+    let interactionModel: PageTopologySection['interactionModel'] = 'static';
+    if (/data-aos=|IntersectionObserver|scroll-snap|animation-timeline/i.test(inner)) interactionModel = 'scroll-driven';
+    else if (/role="tablist"|tab-content|accordion|carousel|swiper|data-slide/i.test(inner)) interactionModel = 'click-driven';
+    else if (/autoplay|setInterval|animation:.*infinite/i.test(inner)) interactionModel = 'time-driven';
+
+    // Content summary
+    const textLen = inner.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().length;
+    const imgCount = (inner.match(/<img\b/gi) || []).length;
+    const hasVideo = /<video\b/i.test(inner);
+    const btnCount = (inner.match(/<(?:button|a[^>]*class="[^"]*btn)/gi) || []).length;
+
+    order++;
+    topology.push({
+      order,
+      tag,
+      role,
+      position,
+      interactionModel,
+      contentSummary: `~${textLen} chars, ${imgCount} images, ${btnCount} buttons`,
+      hasImages: imgCount > 0,
+      hasVideo,
+      headingText: heading,
+    });
+  }
+
+  return topology;
+}
+
+// ─── Font Stack Extractor ───────────────────────────────────────────────────
+// Extracts comprehensive font info: Google Fonts imports, local fonts, weights, styles.
+// Inspired by ai-website-cloner-template Phase 1 Global Extraction.
+
+export interface FontInfo {
+  family: string;
+  source: 'google-fonts' | 'local' | 'cdn' | 'system';
+  weights: string[];
+  importUrl?: string;
+}
+
+export function extractFontStack(html: string, css: string): FontInfo[] {
+  const fonts: Map<string, FontInfo> = new Map();
+
+  // 1. Extract Google Fonts from <link> tags
+  const gfLinkRegex = /<link[^>]*href=["'](https:\/\/fonts\.googleapis\.com\/css2?\?[^"']+)["']/gi;
+  let match;
+  while ((match = gfLinkRegex.exec(html)) !== null) {
+    const importUrl = match[1];
+    const familyMatches = importUrl.match(/family=([^&]+)/gi) || [];
+    for (const fm of familyMatches) {
+      const decoded = decodeURIComponent(fm.replace('family=', ''));
+      // Handle "Inter:wght@400;500;600;700" format
+      const parts = decoded.split(':');
+      const family = parts[0].replace(/\+/g, ' ');
+      const weights: string[] = [];
+      if (parts[1]) {
+        const weightPart = parts[1].replace(/^[a-z,]+@/, '');
+        weights.push(...weightPart.split(';').filter(w => /^\d+$/.test(w)));
+      }
+      fonts.set(family, {
+        family,
+        source: 'google-fonts',
+        weights: weights.length > 0 ? weights : ['400'],
+        importUrl,
+      });
+    }
+  }
+
+  // 2. Extract @import url('...fonts.googleapis.com...') from CSS
+  const cssImportRegex = /@import\s+url\(\s*['"]?(https:\/\/fonts\.googleapis\.com\/[^'")\s]+)['"]?\s*\)/gi;
+  const combined = css + '\n' + html;
+  while ((match = cssImportRegex.exec(combined)) !== null) {
+    const importUrl = match[1];
+    const familyMatches = importUrl.match(/family=([^&]+)/gi) || [];
+    for (const fm of familyMatches) {
+      const decoded = decodeURIComponent(fm.replace('family=', ''));
+      const parts = decoded.split(':');
+      const family = parts[0].replace(/\+/g, ' ');
+      if (!fonts.has(family)) {
+        const weights: string[] = [];
+        if (parts[1]) {
+          weights.push(...parts[1].replace(/^[a-z,]+@/, '').split(';').filter(w => /^\d+$/.test(w)));
+        }
+        fonts.set(family, { family, source: 'google-fonts', weights: weights.length > 0 ? weights : ['400'], importUrl });
+      }
+    }
+  }
+
+  // 3. Extract @font-face declarations (local/CDN fonts)
+  const fontFaceRegex = /@font-face\s*\{[^}]*font-family:\s*["']?([^"';]+)["']?[^}]*\}/gi;
+  while ((match = fontFaceRegex.exec(combined)) !== null) {
+    const family = match[0].match(/font-family:\s*["']?([^"';]+)/i)?.[1]?.trim();
+    if (family && !fonts.has(family)) {
+      const weight = match[0].match(/font-weight:\s*(\d+)/i)?.[1];
+      const src = match[0].match(/src:\s*url\(\s*["']?([^"')]+)/i)?.[1];
+      const source = src && /https?:\/\//.test(src) ? 'cdn' : 'local';
+      fonts.set(family, { family, source: source as FontInfo['source'], weights: weight ? [weight] : ['400'] });
+    } else if (family && fonts.has(family)) {
+      // Add additional weight if new
+      const weight = match[0].match(/font-weight:\s*(\d+)/i)?.[1];
+      if (weight) {
+        const existing = fonts.get(family)!;
+        if (!existing.weights.includes(weight)) existing.weights.push(weight);
+      }
+    }
+  }
+
+  // 4. Extract font-family from CSS rules (detect system fonts being used)
+  const ffRegex = /font-family:\s*["']?([^"';}{]+?)["']?\s*(?:,|;|\})/gi;
+  while ((match = ffRegex.exec(combined)) !== null && fonts.size < 20) {
+    const family = match[1].trim();
+    // Skip generic families and system stacks
+    if (/^(serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-sans-serif|ui-monospace|inherit|initial|unset|-apple-system|BlinkMacSystemFont|Segoe UI|Roboto|Helvetica|Arial|Liberation)$/i.test(family)) continue;
+    if (!fonts.has(family)) {
+      fonts.set(family, { family, source: 'system', weights: ['400'] });
+    }
+  }
+
+  return [...fonts.values()];
+}
+
+// ─── Hover State Extractor ──────────────────────────────────────────────────
+// Extracts hover transitions: before → after CSS property diffs.
+// Inspired by ai-website-cloner-template Phase 3 multi-state extraction.
+
+export interface HoverTransition {
+  selector: string;
+  changes: Array<{ property: string; before: string; after: string }>;
+  transition?: string;
+}
+
+export function extractHoverTransitions(css: string): HoverTransition[] {
+  const transitions: HoverTransition[] = [];
+
+  // Find all :hover rules
+  const hoverRegex = /([.#\w][\w\s.#>:+-]*?):hover\s*\{([^}]+)\}/gi;
+  let match;
+  while ((match = hoverRegex.exec(css)) !== null && transitions.length < 30) {
+    const selector = match[1].trim();
+    const hoverProps = match[2];
+    const changes: HoverTransition['changes'] = [];
+
+    // Parse hover properties
+    const decls = hoverProps.split(';');
+    for (const decl of decls) {
+      const colonIdx = decl.indexOf(':');
+      if (colonIdx === -1) continue;
+      const prop = decl.slice(0, colonIdx).trim().toLowerCase();
+      const val = decl.slice(colonIdx + 1).trim();
+      if (val && prop && !/^$|^\/\*/.test(prop)) {
+        changes.push({ property: prop, before: '(default)', after: val });
+      }
+    }
+
+    // Try to find the base selector's transition property
+    const baseRegex = new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]+)\\}', 'i');
+    const baseMatch = css.match(baseRegex);
+    let transition: string | undefined;
+    if (baseMatch) {
+      const transMatch = baseMatch[1].match(/transition:\s*([^;]+)/i);
+      if (transMatch) transition = transMatch[1].trim();
+      
+      // Fill in "before" values from base selector
+      for (const change of changes) {
+        const propRegex = new RegExp(change.property.replace(/-/g, '\\-') + '\\s*:\\s*([^;]+)', 'i');
+        const beforeMatch = baseMatch[1].match(propRegex);
+        if (beforeMatch) change.before = beforeMatch[1].trim();
+      }
+    }
+
+    if (changes.length > 0) {
+      transitions.push({ selector, changes, transition });
+    }
+  }
+
+  return transitions;
+}
+
+// ─── Responsive Breakpoint Extractor ────────────────────────────────────────
+// Detects actual breakpoints used in the site's CSS.
+
+export interface ResponsiveBreakpoint {
+  query: string;
+  width: number;
+  type: 'min-width' | 'max-width';
+  affectedSelectors: string[];
+}
+
+export function extractResponsiveBreakpoints(css: string): ResponsiveBreakpoint[] {
+  const breakpoints: Map<string, ResponsiveBreakpoint> = new Map();
+
+  const mediaRegex = /@media[^{]*\(\s*(min-width|max-width)\s*:\s*(\d+(?:\.\d+)?)(px|em|rem)\s*\)\s*\{/gi;
+  let match;
+  while ((match = mediaRegex.exec(css)) !== null) {
+    const type = match[1].toLowerCase() as ResponsiveBreakpoint['type'];
+    let width = parseFloat(match[2]);
+    const unit = match[3];
+    // Convert em/rem to px (approximate)
+    if (unit === 'em' || unit === 'rem') width = width * 16;
+    width = Math.round(width);
+
+    const key = `${type}:${width}`;
+    if (!breakpoints.has(key)) {
+      // Extract selectors within this media query block
+      const afterQuery = css.slice(match.index + match[0].length, match.index + match[0].length + 2000);
+      const selectors: string[] = [];
+      const selectorRegex = /([.#\w][\w\s.#>:,+-]*?)\s*\{/g;
+      let selMatch;
+      while ((selMatch = selectorRegex.exec(afterQuery)) !== null && selectors.length < 10) {
+        const sel = selMatch[1].trim();
+        if (sel && !sel.startsWith('@')) selectors.push(sel.slice(0, 40));
+      }
+      breakpoints.set(key, { query: `@media (${type}: ${width}px)`, width, type, affectedSelectors: selectors });
+    }
+  }
+
+  return [...breakpoints.values()].sort((a, b) => a.width - b.width);
 }

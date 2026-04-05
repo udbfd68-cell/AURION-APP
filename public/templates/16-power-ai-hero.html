@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Power — AI Infrastructure</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
+  body{font-family:'Inter',sans-serif;background:hsl(260,87%,3%);color:#fff;overflow-x:hidden}
+
+  .navbar{position:fixed;top:0;left:0;width:100%;z-index:100;padding:16px 24px;transition:all 0.5s}
+  @media(min-width:1024px){.navbar{padding:16px 80px}}
+  .navbar.scrolled{background:hsla(260,87%,3%,0.9);backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,0.04)}
+  .nav-inner{max-width:1400px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+  .nav-logo{font-weight:900;font-size:22px;color:#fff;text-decoration:none;letter-spacing:-0.03em}
+  .nav-links{display:none;align-items:center;gap:28px}
+  @media(min-width:1024px){.nav-links{display:flex}}
+  .nav-links a{font-size:14px;color:rgba(255,255,255,0.4);text-decoration:none;transition:color 0.3s}
+  .nav-links a:hover{color:#fff}
+  .nav-cta{padding:10px 24px;border-radius:99px;background:#fff;color:hsl(260,87%,3%);font-size:14px;font-weight:700;border:none;cursor:pointer;transition:all 0.3s}
+  .nav-cta:hover{transform:scale(1.03)}
+
+  .hero{position:relative;min-height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden;text-align:center}
+  .hero-video-bg{position:absolute;inset:0;z-index:0}
+  .hero-video-bg video{width:100%;height:100%;object-fit:cover;opacity:0}
+  .hero-overlay{position:absolute;inset:0;background:radial-gradient(ellipse at center,hsla(260,87%,3%,0.3),hsla(260,87%,3%,0.95));z-index:1}
+  .hero-content{position:relative;z-index:2;padding:0 24px;max-width:1000px}
+  .hero-headline{font-size:80px;font-weight:900;line-height:0.95;letter-spacing:-0.04em;color:#fff;margin-bottom:24px;opacity:0;animation:fadeUp 0.6s 0.1s ease forwards}
+  @media(min-width:768px){.hero-headline{font-size:140px}}
+  @media(min-width:1200px){.hero-headline{font-size:220px}}
+  .gradient-ai{background:linear-gradient(135deg,#a78bfa,#818cf8,#6366f1,#4f46e5);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .hero-subtitle{font-size:18px;font-weight:300;color:rgba(255,255,255,0.35);max-width:480px;margin:0 auto 40px;line-height:1.7;opacity:0;animation:fadeUp 0.6s 0.3s ease forwards}
+  .hero-buttons{display:flex;justify-content:center;gap:16px;flex-wrap:wrap;opacity:0;animation:fadeUp 0.6s 0.4s ease forwards}
+  .btn-white{padding:14px 32px;border-radius:99px;background:#fff;color:hsl(260,87%,3%);font-size:15px;font-weight:700;border:none;cursor:pointer;transition:all 0.3s}
+  .btn-white:hover{transform:scale(1.03)}
+  .btn-ghost{padding:14px 32px;border-radius:99px;background:transparent;border:1px solid rgba(255,255,255,0.08);color:#fff;font-size:15px;font-weight:500;cursor:pointer;transition:all 0.3s}
+  .btn-ghost:hover{background:rgba(255,255,255,0.03);border-color:rgba(255,255,255,0.15)}
+
+  /* Logo Marquee with Liquid Glass */
+  .logos-section{padding:60px 0;border-top:1px solid rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.04);overflow:hidden;position:relative}
+  .logos-glass{position:absolute;inset:0;background:rgba(255,255,255,0.01);backdrop-filter:blur(2px)}
+  .logos-track{display:flex;animation:marquee 25s linear infinite;width:max-content;position:relative;z-index:1}
+  .logos-item{flex-shrink:0;padding:0 40px;display:flex;align-items:center}
+  .logos-item span{font-size:18px;font-weight:600;color:rgba(255,255,255,0.08);letter-spacing:0.02em;transition:color 0.3s;white-space:nowrap}
+  .logos-item:hover span{color:rgba(255,255,255,0.2)}
+  @keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+  /* Features */
+  .features{padding:120px 24px}
+  .features-inner{max-width:1200px;margin:0 auto}
+  .section-title{font-size:48px;font-weight:800;color:#fff;letter-spacing:-0.02em;text-align:center;margin-bottom:16px}
+  .section-desc{font-size:18px;font-weight:300;color:rgba(255,255,255,0.35);text-align:center;max-width:480px;margin:0 auto 64px}
+  .features-grid{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:768px){.features-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(min-width:1024px){.features-grid{grid-template-columns:repeat(3,1fr)}}
+  .f-card{padding:36px 28px;border-radius:20px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .f-card.visible{opacity:1;transform:translateY(0)}
+  .f-card:hover{border-color:rgba(167,139,250,0.2);transform:translateY(-4px)}
+  .f-card h3{font-size:18px;font-weight:600;color:#fff;margin-bottom:8px}
+  .f-card p{font-size:14px;font-weight:300;color:rgba(255,255,255,0.35);line-height:1.6}
+
+  /* Stats */
+  .stats{padding:80px 24px;border-top:1px solid rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.04)}
+  .stats-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);gap:40px}
+  @media(min-width:768px){.stats-inner{grid-template-columns:repeat(4,1fr)}}
+  .stat{text-align:center;opacity:0;transform:translateY(20px)}
+  .stat.visible{opacity:1;transform:translateY(0);transition:all 0.6s}
+  .stat-num{font-size:48px;font-weight:900;color:#fff}
+  .stat-lbl{font-size:14px;font-weight:300;color:rgba(255,255,255,0.25);margin-top:4px}
+
+  .cta{padding:120px 24px;text-align:center;position:relative;overflow:hidden}
+  .cta-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:600px;height:400px;background:linear-gradient(135deg,rgba(167,139,250,0.08),rgba(99,102,241,0.04));filter:blur(100px);border-radius:50%}
+  .cta-inner{position:relative;z-index:1;max-width:640px;margin:0 auto}
+  .cta-title{font-size:56px;font-weight:800;color:#fff;letter-spacing:-0.02em;margin-bottom:16px}
+  .cta-sub{font-size:18px;font-weight:300;color:rgba(255,255,255,0.35);margin-bottom:40px}
+
+  .footer{padding:40px 24px;border-top:1px solid rgba(255,255,255,0.04)}
+  .footer-inner{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px}
+  @media(min-width:768px){.footer-inner{flex-direction:row;justify-content:space-between}}
+  .footer-copy{font-size:13px;color:rgba(255,255,255,0.15)}
+  .footer-links{display:flex;gap:24px}
+  .footer-links a{font-size:13px;color:rgba(255,255,255,0.15);text-decoration:none}
+  .footer-links a:hover{color:rgba(167,139,250,0.5)}
+
+  @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+
+<nav class="navbar" id="navbar"><div class="nav-inner"><a href="#" class="nav-logo">Power</a><div class="nav-links"><a href="#">Platform</a><a href="#">Solutions</a><a href="#">Pricing</a><a href="#">Research</a></div><button class="nav-cta">Get Access</button></div></nav>
+
+<section class="hero">
+  <div class="hero-video-bg"><video id="heroVideo" autoplay muted loop playsinline><source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_065045_c44942da-c64b-4cb2-a1c8-2ed1e429f637.mp4" type="video/mp4"></video></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <h1 class="hero-headline"><span class="gradient-ai">AI</span></h1>
+    <p class="hero-subtitle">Next-generation AI infrastructure. Train, deploy, and scale models with enterprise-grade reliability.</p>
+    <div class="hero-buttons"><button class="btn-white">Start Building</button><button class="btn-ghost">Read Docs</button></div>
+  </div>
+</section>
+
+<!-- Video fade loop -->
+<script>
+(function(){
+  const v=document.getElementById('heroVideo');
+  if(!v)return;
+  let fadingIn=true;
+  v.style.transition='opacity 2s';
+  v.addEventListener('canplay',()=>{v.style.opacity='0.3';fadingIn=true});
+  setInterval(()=>{if(fadingIn){v.style.opacity='0.3';fadingIn=false}else{v.style.opacity='0';fadingIn=true}},4000);
+})();
+</script>
+
+<!-- Logo Marquee -->
+<section class="logos-section">
+  <div class="logos-glass"></div>
+  <div class="logos-track">
+    <div class="logos-item"><span>OpenAI</span></div>
+    <div class="logos-item"><span>Anthropic</span></div>
+    <div class="logos-item"><span>Meta AI</span></div>
+    <div class="logos-item"><span>Google DeepMind</span></div>
+    <div class="logos-item"><span>Mistral</span></div>
+    <div class="logos-item"><span>Cohere</span></div>
+    <div class="logos-item"><span>Stability AI</span></div>
+    <div class="logos-item"><span>Hugging Face</span></div>
+    <div class="logos-item"><span>OpenAI</span></div>
+    <div class="logos-item"><span>Anthropic</span></div>
+    <div class="logos-item"><span>Meta AI</span></div>
+    <div class="logos-item"><span>Google DeepMind</span></div>
+    <div class="logos-item"><span>Mistral</span></div>
+    <div class="logos-item"><span>Cohere</span></div>
+    <div class="logos-item"><span>Stability AI</span></div>
+    <div class="logos-item"><span>Hugging Face</span></div>
+  </div>
+</section>
+
+<section class="features">
+  <div class="features-inner">
+    <h2 class="section-title">AI infrastructure, simplified</h2>
+    <p class="section-desc">Everything you need to build, train, and deploy AI at scale.</p>
+    <div class="features-grid">
+      <div class="f-card" data-delay="0"><h3>GPU Clusters</h3><p>On-demand access to H100 and B200 clusters. Scale from 1 to 10,000 GPUs in minutes.</p></div>
+      <div class="f-card" data-delay="80"><h3>Model Training</h3><p>Distributed training with automatic sharding, checkpointing, and fault recovery.</p></div>
+      <div class="f-card" data-delay="160"><h3>Inference API</h3><p>Sub-100ms latency model serving with auto-scaling and global edge deployment.</p></div>
+      <div class="f-card" data-delay="240"><h3>Fine-Tuning</h3><p>LoRA, QLoRA, and full fine-tuning with custom datasets. RLHF support built-in.</p></div>
+      <div class="f-card" data-delay="320"><h3>Model Registry</h3><p>Version, track, and manage models. Automatic A/B testing and canary deployments.</p></div>
+      <div class="f-card" data-delay="400"><h3>Observability</h3><p>End-to-end monitoring: latency, throughput, accuracy drift, and cost tracking.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="stats">
+  <div class="stats-inner">
+    <div class="stat" data-delay="0"><div class="stat-num">100K+</div><div class="stat-lbl">GPUs Managed</div></div>
+    <div class="stat" data-delay="100"><div class="stat-num">50ms</div><div class="stat-lbl">Avg. Inference</div></div>
+    <div class="stat" data-delay="200"><div class="stat-num">99.99%</div><div class="stat-lbl">Uptime SLA</div></div>
+    <div class="stat" data-delay="300"><div class="stat-num">$2B+</div><div class="stat-lbl">Compute Served</div></div>
+  </div>
+</section>
+
+<section class="cta"><div class="cta-glow"></div><div class="cta-inner"><h2 class="cta-title">Build with Power</h2><p class="cta-sub">Start training models today. Free tier includes 100 GPU hours.</p><div style="display:flex;justify-content:center;gap:16px"><button class="btn-white">Get Started</button><button class="btn-ghost">Talk to Sales</button></div></div></section>
+
+<footer class="footer"><div class="footer-inner"><div class="footer-copy">© 2026 Power Inc.</div><div class="footer-links"><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Security</a></div></div></footer>
+
+<script>
+window.addEventListener('scroll',()=>{document.getElementById('navbar').classList.toggle('scrolled',window.scrollY>80)});
+(function(){const io=new IntersectionObserver(e=>{e.forEach(en=>{if(en.isIntersecting){const d=en.target.dataset.delay||0;setTimeout(()=>en.target.classList.add('visible'),parseInt(d));io.unobserve(en.target)}})},{threshold:0.1,rootMargin:'-50px'});document.querySelectorAll('.f-card,.stat').forEach(el=>io.observe(el))})();
+</script>
+</body>
+</html>

@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Liquid Glass Agency — Digital Innovation Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Barlow:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+  body{font-family:'Barlow',sans-serif;background:#0a0a0a;color:#fff;overflow-x:hidden}
+
+  /* ═══════════════════ LIQUID GLASS MIXIN ═══════════════════ */
+  .liquid-glass{background:linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.01));backdrop-filter:blur(30px) saturate(1.2);-webkit-backdrop-filter:blur(30px) saturate(1.2);border:1px solid rgba(255,255,255,0.06);box-shadow:inset 0 1px 0 rgba(255,255,255,0.04),0 20px 60px rgba(0,0,0,0.3)}
+
+  /* ═══════════════════ NAVBAR ═══════════════════ */
+  .navbar{position:fixed;top:0;left:0;width:100%;z-index:100;padding:16px 24px;transition:all 0.5s}
+  @media(min-width:1024px){.navbar{padding:16px 80px}}
+  .navbar.scrolled{background:rgba(10,10,10,0.8);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,0.04)}
+  .navbar-inner{max-width:1400px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+  .navbar-logo{font-family:'Instrument Serif',serif;font-size:24px;color:#fff;text-decoration:none}
+  .navbar-links{display:none;align-items:center;gap:32px}
+  @media(min-width:1024px){.navbar-links{display:flex}}
+  .navbar-links a{font-family:'Barlow',sans-serif;font-size:14px;font-weight:400;color:rgba(255,255,255,0.6);text-decoration:none;transition:color 0.3s;letter-spacing:0.02em}
+  .navbar-links a:hover{color:#fff}
+  .navbar-cta{display:inline-flex;align-items:center;gap:8px;padding:10px 24px;border-radius:99px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#fff;font-family:'Barlow',sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.3s}
+  .navbar-cta:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.25)}
+  .mobile-toggle{display:flex;flex-direction:column;gap:5px;background:none;border:none;cursor:pointer;padding:4px}
+  @media(min-width:1024px){.mobile-toggle{display:none}}
+  .mobile-toggle span{display:block;width:24px;height:2px;background:#fff;transition:all 0.3s}
+
+  /* ═══════════════════ HERO ═══════════════════ */
+  .hero{position:relative;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
+  .hero-video-bg{position:absolute;inset:0;z-index:0}
+  .hero-video-bg video{width:100%;height:100%;object-fit:cover;opacity:0.3}
+  .hero-overlay{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(10,10,10,0.4) 0%,rgba(10,10,10,0.8) 100%);z-index:1}
+  .hero-content{position:relative;z-index:2;text-align:center;padding:0 24px;max-width:1000px}
+  
+  .hero-eyebrow{display:inline-flex;align-items:center;gap:8px;padding:8px 20px;border-radius:99px;font-family:'Barlow',sans-serif;font-size:12px;font-weight:600;letter-spacing:0.15em;text-transform:uppercase;color:rgba(255,255,255,0.5);margin-bottom:40px;opacity:0;animation:heroFadeUp 0.8s 0.2s ease forwards}
+  .hero-eyebrow .liquid-glass{padding:8px 20px;border-radius:99px}
+  
+  .hero-headline{font-family:'Instrument Serif',serif;font-size:48px;line-height:1.05;color:#fff;margin-bottom:32px;opacity:0;animation:heroFadeUp 0.8s 0.4s ease forwards}
+  @media(min-width:768px){.hero-headline{font-size:80px}}
+  @media(min-width:1200px){.hero-headline{font-size:100px}}
+  .hero-headline em{font-style:italic;opacity:0.8}
+  
+  .blur-text{display:inline-block}
+  .blur-text .word{display:inline-block;opacity:0;filter:blur(8px);animation:wordReveal 0.6s ease forwards}
+  
+  .hero-subtitle{font-family:'Barlow',sans-serif;font-size:18px;font-weight:300;color:rgba(255,255,255,0.5);max-width:600px;margin:0 auto 48px;line-height:1.7;opacity:0;animation:heroFadeUp 0.8s 0.6s ease forwards}
+  
+  .hero-buttons{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:16px;opacity:0;animation:heroFadeUp 0.8s 0.8s ease forwards}
+  .btn-primary{padding:14px 32px;border-radius:99px;background:#fff;color:#0a0a0a;font-family:'Barlow',sans-serif;font-size:15px;font-weight:600;border:none;cursor:pointer;transition:all 0.3s}
+  .btn-primary:hover{transform:scale(1.03);box-shadow:0 0 30px rgba(255,255,255,0.15)}
+  .btn-outline{padding:14px 32px;border-radius:99px;background:transparent;border:1px solid rgba(255,255,255,0.15);color:#fff;font-family:'Barlow',sans-serif;font-size:15px;font-weight:500;cursor:pointer;transition:all 0.3s}
+  .btn-outline:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.25)}
+
+  .hero-scroll{position:absolute;bottom:40px;left:50%;transform:translateX(-50%);z-index:2;display:flex;flex-direction:column;align-items:center;gap:8px;opacity:0;animation:heroFadeUp 0.8s 1s ease forwards}
+  .hero-scroll span{font-family:'Barlow',sans-serif;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.3)}
+  .scroll-line{width:1px;height:40px;background:linear-gradient(to bottom,rgba(255,255,255,0.3),transparent);animation:scrollPulse 2s infinite}
+
+  /* ═══════════════════ PARTNERS ═══════════════════ */
+  .partners{padding:100px 24px;border-bottom:1px solid rgba(255,255,255,0.04)}
+  .partners-inner{max-width:1200px;margin:0 auto;text-align:center}
+  .partners-label{font-family:'Barlow',sans-serif;font-size:12px;letter-spacing:0.2em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:40px}
+  .partners-row{display:flex;align-items:center;justify-content:center;gap:60px;flex-wrap:wrap}
+  .partners-row span{font-family:'Barlow',sans-serif;font-size:20px;font-weight:500;color:rgba(255,255,255,0.15);letter-spacing:0.05em;transition:color 0.3s}
+  .partners-row span:hover{color:rgba(255,255,255,0.4)}
+
+  /* ═══════════════════ FEATURES CHESS ═══════════════════ */
+  .features{padding:120px 24px}
+  .features-inner{max-width:1200px;margin:0 auto}
+  .features-header{margin-bottom:80px}
+  .features-eyebrow{font-family:'Barlow',sans-serif;font-size:12px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:16px}
+  .features-title{font-family:'Instrument Serif',serif;font-size:48px;color:#fff;margin-bottom:16px}
+  @media(min-width:768px){.features-title{font-size:64px}}
+  .features-subtitle{font-family:'Barlow',sans-serif;font-size:18px;font-weight:300;color:rgba(255,255,255,0.4);max-width:500px}
+
+  .feature-row{display:grid;grid-template-columns:1fr;gap:24px;margin-bottom:24px}
+  @media(min-width:768px){.feature-row{grid-template-columns:1fr 1fr}}
+  .feature-row.reverse .feature-visual{order:-1}
+
+  .feature-text{padding:48px 40px;border-radius:24px;display:flex;flex-direction:column;justify-content:center;opacity:0;transform:translateY(30px)}
+  .feature-text.visible{opacity:1;transform:translateY(0);transition:all 0.6s}
+  .feature-text h3{font-family:'Instrument Serif',serif;font-size:32px;color:#fff;margin-bottom:16px}
+  .feature-text p{font-family:'Barlow',sans-serif;font-size:16px;font-weight:300;line-height:1.7;color:rgba(255,255,255,0.5)}
+
+  .feature-visual{border-radius:24px;min-height:300px;overflow:hidden;display:flex;align-items:center;justify-content:center;opacity:0;transform:translateY(30px)}
+  .feature-visual.visible{opacity:1;transform:translateY(0);transition:all 0.6s 0.1s}
+  .feature-visual-placeholder{width:100%;height:100%;min-height:300px;background:linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04);border-radius:24px;display:flex;align-items:center;justify-content:center}
+  .feature-visual-placeholder svg{width:48px;height:48px;stroke:rgba(255,255,255,0.1);fill:none;stroke-width:1}
+
+  /* ═══════════════════ 4-COL GRID ═══════════════════ */
+  .services{padding:120px 24px}
+  .services-inner{max-width:1200px;margin:0 auto}
+  .services-header{text-align:center;margin-bottom:80px}
+  .services-title{font-family:'Instrument Serif',serif;font-size:48px;color:#fff;margin-bottom:16px}
+  .services-subtitle{font-family:'Barlow',sans-serif;font-size:18px;color:rgba(255,255,255,0.4)}
+  .services-grid{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:640px){.services-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(min-width:1024px){.services-grid{grid-template-columns:repeat(4,1fr)}}
+  .service-card{padding:36px 28px;border-radius:20px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .service-card.visible{opacity:1;transform:translateY(0)}
+  .service-card:hover{border-color:rgba(255,255,255,0.1);transform:translateY(-4px);background:rgba(255,255,255,0.04)}
+  .service-number{font-family:'Barlow',sans-serif;font-size:48px;font-weight:800;color:rgba(255,255,255,0.04);margin-bottom:16px}
+  .service-card h3{font-family:'Barlow',sans-serif;font-size:18px;font-weight:600;color:#fff;margin-bottom:8px}
+  .service-card p{font-family:'Barlow',sans-serif;font-size:14px;font-weight:300;color:rgba(255,255,255,0.4);line-height:1.6}
+
+  /* ═══════════════════ STATS ═══════════════════ */
+  .stats{padding:100px 24px;border-top:1px solid rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.04)}
+  .stats-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);gap:48px}
+  @media(min-width:768px){.stats-inner{grid-template-columns:repeat(4,1fr)}}
+  .stat-item{text-align:center;opacity:0;transform:translateY(20px)}
+  .stat-item.visible{opacity:1;transform:translateY(0);transition:all 0.6s}
+  .stat-number{font-family:'Instrument Serif',serif;font-size:56px;color:#fff}
+  .stat-label{font-family:'Barlow',sans-serif;font-size:14px;font-weight:300;color:rgba(255,255,255,0.3);margin-top:8px}
+
+  /* ═══════════════════ TESTIMONIALS ═══════════════════ */
+  .testimonials{padding:120px 24px}
+  .testimonials-inner{max-width:1200px;margin:0 auto}
+  .testimonials-header{text-align:center;margin-bottom:64px}
+  .testimonials-title{font-family:'Instrument Serif',serif;font-size:48px;color:#fff}
+  .testimonials-grid{display:grid;grid-template-columns:1fr;gap:24px}
+  @media(min-width:768px){.testimonials-grid{grid-template-columns:repeat(3,1fr)}}
+  .testimonial-card{padding:40px 32px;border-radius:24px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .testimonial-card.visible{opacity:1;transform:translateY(0)}
+  .testimonial-card:hover{border-color:rgba(255,255,255,0.1)}
+  .testimonial-quote{font-family:'Barlow',sans-serif;font-size:16px;font-weight:300;line-height:1.7;color:rgba(255,255,255,0.6);font-style:italic;margin-bottom:24px}
+  .testimonial-author{display:flex;align-items:center;gap:12px}
+  .testimonial-avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#333,#555);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff}
+  .testimonial-name{font-family:'Barlow',sans-serif;font-size:14px;font-weight:600;color:#fff}
+  .testimonial-role{font-family:'Barlow',sans-serif;font-size:13px;font-weight:300;color:rgba(255,255,255,0.3)}
+
+  /* ═══════════════════ CTA ═══════════════════ */
+  .cta-section{padding:120px 24px;text-align:center;position:relative;overflow:hidden}
+  .cta-bg{position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(255,255,255,0.02) 0%,transparent 70%)}
+  .cta-inner{position:relative;z-index:1;max-width:700px;margin:0 auto}
+  .cta-title{font-family:'Instrument Serif',serif;font-size:48px;color:#fff;margin-bottom:16px}
+  @media(min-width:768px){.cta-title{font-size:72px}}
+  .cta-subtitle{font-family:'Barlow',sans-serif;font-size:18px;font-weight:300;color:rgba(255,255,255,0.4);margin-bottom:48px}
+
+  /* ═══════════════════ FOOTER ═══════════════════ */
+  .footer{padding:60px 24px 30px;border-top:1px solid rgba(255,255,255,0.04)}
+  .footer-inner{max-width:1200px;margin:0 auto}
+  .footer-top{display:grid;grid-template-columns:1fr;gap:40px;margin-bottom:48px}
+  @media(min-width:768px){.footer-top{grid-template-columns:2fr 1fr 1fr 1fr}}
+  .footer-brand{max-width:300px}
+  .footer-brand-name{font-family:'Instrument Serif',serif;font-size:24px;color:#fff;margin-bottom:12px}
+  .footer-brand-desc{font-family:'Barlow',sans-serif;font-size:14px;font-weight:300;color:rgba(255,255,255,0.3);line-height:1.6}
+  .footer-col h4{font-family:'Barlow',sans-serif;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.5);margin-bottom:16px}
+  .footer-col a{display:block;font-family:'Barlow',sans-serif;font-size:14px;font-weight:300;color:rgba(255,255,255,0.3);text-decoration:none;padding:4px 0;transition:color 0.3s}
+  .footer-col a:hover{color:rgba(255,255,255,0.6)}
+  .footer-bottom{padding-top:24px;border-top:1px solid rgba(255,255,255,0.04);display:flex;flex-direction:column;align-items:center;gap:12px}
+  @media(min-width:768px){.footer-bottom{flex-direction:row;justify-content:space-between}}
+  .footer-copy{font-family:'Barlow',sans-serif;font-size:13px;color:rgba(255,255,255,0.2)}
+
+  /* ═══════════════════ ANIMATIONS ═══════════════════ */
+  @keyframes heroFadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes wordReveal{to{opacity:1;filter:blur(0)}}
+  @keyframes scrollPulse{0%,100%{opacity:0.3}50%{opacity:1}}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════ NAVBAR ═══════════════════ -->
+<nav class="navbar" id="navbar">
+  <div class="navbar-inner">
+    <a href="#" class="navbar-logo">Liquid Glass</a>
+    <div class="navbar-links">
+      <a href="#">Work</a>
+      <a href="#">Services</a>
+      <a href="#">About</a>
+      <a href="#">Journal</a>
+      <a href="#">Contact</a>
+    </div>
+    <button class="navbar-cta">Start a project</button>
+    <button class="mobile-toggle"><span></span><span></span><span></span></button>
+  </div>
+</nav>
+
+<!-- ═══════════════════ HERO ═══════════════════ -->
+<section class="hero">
+  <div class="hero-video-bg">
+    <video id="heroVideo" autoplay muted loop playsinline></video>
+  </div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="hero-eyebrow">
+      <span class="liquid-glass">Digital Innovation Studio</span>
+    </div>
+    <h1 class="hero-headline">
+      We craft digital<br>experiences that <em>inspire</em>
+    </h1>
+    <p class="hero-subtitle">Award-winning design studio specializing in brand identity, web experiences, and digital products that push creative boundaries.</p>
+    <div class="hero-buttons">
+      <button class="btn-primary">View Our Work</button>
+      <button class="btn-outline">Get In Touch</button>
+    </div>
+  </div>
+  <div class="hero-scroll">
+    <span>Scroll</span>
+    <div class="scroll-line"></div>
+  </div>
+</section>
+
+<!-- ═══════════════════ PARTNERS ═══════════════════ -->
+<section class="partners">
+  <div class="partners-inner">
+    <p class="partners-label">Trusted by industry leaders</p>
+    <div class="partners-row">
+      <span>Apple</span><span>Google</span><span>Nike</span><span>Tesla</span><span>Spotify</span><span>Airbnb</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ FEATURES CHESS LAYOUT ═══════════════════ -->
+<section class="features" id="features">
+  <div class="features-inner">
+    <div class="features-header">
+      <div class="features-eyebrow">Our Approach</div>
+      <h2 class="features-title">Design with purpose</h2>
+      <p class="features-subtitle">Every pixel serves a purpose. Every interaction tells a story.</p>
+    </div>
+
+    <div class="feature-row">
+      <div class="feature-text liquid-glass" style="border-radius:24px">
+        <h3>Strategic Design Thinking</h3>
+        <p>We start with research and strategy, not pixels. Understanding your audience, goals, and market position drives every design decision we make.</p>
+      </div>
+      <div class="feature-visual">
+        <div class="feature-visual-placeholder">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="feature-row reverse">
+      <div class="feature-text liquid-glass" style="border-radius:24px">
+        <h3>Motion & Interaction</h3>
+        <p>Subtle animations and micro-interactions bring interfaces to life. We craft experiences that feel natural, responsive, and delightful at every touchpoint.</p>
+      </div>
+      <div class="feature-visual">
+        <div class="feature-visual-placeholder">
+          <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="feature-row">
+      <div class="feature-text liquid-glass" style="border-radius:24px">
+        <h3>Scalable Systems</h3>
+        <p>We build comprehensive design systems that scale with your brand. Consistent, maintainable, and ready for growth across all platforms.</p>
+      </div>
+      <div class="feature-visual">
+        <div class="feature-visual-placeholder">
+          <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ 4-COL SERVICES GRID ═══════════════════ -->
+<section class="services" id="services">
+  <div class="services-inner">
+    <div class="services-header reveal">
+      <h2 class="services-title">What we do</h2>
+      <p class="services-subtitle">Full-stack creative services, from strategy to launch.</p>
+    </div>
+    <div class="services-grid">
+      <div class="service-card" data-delay="0">
+        <div class="service-number">01</div>
+        <h3>Brand Identity</h3>
+        <p>Logo design, brand guidelines, visual systems, and strategic positioning.</p>
+      </div>
+      <div class="service-card" data-delay="100">
+        <div class="service-number">02</div>
+        <h3>Web Design</h3>
+        <p>Responsive websites, landing pages, and e-commerce experiences.</p>
+      </div>
+      <div class="service-card" data-delay="200">
+        <div class="service-number">03</div>
+        <h3>Product Design</h3>
+        <p>UX/UI design, prototyping, user research, and design systems.</p>
+      </div>
+      <div class="service-card" data-delay="300">
+        <div class="service-number">04</div>
+        <h3>Development</h3>
+        <p>Frontend engineering, CMS integration, and performance optimization.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ STATS ═══════════════════ -->
+<section class="stats">
+  <div class="stats-inner">
+    <div class="stat-item" data-delay="0"><div class="stat-number">150+</div><div class="stat-label">Projects Delivered</div></div>
+    <div class="stat-item" data-delay="100"><div class="stat-number">12</div><div class="stat-label">Industry Awards</div></div>
+    <div class="stat-item" data-delay="200"><div class="stat-number">8+</div><div class="stat-label">Years Experience</div></div>
+    <div class="stat-item" data-delay="300"><div class="stat-number">98%</div><div class="stat-label">Client Retention</div></div>
+  </div>
+</section>
+
+<!-- ═══════════════════ TESTIMONIALS ═══════════════════ -->
+<section class="testimonials">
+  <div class="testimonials-inner">
+    <div class="testimonials-header reveal">
+      <h2 class="testimonials-title">Client stories</h2>
+    </div>
+    <div class="testimonials-grid">
+      <div class="testimonial-card" data-delay="0">
+        <p class="testimonial-quote">"They didn't just design a website — they crafted an entire digital identity that perfectly captures our brand essence. Absolutely transformative work."</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">SR</div>
+          <div><div class="testimonial-name">Sarah Richards</div><div class="testimonial-role">CEO, Luminary</div></div>
+        </div>
+      </div>
+      <div class="testimonial-card" data-delay="100">
+        <p class="testimonial-quote">"The attention to detail is unmatched. Every micro-interaction, every animation, every component feels intentional and polished beyond belief."</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">DK</div>
+          <div><div class="testimonial-name">David Kim</div><div class="testimonial-role">Head of Design, Arc</div></div>
+        </div>
+      </div>
+      <div class="testimonial-card" data-delay="200">
+        <p class="testimonial-quote">"From concept to launch in 6 weeks. The team's ability to move fast without sacrificing quality is remarkable. Our conversion rate doubled."</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">EM</div>
+          <div><div class="testimonial-name">Elena Martinez</div><div class="testimonial-role">Founder, Verte</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ CTA ═══════════════════ -->
+<section class="cta-section">
+  <div class="cta-bg"></div>
+  <div class="cta-inner reveal">
+    <h2 class="cta-title">Let's create<br>something <em style="font-family:'Instrument Serif',serif;font-style:italic">exceptional</em></h2>
+    <p class="cta-subtitle">Ready to elevate your digital presence? Let's talk about your next project.</p>
+    <div class="hero-buttons" style="justify-content:center;opacity:1;animation:none">
+      <button class="btn-primary">Start a Project</button>
+      <button class="btn-outline">View Case Studies</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ FOOTER ═══════════════════ -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <div class="footer-brand-name">Liquid Glass</div>
+        <p class="footer-brand-desc">Award-winning digital design studio crafting exceptional brand experiences and web products since 2018.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Work</h4>
+        <a href="#">Case Studies</a><a href="#">Portfolio</a><a href="#">Clients</a>
+      </div>
+      <div class="footer-col">
+        <h4>Studio</h4>
+        <a href="#">About</a><a href="#">Team</a><a href="#">Careers</a>
+      </div>
+      <div class="footer-col">
+        <h4>Connect</h4>
+        <a href="#">Twitter</a><a href="#">Dribbble</a><a href="#">LinkedIn</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="footer-copy">© 2026 Liquid Glass Studio. All rights reserved.</div>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* HLS Video */
+(function(){
+  const video = document.getElementById('heroVideo');
+  const src = 'https://stream.mux.com/s8pMcOvMQXc4GD6AX4e1o01xFogFxipmuKltNfSYza0200.m3u8';
+  if(video.canPlayType('application/vnd.apple.mpegurl')){
+    video.src = src;
+  } else if(Hls.isSupported()){
+    const hls = new Hls();
+    hls.loadSource(src);
+    hls.attachMedia(video);
+  }
+})();
+
+/* Navbar scroll */
+window.addEventListener('scroll',()=>{
+  document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 80);
+});
+
+/* Scroll Reveal */
+(function(){
+  const observer = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){
+        const delay = entry.target.dataset.delay || 0;
+        setTimeout(()=>{entry.target.classList.add('visible')}, parseInt(delay));
+        observer.unobserve(entry.target);
+      }
+    });
+  },{threshold:0.1,rootMargin:'-50px'});
+  document.querySelectorAll('.reveal,.feature-text,.feature-visual,.service-card,.testimonial-card,.stat-item').forEach(el=>observer.observe(el));
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SkyElite — Private Aviation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
+  body{font-family:'Inter',sans-serif;background:#f8f8f8;color:#1a1a1a;overflow-x:hidden}
+
+  .navbar{position:fixed;top:0;left:0;width:100%;z-index:100;padding:16px 24px;background:rgba(248,248,248,0.9);backdrop-filter:blur(20px);border-bottom:1px solid rgba(0,0,0,0.04);transition:all 0.5s}
+  @media(min-width:1024px){.navbar{padding:16px 80px}}
+  .nav-inner{max-width:1400px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+  .nav-logo{font-weight:700;font-size:20px;color:#1a1a1a;text-decoration:none;letter-spacing:-0.02em}
+  .nav-links{display:none;align-items:center;gap:28px}
+  @media(min-width:1024px){.nav-links{display:flex}}
+  .nav-links a{font-size:14px;color:rgba(0,0,0,0.4);text-decoration:none;transition:color 0.3s}
+  .nav-links a:hover{color:#1a1a1a}
+  .nav-right{display:flex;align-items:center;gap:12px}
+  .nav-cta{padding:10px 24px;border-radius:99px;background:#1a1a1a;color:#fff;font-size:14px;font-weight:600;border:none;cursor:pointer;transition:all 0.3s}
+  .nav-cta:hover{transform:scale(1.03)}
+
+  /* Hamburger mobile */
+  .hamburger{display:flex;flex-direction:column;gap:4px;cursor:pointer;padding:8px}
+  @media(min-width:1024px){.hamburger{display:none}}
+  .hamburger span{width:20px;height:1.5px;background:#1a1a1a;display:block;transition:all 0.3s}
+
+  /* Hero */
+  .hero{position:relative;min-height:100vh;display:flex;align-items:flex-end;overflow:hidden}
+  .hero-video{position:absolute;inset:0;z-index:0}
+  .hero-video video{width:100%;height:100%;object-fit:cover}
+  .hero-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(248,248,248,1) 0%,rgba(248,248,248,0.7) 30%,rgba(248,248,248,0.1) 60%,transparent 100%);z-index:1}
+  .hero-content{position:relative;z-index:2;width:100%;max-width:1400px;margin:0 auto;padding:0 24px 80px}
+  @media(min-width:1024px){.hero-content{padding:0 80px 80px}}
+  .hero-headline{font-size:48px;font-weight:800;line-height:1.05;letter-spacing:-0.03em;color:#1a1a1a}
+  @media(min-width:768px){.hero-headline{font-size:72px}}
+  @media(min-width:1200px){.hero-headline{font-size:96px}}
+  .hero-subtitle{font-size:18px;font-weight:300;color:rgba(0,0,0,0.4);max-width:480px;margin-top:16px;line-height:1.7}
+
+  /* Services */
+  .services{padding:120px 24px}
+  .services-inner{max-width:1200px;margin:0 auto}
+  .section-label{font-size:12px;text-transform:uppercase;letter-spacing:0.15em;color:rgba(0,0,0,0.2);margin-bottom:12px}
+  .section-title{font-size:40px;font-weight:800;color:#1a1a1a;letter-spacing:-0.02em;margin-bottom:48px}
+  @media(min-width:768px){.section-title{font-size:48px}}
+  .services-grid{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:768px){.services-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(min-width:1024px){.services-grid{grid-template-columns:repeat(3,1fr)}}
+  .s-card{padding:36px 28px;border-radius:20px;border:1px solid rgba(0,0,0,0.04);background:#fff;transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .s-card.visible{opacity:1;transform:translateY(0)}
+  .s-card:hover{border-color:rgba(0,0,0,0.08);transform:translateY(-4px);box-shadow:0 20px 60px rgba(0,0,0,0.04)}
+  .s-num{font-size:48px;font-weight:800;color:rgba(0,0,0,0.04);margin-bottom:16px}
+  .s-card h3{font-size:18px;font-weight:600;color:#1a1a1a;margin-bottom:8px}
+  .s-card p{font-size:14px;font-weight:300;color:rgba(0,0,0,0.4);line-height:1.6}
+
+  /* Stats */
+  .stats{padding:80px 24px;background:#fff;border-top:1px solid rgba(0,0,0,0.04);border-bottom:1px solid rgba(0,0,0,0.04)}
+  .stats-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);gap:40px}
+  @media(min-width:768px){.stats-inner{grid-template-columns:repeat(4,1fr)}}
+  .stat{text-align:center;opacity:0;transform:translateY(20px)}
+  .stat.visible{opacity:1;transform:translateY(0);transition:all 0.6s}
+  .stat-num{font-size:48px;font-weight:800;color:#1a1a1a}
+  .stat-lbl{font-size:14px;font-weight:300;color:rgba(0,0,0,0.3);margin-top:4px}
+
+  /* Fleet */
+  .fleet{padding:120px 24px}
+  .fleet-inner{max-width:1200px;margin:0 auto}
+  .fleet-grid{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:768px){.fleet-grid{grid-template-columns:repeat(3,1fr)}}
+  .fleet-card{border-radius:20px;border:1px solid rgba(0,0,0,0.04);background:#fff;overflow:hidden;transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .fleet-card.visible{opacity:1;transform:translateY(0)}
+  .fleet-card:hover{transform:translateY(-4px);box-shadow:0 20px 60px rgba(0,0,0,0.04)}
+  .fleet-img{height:200px;background:linear-gradient(135deg,rgba(0,0,0,0.02),rgba(0,0,0,0.005))}
+  .fleet-info{padding:24px}
+  .fleet-name{font-size:20px;font-weight:700;color:#1a1a1a;margin-bottom:8px}
+  .fleet-specs{display:flex;gap:16px;flex-wrap:wrap}
+  .fleet-spec{font-size:13px;color:rgba(0,0,0,0.35)}
+
+  /* Testimonials */
+  .testimonials{padding:120px 24px;background:#fff;border-top:1px solid rgba(0,0,0,0.04)}
+  .testimonials-inner{max-width:1200px;margin:0 auto}
+  .t-grid{display:grid;grid-template-columns:1fr;gap:24px}
+  @media(min-width:768px){.t-grid{grid-template-columns:repeat(2,1fr)}}
+  .t-card{padding:32px;border-radius:20px;border:1px solid rgba(0,0,0,0.04);background:#f8f8f8;opacity:0;transform:translateY(20px);transition:all 0.6s}
+  .t-card.visible{opacity:1;transform:translateY(0)}
+  .t-text{font-size:16px;font-weight:300;color:rgba(0,0,0,0.5);line-height:1.7;font-style:italic;margin-bottom:20px}
+  .t-author-name{font-size:14px;font-weight:600;color:#1a1a1a}
+  .t-author-role{font-size:13px;color:rgba(0,0,0,0.3)}
+
+  /* CTA */
+  .cta{padding:120px 24px;text-align:center}
+  .cta-inner{max-width:640px;margin:0 auto}
+  .cta-title{font-size:48px;font-weight:800;color:#1a1a1a;letter-spacing:-0.02em;margin-bottom:16px}
+  @media(min-width:768px){.cta-title{font-size:56px}}
+  .cta-sub{font-size:18px;font-weight:300;color:rgba(0,0,0,0.4);margin-bottom:40px}
+
+  /* Footer */
+  .footer{padding:40px 24px;border-top:1px solid rgba(0,0,0,0.04)}
+  .footer-inner{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px}
+  @media(min-width:768px){.footer-inner{flex-direction:row;justify-content:space-between}}
+  .footer-copy{font-size:13px;color:rgba(0,0,0,0.2)}
+  .footer-links{display:flex;gap:24px}
+  .footer-links a{font-size:13px;color:rgba(0,0,0,0.2);text-decoration:none}
+  .footer-links a:hover{color:rgba(0,0,0,0.5)}
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">SkyElite</a>
+    <div class="nav-links"><a href="#">Fleet</a><a href="#">Services</a><a href="#">Membership</a><a href="#">About</a></div>
+    <div class="nav-right">
+      <button class="nav-cta">Book a Flight</button>
+      <div class="hamburger"><span></span><span></span><span></span></div>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="hero-video"><video autoplay muted loop playsinline><source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_091828_e240eb17-39f5-4cbc-935e-7d0e6ca6dfb4.mp4" type="video/mp4"></video></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <h1 class="hero-headline">Fly beyond<br>first class</h1>
+    <p class="hero-subtitle">Private aviation redefined. On-demand access to the world's finest fleet, tailored to your schedule.</p>
+  </div>
+</section>
+
+<section class="services">
+  <div class="services-inner">
+    <div class="section-label">Services</div>
+    <h2 class="section-title">What we offer</h2>
+    <div class="services-grid">
+      <div class="s-card" data-delay="0"><div class="s-num">01</div><h3>On-Demand Charter</h3><p>Fly anywhere, anytime. Average 4-hour notice to departure with guaranteed availability.</p></div>
+      <div class="s-card" data-delay="80"><div class="s-num">02</div><h3>Membership Program</h3><p>Fixed hourly rates, priority scheduling, and dedicated aircraft placement for frequent flyers.</p></div>
+      <div class="s-card" data-delay="160"><div class="s-num">03</div><h3>Jet Card</h3><p>Pre-purchase flight hours at locked-in rates with no fuel surcharges or hidden fees.</p></div>
+      <div class="s-card" data-delay="240"><div class="s-num">04</div><h3>Aircraft Management</h3><p>Full-service management for jet owners including maintenance, crew, and charter revenue.</p></div>
+      <div class="s-card" data-delay="320"><div class="s-num">05</div><h3>Group Charter</h3><p>Large cabin and VIP airliner charter for corporate retreats, events, and team travel.</p></div>
+      <div class="s-card" data-delay="400"><div class="s-num">06</div><h3>Concierge</h3><p>End-to-end travel management: ground transport, hotels, dining, and itinerary planning.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="stats">
+  <div class="stats-inner">
+    <div class="stat" data-delay="0"><div class="stat-num">120+</div><div class="stat-lbl">Aircraft Fleet</div></div>
+    <div class="stat" data-delay="100"><div class="stat-num">5,000+</div><div class="stat-lbl">Flight Hours/Year</div></div>
+    <div class="stat" data-delay="200"><div class="stat-num">300+</div><div class="stat-lbl">Destinations</div></div>
+    <div class="stat" data-delay="300"><div class="stat-num">99.8%</div><div class="stat-lbl">On-Time Departure</div></div>
+  </div>
+</section>
+
+<section class="fleet">
+  <div class="fleet-inner">
+    <div class="section-label">Our Fleet</div>
+    <h2 class="section-title">Aircraft categories</h2>
+    <div class="fleet-grid">
+      <div class="fleet-card" data-delay="0"><div class="fleet-img"></div><div class="fleet-info"><div class="fleet-name">Light Jet</div><div class="fleet-specs"><span class="fleet-spec">6 Seats</span><span class="fleet-spec">2,000 nm</span><span class="fleet-spec">460 kts</span></div></div></div>
+      <div class="fleet-card" data-delay="100"><div class="fleet-img"></div><div class="fleet-info"><div class="fleet-name">Super-Midsize</div><div class="fleet-specs"><span class="fleet-spec">9 Seats</span><span class="fleet-spec">3,400 nm</span><span class="fleet-spec">500 kts</span></div></div></div>
+      <div class="fleet-card" data-delay="200"><div class="fleet-img"></div><div class="fleet-info"><div class="fleet-name">Ultra Long Range</div><div class="fleet-specs"><span class="fleet-spec">16 Seats</span><span class="fleet-spec">7,500 nm</span><span class="fleet-spec">516 kts</span></div></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="testimonials">
+  <div class="testimonials-inner">
+    <div class="section-label">Reviews</div>
+    <h2 class="section-title">Client experiences</h2>
+    <div class="t-grid">
+      <div class="t-card" data-delay="0"><p class="t-text">"SkyElite redefined what I thought private aviation could be. Seamless booking, impeccable service, and always on time."</p><div><div class="t-author-name">Michael Chen</div><div class="t-author-role">CEO, Venture Partners</div></div></div>
+      <div class="t-card" data-delay="100"><p class="t-text">"Their concierge team handled everything — from the moment I left home to touching down in Monaco. Truly white-glove."</p><div><div class="t-author-name">Isabella Rossi</div><div class="t-author-role">Fashion Executive</div></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="cta-inner">
+    <h2 class="cta-title">Elevate your travel</h2>
+    <p class="cta-sub">Experience private aviation with SkyElite. Request a quote in under 60 seconds.</p>
+    <button class="nav-cta" style="padding:14px 32px;font-size:15px">Request a Quote</button>
+  </div>
+</section>
+
+<footer class="footer"><div class="footer-inner"><div class="footer-copy">© 2026 SkyElite Aviation. All rights reserved.</div><div class="footer-links"><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Safety</a></div></div></footer>
+
+<script>
+(function(){const io=new IntersectionObserver(e=>{e.forEach(en=>{if(en.isIntersecting){const d=en.target.dataset.delay||0;setTimeout(()=>en.target.classList.add('visible'),parseInt(d));io.unobserve(en.target)}})},{threshold:0.1,rootMargin:'-50px'});document.querySelectorAll('.s-card,.stat,.fleet-card,.t-card').forEach(el=>io.observe(el))})();
+</script>
+</body>
+</html>

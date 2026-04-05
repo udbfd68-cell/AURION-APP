@@ -1,305 +1,106 @@
 /**
- * Clone API Route — Expert Website Cloning (Anthropic Methodology Edition)
+ * Clone API Route — Expert Website Cloning
  * 
- * Uses Ollama Cloud with best coding models + automatic fallback chain
- * Infused with Anthropic Claude's coding methodology:
- * - Professional objectivity & security-first approach
- * - Iterative development patterns
- * - Artifact generation best practices from Claude Opus 4.6
+ * Uses Ollama Cloud API for high-quality HTML generation (gemma4, glm-4.7-flash, gemini-3-flash-preview)
+ * Fallback to Google Gemini when Ollama key is not set.
+ * Enhanced with error classification, retry strategies, and output quality gates.
  */
 
 import { NextRequest } from 'next/server';
-import { type ClonePromptData, getModelHints } from '@/lib/system-prompts';
+import { type ClonePromptData, getModelHints, buildCloneSystemPrompt } from '@/lib/system-prompts';
 import { detectIndustry, generateDesignContext, PREMIUM_UI_PATTERNS, FRAMER_LEVEL_SYSTEM } from '@/lib/ui-ux-pro-max';
 import { extractStructuredContent, extractKeyCSS, extractSPAData } from '@/lib/firecrawl';
+import {
+  classifyError,
+  calculateBackoff,
+  compressHtmlForPrompt,
+  budgetPromptSections,
+  runQualityChecks,
+  buildContinuationPrompt,
+  type ErrorClass,
+} from '@/lib/claude-code-engine';
 
 export const runtime = 'edge';
 
-// ─── Ollama Cloud Config ────────────────────────────────────────────────────
-const OLLAMA_URL = 'https://ollama.com/v1/chat/completions';
+// ─── Model Config — Ollama Cloud primary, Google Gemini fallback ────────────
 const OLLAMA_KEY = process.env.OLLAMA_API_KEY || '';
+const OLLAMA_URL = 'https://ollama.com/v1/chat/completions';
+const GOOGLE_KEY = process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_AI_STUDIO_KEY || '';
+const GOOGLE_URL_FALLBACK = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
-// ─── Clone System Prompt — PIXEL-PERFECT REVERSE ENGINEERING ────────────────
-// 4-phase methodology: Deep Visual Analysis → Asset Extraction → Code Construction → Quality Control
-const CLONE_SYSTEM = `You are an elite frontend reverse-engineer specializing in PIXEL-PERFECT website reproduction. You recreate sites by following a rigorous 4-phase methodology. NEVER simplify, NEVER compromise visual fidelity.
+// ─── Clone System Prompt — FULL LIBRARY (all templates, effects, animations, glass, videos) ──
+const CLONE_SYSTEM = buildCloneSystemPrompt() + `
 
-# PHASE 1 — DEEP VISUAL ANALYSIS
-Before writing ANY code, mentally analyze the provided data:
+# ABSOLUTE CLONE RULES (override any conflicting instruction above)
+1. Output ONLY complete HTML — start with <!DOCTYPE html>, end with </html>. No markdown.
+2. ONE FILE: All CSS in <style> in <head>. All JS in <script> before </body>.
+3. NEVER use cdn.tailwindcss.com — it BREAKS in iframe preview. Write ALL CSS by hand in <style>.
+4. NEVER use Tailwind CDN or Tailwind Play CDN. Use real CSS properties.
+5. Use EXACT colors, fonts, and images from the scraped data. Never invent.
+6. Reproduce EVERY section. Under 600 lines = incomplete.
+7. ALWAYS include: GSAP ScrollTrigger for scroll animations, Lenis for smooth scroll, IntersectionObserver for reveal.
+8. Begin IMMEDIATELY with <!DOCTYPE html>.
 
-1. STRUCTURE: Identify ALL sections in exact order (Navbar, Hero, Features, Testimonials, Pricing, CTA, Footer...). Note the grid (1-col, 2-col, 3-col, asymmetric). Count total sections — you MUST reproduce every single one.
+# ⛔ MANDATORY RESOURCE USAGE FOR CLONES — USE EVERY TIME:
+9. ALWAYS include a VIDEO BACKGROUND from VIDEO_ASSETS in the hero section (pick a REAL MP4 URL from the table: jet-luxury, stellar-saas, dark-ambient, cinematic-studio, bold-design, etc.): <video autoplay muted loop playsinline> with overlay div. EXCEPTION: skip video ONLY if the source site clearly has no video/motion.
+10. ALWAYS use GLASS_EFFECTS: backdrop-filter:blur(40px) saturate(200%) on navbar, cards, and footer.
+11. ALWAYS use ANIMATION_PATTERNS: fade-in-up on scroll, stagger entrance (0.1-0.15s), marquee for logos, hover glow/tilt on cards, text shimmer on headlines.
+12. ALWAYS use the EXACT FONTS from the FONT STACK enrichment data below. Import them via Google Fonts or the provided import URLs. Do NOT default to Syne/DM Sans — use whatever the source site uses (Poppins, Inter, Open Sans, Montserrat, Lato, Roboto, etc. are all valid if the source uses them). If no font data is available, THEN fall back to premium Google Fonts matching the site's mood.
+13. ALWAYS use GRADIENT TEXT on the main heading: background:linear-gradient(...); -webkit-background-clip:text; -webkit-text-fill-color:transparent.
+14. ALWAYS use SECTION_BLUEPRINTS: 8+ sections minimum (nav→hero→logos→features→stats→testimonials→cta→footer).
+15. ALWAYS use COMPONENT_PATTERNS: glow/gradient buttons, glassmorphic badges, glass hover cards.
+16. For dark sites: aurora bg, backdrop-filter glass, gradient glows, neon accents, video hero.
+17. For light sites: soft glass, subtle gradients, clean typography, video hero with bright overlay.
+18. If a clone is missing videos, glass, animations or premium fonts, IT IS INCOMPLETE. Include ALL of these.`;
 
-2. COLOR PALETTE: Extract from provided tokens:
-   - Background: primary + secondary (dark sites: exact dark hex, ZERO white anywhere)
-   - Accent/CTA color (buttons, highlights, links)
-   - Text colors: primary, secondary, muted
-   - Border and separator colors
-
-3. TYPOGRAPHY: From tokens + font resources:
-   - Font families (use exact Google Fonts URLs provided)
-   - Sizes per level: h1(48-72px), h2(32-48px), h3(24-32px), body(16-18px), caption(12-14px)
-   - Font-weight per element (headings: 600-800, body: 400, buttons: 500-600)
-   - Letter-spacing and line-height from CSS patterns
-
-4. SPACING & LAYOUT:
-   - Section padding: typically 80px-160px vertical
-   - Gap between elements (cards, features): 24px-48px
-   - Max-width: usually 1200px or 1440px, centered
-   - Lateral margins: 24px mobile, 48px-80px desktop
-
-5. UI COMPONENTS (analyze each individually from CSS patterns):
-   - Buttons: exact border-radius (4px/8px/12px/24px/50%), padding, shadow, hover state
-   - Cards: border, box-shadow (often multi-layer), radius, inner padding
-   - Navbar: height (56-80px), backdrop-filter:blur, sticky/fixed, z-index:1000
-   - All hover/transition states: transform, opacity, shadow changes
-
-6. SPECIAL EFFECTS (critical for modern sites):
-   - Glassmorphism: backdrop-filter:blur(8-20px) + background:rgba(255,255,255,0.03-0.08)
-   - Gradients: exact angles + color stops (linear-gradient, radial-gradient)
-   - Complex shadows: multi-layer box-shadow for depth
-   - Noise/grain texture: SVG filter or CSS background pattern
-   - Scroll animations: fade-in + translateY(20-40px), duration 0.4s-0.8s, ease/ease-out
-   - Glow effects: box-shadow with accent color at 20-40% opacity
-
-# PHASE 2 — ASSET USAGE (from enrichment data provided)
-The scraper has already extracted all assets. USE THEM:
-- :root CSS variables → copy EXACTLY into your :root {}
-- Image URLs → use EXACT src, NEVER placeholder URLs
-- Video URLs → use in <video> with poster, autoplay, muted, loop
-- Font URLs → @import EXACTLY as provided
-- Design tokens (colors, shadows, radii, gradients) → use EXACT values
-
-# PHASE 3 — CODE CONSTRUCTION
-
-## OUTPUT FORMAT
-- Start IMMEDIATELY with <!DOCTYPE html>. No markdown, no explanation, no preamble.
-- End with </html>. Nothing after.
-- ONE file: ALL CSS in <style> in <head>. ALL JS in <script> before </body>.
-- Use clean semantic classes (.hero, .nav, .card, .features-grid, .footer).
-- NEVER use hashed/framework classes (.Flex_root__DOQCW, .css-1a2b3c).
-
-## MANDATORY STRUCTURE
-\`\`\`
-<!DOCTYPE html>
-<html lang="...">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>...</title>
-  <!-- Google Fonts @import -->
-  <!-- Font Awesome 6 via cdnjs -->
-  <style>
-    /* CSS Reset */
-    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-    /* :root variables from tokens */
-    /* All component styles */
-    /* Responsive @media queries */
-    /* Animations @keyframes */
-  </style>
-</head>
-<body>
-  <!-- ALL sections in exact original order -->
-  <script>/* Hamburger menu, scroll animations, interactions */</script>
-</body>
-</html>
-\`\`\`
-
-## FIDELITY RULES — ABSOLUTE
-- EXACT hex/rgb/hsl colors from tokens. Zero approximation. Zero invented colors.
-- EXACT border-radius values. EXACT box-shadow layers.
-- EXACT gradients with same angles and color stops.
-- EXACT font families and weights from provided font resources.
-- Spacing pixel-perfect from CSS patterns data.
-- Recreate animations with correct timings (ease, duration, delay).
-
-## CONTENT — EVERY WORD, EVERY SECTION
-- Copy ALL text VERBATIM from STRUCTURED CONTENT MAP and HTML.
-- Reproduce EVERY section: nav, hero, features, testimonials, stats, pricing, CTA, footer.
-- ALL headings, ALL paragraphs, ALL button labels, ALL link texts — word for word.
-- Footer: ALL columns (Products, Resources, Company, Legal), social icons, copyright line.
-- NEVER truncate. NEVER skip. NEVER use "<!-- more -->" or "...".
-
-## IMAGES & MEDIA — REAL URLs ONLY
-- Use EXACT src URLs from IMAGE INVENTORY. NEVER placehold.co when real URLs exist.
-- loading="lazy" on below-fold images.
-- <video> with real URLs, poster image, autoplay/muted/loop where appropriate.
-- SVG icons via Font Awesome or inline SVG.
-
-## INTERACTIVE ELEMENTS
-- Sticky navbar: position:sticky; top:0; backdrop-filter:blur(10px); z-index:1000
-- Mobile hamburger menu with vanilla JS toggle at @media(max-width:768px)
-- Hover states on ALL interactive elements (buttons, cards, links, nav items)
-- Smooth scroll: scroll-behavior:smooth on html
-- Scroll-triggered fade-in animations via IntersectionObserver:
-  .fade-in { opacity:0; transform:translateY(30px); transition:all 0.6s ease; }
-  .fade-in.visible { opacity:1; transform:translateY(0); }
-
-## PREMIUM ANIMATION STACK (for high-quality source sites)
-When the source site uses advanced scroll animations, parallax, or cinematic effects, use these CDN libraries:
-
-### GSAP ScrollTrigger (for scroll-driven animations):
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
-Use for: fade-up on scroll, staggered reveals, parallax backgrounds, pinned sections, horizontal scroll galleries.
-
-### Lenis (for smooth scroll):
-<script src="https://unpkg.com/lenis@1.1.18/dist/lenis.min.js"></script>
-Use when: source site has butter-smooth scrolling behavior. Init with: new Lenis({duration:1.2, smoothWheel:true})
-
-### Three.js (for 3D backgrounds):
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-Use when: source site has particle fields, 3D objects, or WebGL effects.
-
-### When to use these vs vanilla CSS/JS:
-- Source site with simple fade-in → vanilla IntersectionObserver
-- Source site with complex scroll animations, parallax, pinning → GSAP ScrollTrigger
-- Source site with silky smooth scroll → add Lenis
-- Source site with 3D/particle backgrounds → add Three.js
-
-## PREMIUM VISUAL EFFECTS — DEEP PATTERN LIBRARY
-The enrichment data includes a 40+ pattern Premium Visual Effects Library from Aceternity UI, Magic UI, Motion Primitives, Animata, Cult UI.
-When the source site uses modern visual effects, reproduce them using these CSS/JS patterns:
-
-### Background Effects:
-- Aurora/gradient mesh → aurora-bg (repeating-linear-gradient 200%, animation 60s, mix-blend-hard-light, blur(10px) saturate(150%))
-- Beam spotlight → radial-gradient follows mouse via JS mousemove, or entrance animation 2s ease 0.75s forwards
-- Meteor beams → vertical clip-path beams with translateY -20%→300%, stagger durations
-- Glowing blobs → 2 large blobs mix-blend-multiply blur(48px) animation:pop-blob 5s alternate
-- Moving gradient → bg-size:300% auto, animation:bg-position 8s alternate, opacity:0.15
-- Interactive grid → cells highlight on mouse with radiating transitionDelay: (dx+dy)*100ms
-- Floating particles → 15-20 dots with random float animation durations/delays
-
-### Border & Glow:
-- Border trail → offset-path: rect(0 auto auto 0 round Xpx), offset-distance 0%→100% animation
-- Glow rotating → conic-gradient rotating behind card, filter:blur(16px), modes: rotate/pulse/breathe
-- Shine border → @property --border-angle, conic-gradient(from var(--border-angle)), 6s linear infinite
-- Glassmorphism → backdrop-filter:blur(16px) saturate(180%) + rgba border + inset highlight + noise SVG overlay
-- TextureCard → 5 nested rounded divs (24→23→22→21→20px radius) for premium depth perception
-
-### Text:
-- Text shimmer → bg-size:250%, bg-clip:text, linear-gradient with shimmer sweep 2s linear infinite
-- Blur reveal → per-word opacity:0 blur(12px), animation 0.3s, stagger delay 0.05s/word
-- Wave reveal → per-letter animation:reveal-down + content-blur, delay: index*50ms
-- Text flip → overflow:hidden, stacked words, animation:flip-words steps(1) cycling through words
-- Typewriter → steps() animation + blinking cursor, JS char-by-char for advanced
-- Glitch → text-shadow #ff00ff/#00ffff offsets, animation:glitch 0.5s infinite
-- Number ticker → digit columns translateY to show target, transitionDelay stagger from right
-- Cult UI whipInUp → cubic-bezier(0.5,-0.15,0.25,1.05), calmInUp → cubic-bezier(0.125,0.92,0.69,0.975)
-
-### Cards & Layout:
-- Magnetic hover → JS distance calc, translate with intensity*scale, spring return on leave
-- 3D tilt → perspective(1000px) rotateX/Y from mouse position, 15deg max
-- Bento grid → repeat(3,1fr), .large span 2, .tall row span 2, hover glow border
-- Progressive blur → 8 stacked backdrop-filter:blur layers with mask-image gradients
-
-### Animations:
-- Blur-fade → opacity:0 blur(6px) translateY(6px) → visible, stagger via --index*0.1s
-- Animated group → 10 presets (fade/slide/scale/blur/zoom/flip/bounce), stagger nth-child*0.1s
-- Marquee → width:max-content animation:marquee-scroll linear infinite, DUPLICATE children 2x
-- InView → IntersectionObserver threshold:0.1, adds .visible class
-
-### Buttons:
-- Glow button → radial-gradient glow-spot follows mouse JS, opacity:0→1 hover, blur(5px)
-- Simple glow → box-shadow 0 0 20px/40px/60px at 40%/20%/10%, translateY(-2px)
-- Moving border → offset-path animated dot around button perimeter
-
-Combine multiple effects for premium results. Match what the source site does.
-Always include @media (prefers-reduced-motion: reduce) to disable animations.
-
-## FRAMER-LEVEL RENDERING TECHNIQUES (USE ON ALL PREMIUM CLONES)
-These are the techniques that make Framer sites feel "alive". Apply when source uses premium effects.
-
-### Variable Fonts + font-variation-settings:
-Use variable fonts (Inter, DM Sans, Space Grotesk) and animate font-variation-settings on hover/scroll.
-h1 { font-variation-settings: 'wght' 400; transition: font-variation-settings 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
-h1:hover { font-variation-settings: 'wght' 800; }
-With GSAP: gsap.to('.title', { fontVariationSettings: '"wght" 900', scrollTrigger: { trigger: '.hero', scrub: true } });
-
-### GLSL Shader Backgrounds:
-For organic animated gradient backgrounds, use WebGL canvas with custom fragment shader.
-Mix brand colors via sin/cos UV distortion driven by u_time. Opacity 0.12-0.25.
-Container: <canvas class="shader-bg" style="position:absolute;inset:0;z-index:0;pointer-events:none">
-
-### CSS Scroll-Driven Animations:
-.scroll-reveal { animation: fadeSlideUp linear both; animation-timeline: view(); animation-range: entry 0% entry 50%; }
-Zero JS, zero jank. Use alongside GSAP as progressive enhancement.
-
-### Spring Physics Easing:
---spring-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
---spring-smooth: cubic-bezier(0.22, 1, 0.36, 1);
---spring-snappy: cubic-bezier(0.16, 1, 0.3, 1);
-NEVER use linear easing on UI elements. Always spring/elastic.
-
-### Magnetic Buttons:
-On mousemove: translate by (x*0.3, y*0.3) from center. Spring return on leave.
-
-### SVG Clip-Path Reveals:
-.clip-reveal { clip-path: inset(100% 0 0 0); transition: clip-path 1s cubic-bezier(0.77, 0, 0.175, 1); }
-.clip-reveal.visible { clip-path: inset(0 0 0 0); }
-
-### 3D Tilt Cards:
-perspective(1000px) rotateY(x*15deg) rotateX(-y*15deg) on mousemove. scale3d(1.02) on hover.
-
-### Glassmorphism:
-.glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(16px) saturate(180%); border: 1px solid rgba(255,255,255,0.08); }
-
-### GPU Compositing:
-will-change: transform, opacity on animated elements. contain: layout style paint on cards.
-
-### SVG Noise Grain:
-body::after with feTurbulence noise, opacity:0.4, mix-blend-mode:overlay on dark sites.
-
-## ANTI-TRUNCATION — CRITICAL
-- The ENTIRE page from <!DOCTYPE html> to </html>.
-- Hero section alone is only ~15% of a complete page.
-- A proper clone is 800-3000 lines of code. Under 400 lines = FAILURE.
-- COUNT the sections in the content map. Generate ALL of them. Every single one.
-- NEVER stop early. NEVER break output. Complete the ENTIRE page in one response.
-
-# PHASE 4 — QUALITY CHECKLIST (verify before output)
-✓ ALL sections from original present in same order
-✓ Colors match exactly (no invented colors, no white on dark sites)
-✓ Correct fonts imported and applied at correct weights/sizes
-✓ Layout identical (grid/flex, widths, gaps, padding)
-✓ Visual effects reproduced (blur, gradients, shadows, glow)
-✓ Responsive: mobile hamburger, stacked layouts, adjusted font sizes
-✓ Animations present and fluid (fade-in, hover transitions)
-✓ All real image/video URLs used (zero placeholders when real URLs available)
-✓ Every text string from content map reproduced verbatim
-
-Begin IMMEDIATELY with <!DOCTYPE html>.`;
-
-// Map frontend model IDs to Ollama Cloud model IDs
+// Ollama Cloud models for cloning (primary)
 const OLLAMA_MODELS: Record<string, string> = {
-  // Vision models
-  'gemini-3-flash': 'gemini-3-flash-preview',
-  'glm-4.7': 'glm-4.7',
-  'glm-4.6': 'glm-4.6',
-  'kimi-k2.5': 'kimi-k2.5',
-  'qwen3.5-397b': 'qwen3.5:397b',
-  // Coding models
-  'qwen3-coder-480b': 'qwen3-coder:480b',
-  'qwen3-coder-next': 'qwen3-coder-next',
-  'devstral-2': 'devstral-2:123b',
-  'devstral-small-2': 'devstral-small-2:24b',
-  'deepseek-v3.2': 'deepseek-v3.2',
-  'glm-5': 'glm-5',
+  'gemma4': 'gemma4',
+  'glm-4.7-flash': 'glm-4.7-flash',
+  'gemini-3-flash-preview': 'gemini-3-flash-preview',
 };
 
-// Vision models that support image_url content
+// Gemini fallback models
+const GEMINI_MODELS: Record<string, string> = {
+  'gemini-2.5-pro': 'gemini-2.5-pro-preview-06-05',
+  'gemini-2.5-flash': 'gemini-2.5-flash-preview-05-20',
+  'gemini-2.0-flash': 'models/gemini-2.0-flash',
+};
+
+// All models support vision (screenshots)
 const VISION_CLONE_MODELS = new Set([
-  'gemini-3-flash', 'glm-4.7', 'glm-4.6', 'kimi-k2.5', 'qwen3.5-397b',
+  'gemma4', 'glm-4.7-flash', 'gemini-3-flash-preview',
+  'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash',
 ]);
 
-// Per-model max output tokens (some models cap lower than others)
+// Per-model max output tokens
 const MODEL_MAX_TOKENS: Record<string, number> = {
-  'gemini-3-flash': 65536,
-  'kimi-k2.5': 65536,
-  'devstral-small-2': 65536,
+  'gemma4': 65536,
+  'glm-4.7-flash': 65536,
+  'gemini-3-flash-preview': 65536,
+  'gemini-2.5-pro': 65536,
+  'gemini-2.5-flash': 65536,
+  'gemini-2.0-flash': 65536,
 };
-const DEFAULT_MAX_TOKENS = 131072;
+const DEFAULT_MAX_TOKENS = 65536;
 
-// Default model when none specified
-const DEFAULT_MODEL = 'gemini-3-flash';
+// Default model — Ollama Cloud primary
+const DEFAULT_MODEL = 'gemini-3-flash-preview';
+
+// Resolve which provider to use based on model + available keys
+function resolveProvider(modelId: string): { url: string; key: string; apiModel: string } {
+  if (OLLAMA_MODELS[modelId] && OLLAMA_KEY) {
+    return { url: OLLAMA_URL, key: OLLAMA_KEY, apiModel: OLLAMA_MODELS[modelId] };
+  }
+  if (GEMINI_MODELS[modelId] && GOOGLE_KEY) {
+    return { url: GOOGLE_URL_FALLBACK, key: GOOGLE_KEY, apiModel: GEMINI_MODELS[modelId] };
+  }
+  // Fallback: Ollama if key exists, else Gemini
+  if (OLLAMA_KEY) {
+    return { url: OLLAMA_URL, key: OLLAMA_KEY, apiModel: OLLAMA_MODELS[DEFAULT_MODEL] || DEFAULT_MODEL };
+  }
+  return { url: GOOGLE_URL_FALLBACK, key: GOOGLE_KEY, apiModel: GEMINI_MODELS['gemini-2.5-flash'] || 'gemini-2.5-flash' };
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function streamClone(
@@ -312,20 +113,32 @@ async function streamClone(
 ) {
   const hasScreenshots = screenshots && screenshots.length > 0;
 
-  // Use ONLY the user's selected model — no fallback to other models
-  const modelId = preferredModel && OLLAMA_MODELS[preferredModel] ? preferredModel : DEFAULT_MODEL;
-  const apiModel = OLLAMA_MODELS[modelId];
-  if (!apiModel) throw new Error(`Unknown model: ${modelId}`);
+  // Resolve model — prefer user selection, fallback to default
+  const allModels = { ...OLLAMA_MODELS, ...GEMINI_MODELS };
+  const modelId = preferredModel && allModels[preferredModel] ? preferredModel : DEFAULT_MODEL;
+  const provider = resolveProvider(modelId);
 
-  // Validate screenshots — must be real base64 data (at least 100 chars of base64)
+  // Validate screenshots
   const validScreenshots = hasScreenshots
     ? screenshots!.filter(ss => ss && ss.length > 100 && (/^data:image\//.test(ss) || /^[A-Za-z0-9+/]/.test(ss)))
     : [];
 
-  console.log('[clone] System:', systemPrompt.length, 'chars. User:', userPrompt.length, 'chars. Screenshots:', validScreenshots.length, 'Model:', modelId);
+  // Budget system prompt to prevent context overflow
+  const maxContextChars = 200000;
+  let effectiveSystemPrompt = systemPrompt;
+  if (systemPrompt.length > maxContextChars) {
+    const sections = budgetPromptSections([
+      { name: 'methodology', content: systemPrompt.slice(0, 8000), priority: 10 },
+      { name: 'core', content: systemPrompt.slice(8000), priority: 5 },
+    ], maxContextChars);
+    effectiveSystemPrompt = Array.from(sections.values()).join('\n');
+  }
+
+  console.log('[clone] System:', effectiveSystemPrompt.length, 'chars. User:', userPrompt.length, 'chars. Screenshots:', validScreenshots.length, 'Model:', modelId, '→', provider.apiModel, 'Provider:', provider.url.includes('ollama') ? 'Ollama' : 'Gemini');
   const errors: string[] = [];
   const MAX_ATTEMPTS = 3;
   let skipScreenshots = false;
+  let accumulatedOutput = '';
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
@@ -333,7 +146,7 @@ async function streamClone(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let userContent: any = userPrompt;
 
-      // For vision models with valid screenshots: send as multimodal content
+      // Gemini supports multimodal — send screenshots as image_url parts
       if (isVision && validScreenshots.length > 0 && !skipScreenshots) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const parts: any[] = [
@@ -350,44 +163,64 @@ async function streamClone(
       }
 
       const messages = [
-        { role: 'system', content: systemPrompt },
+        { role: 'system', content: effectiveSystemPrompt },
         { role: 'user', content: userContent },
       ];
 
-      const fetchTimeout = AbortSignal.timeout(120000); // 2 min timeout per request
-      const res = await fetch(OLLAMA_URL, {
+      // Timeout escalation per attempt
+      const timeoutMs = 120000 + (attempt * 30000);
+      const fetchTimeout = AbortSignal.timeout(timeoutMs);
+
+      // Use resolved provider (Ollama Cloud primary, Gemini fallback)
+      const res = await fetch(provider.url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OLLAMA_KEY}`,
+          'Authorization': `Bearer ${provider.key}`,
         },
         body: JSON.stringify({
-          model: apiModel,
+          model: provider.apiModel,
           messages,
           stream: true,
           max_tokens: MODEL_MAX_TOKENS[modelId] || DEFAULT_MAX_TOKENS,
-          temperature: 0.15,
+          temperature: attempt === 0 ? 0.15 : 0.1 + (attempt * 0.05),
         }),
         signal: fetchTimeout,
       });
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
-        errors.push(`${modelId}(${attempt + 1}): HTTP ${res.status} ${errText.slice(0, 80)}`);
-        if (res.status === 401) throw new Error(`Auth failed (401). Check your API key.`);
+        // ─── Claude Code pattern: Error classification ──────────────────
+        const errorClass = classifyError(res.status, errText);
+        errors.push(`${modelId}(${attempt + 1})[${errorClass}]: HTTP ${res.status} ${errText.slice(0, 80)}`);
+
+        if (errorClass === 'auth_failure') throw new Error(`Auth failed (${res.status}). Check your API key.`);
+
+        // Context overflow — compress prompt and retry
+        if (errorClass === 'context_overflow') {
+          console.log(`[clone] ${modelId}: context overflow, compressing prompt`);
+          effectiveSystemPrompt = effectiveSystemPrompt.slice(0, Math.floor(effectiveSystemPrompt.length * 0.6));
+          continue;
+        }
+
         // Invalid image input — retry WITHOUT screenshots
-        if (res.status === 400 && /invalid.image|image.input|image_url/i.test(errText)) {
+        if (errorClass === 'invalid_input' && /invalid.image|image.input|image_url/i.test(errText)) {
           console.log(`[clone] ${modelId}: invalid image input, retrying without screenshots`);
           skipScreenshots = true;
           continue;
         }
-        if (res.status === 429 || res.status === 503) {
-          const delay = Math.min(3000 * (attempt + 1), 15000);
-          console.log(`[clone] ${modelId} rate limited (${res.status}), waiting ${delay}ms...`);
+
+        // Rate limit / server error — exponential backoff with jitter
+        if (errorClass === 'rate_limit' || errorClass === 'server_error') {
+          const delay = calculateBackoff(attempt);
+          console.log(`[clone] ${modelId} ${errorClass} (${res.status}), waiting ${delay}ms...`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
-        // Other HTTP error — retry
+
+        // Other errors — standard retry delay
+        const delay = calculateBackoff(attempt, { maxAttempts: 3, baseDelay: 2000, maxDelay: 15000, jitterFactor: 0.2, retryableClasses: new Set() });
+        await new Promise(r => setTimeout(r, delay));
         continue;
       }
 
@@ -400,6 +233,7 @@ async function streamClone(
       let totalLen = 0;
       let sentModel = false;
       let buffer = '';
+      accumulatedOutput = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -417,6 +251,7 @@ async function streamClone(
             const text = chunk?.choices?.[0]?.delta?.content;
             if (!text) continue;
             totalLen += text.length;
+            accumulatedOutput += text;
 
             if (!sentModel) {
               sentModel = true;
@@ -428,15 +263,45 @@ async function streamClone(
       }
 
       console.log(`[clone] ${modelId} attempt ${attempt + 1}: ${totalLen} chars`);
-      if (totalLen > 400) return; // SUCCESS — meaningful HTML output
+
+      // ─── Enhanced quality gate — section count + completeness ──────────
+      if (totalLen > 400) {
+        const quality = runQualityChecks(accumulatedOutput);
+        // Count major HTML sections
+        const sectionCount = (accumulatedOutput.match(/<(?:nav|header|section|main|footer|article)\b/gi) || []).length;
+        const hasNav = /<nav\b/i.test(accumulatedOutput);
+        const hasFooter = /<footer\b/i.test(accumulatedOutput);
+        
+        if (quality.warnings.length > 0) {
+          console.log(`[clone] Quality warnings: ${quality.warnings.join(', ')}`);
+        }
+        console.log(`[clone] Sections: ${sectionCount}, nav: ${hasNav}, footer: ${hasFooter}, length: ${totalLen}`);
+        
+        // Fail if output is too incomplete (missing closing tag or too few sections)
+        const isIncomplete = !quality.passed || (sectionCount < 3 && totalLen < 5000);
+        if (isIncomplete && attempt < MAX_ATTEMPTS - 1) {
+          console.log(`[clone] Quality gate failed (sections:${sectionCount}, errors:${quality.errors.join(', ')}), retrying...`);
+          errors.push(`${modelId}(${attempt + 1}): quality gate failed: sections=${sectionCount}, ${quality.errors.join(', ')}`);
+          if (quality.errors.includes('has_html_close') && totalLen > 2000) {
+            console.log(`[clone] Output truncated at ${totalLen} chars, will retry`);
+          }
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+        return; // SUCCESS
+      }
+
       errors.push(`${modelId}(${attempt + 1}): only ${totalLen} chars (too short)`);
       await new Promise(r => setTimeout(r, 2000));
       continue;
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'unknown';
       if (/Auth failed/.test(msg)) throw e;
-      errors.push(`${modelId}(${attempt + 1}): ${msg}`);
-      await new Promise(r => setTimeout(r, 3000));
+      // ─── Claude Code pattern: Error classification on catch ───────────
+      const errorClass = classifyError(0, msg);
+      errors.push(`${modelId}(${attempt + 1})[${errorClass}]: ${msg}`);
+      const delay = calculateBackoff(attempt);
+      await new Promise(r => setTimeout(r, delay));
       continue;
     }
   }
@@ -463,6 +328,18 @@ export async function POST(req: NextRequest) {
     iconLibraries?: string[];
     animationLibraries?: string[];
     colorFrequency?: Record<string, number>;
+    // Advanced extraction from ai-website-cloner methodology
+    interactionModels?: Array<{ section: string; model: string; triggers: string[]; details: string }>;
+    layeredAssets?: Array<{ container: string; layers: Array<{ type: string; src: string; position?: string }> }>;
+    multiStateContent?: Array<{ type: string; containerHint: string; stateCount: number; stateLabels: string[]; defaultState?: string }>;
+    scrollBehaviors?: Array<{ type: string; mechanism: string; elements: string }>;
+    computedPatterns?: Record<string, Record<string, string>>;
+    zIndexLayers?: Array<{ element: string; zIndex: string; position: string }>;
+    // New extractors from ai-website-cloner-template integration
+    pageTopology?: Array<{ order: number; tag: string; role: string; position: string; interactionModel: string; contentSummary: string; hasImages: boolean; hasVideo: boolean; headingText?: string }>;
+    fontStack?: Array<{ family: string; source: string; weights: string[]; importUrl?: string }>;
+    hoverTransitions?: Array<{ selector: string; changes: Array<{ property: string; before: string; after: string }>; transition?: string }>;
+    responsiveBreakpoints?: Array<{ query: string; width: number; type: string; affectedSelectors: string[] }>;
     // Iteration/refine fields
     currentHtml?: string;
     feedback?: string;
@@ -476,12 +353,12 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const { url, html, rawHtml, tokens, branding, screenshot, screenshots, pageName, navigation, images, videos, styleBlocks, linkedResources, model: requestedModel, currentHtml, feedback, cssFramework, iconLibraries, animationLibraries, colorFrequency } = body;
+  const { url, html, rawHtml, tokens, branding, screenshot, screenshots, pageName, navigation, images, videos, styleBlocks, linkedResources, model: requestedModel, currentHtml, feedback, cssFramework, iconLibraries, animationLibraries, colorFrequency, interactionModels, layeredAssets, multiStateContent, scrollBehaviors, computedPatterns, zIndexLayers, pageTopology, fontStack, hoverTransitions, responsiveBreakpoints } = body;
 
   const isRefine = !!(currentHtml && feedback);
 
-  if (!OLLAMA_KEY) {
-    return new Response(JSON.stringify({ error: 'No Ollama API key configured. Set OLLAMA_API_KEY.' }), {
+  if (!OLLAMA_KEY && !GOOGLE_KEY) {
+    return new Response(JSON.stringify({ error: 'No AI API key configured. Set OLLAMA_API_KEY or GOOGLE_API_KEY.' }), {
       status: 500, headers: { 'Content-Type': 'application/json' },
     });
   }
@@ -512,6 +389,138 @@ export async function POST(req: NextRequest) {
   if (cssFramework) enrichmentSections.push(`## CSS FRAMEWORK DETECTED: ${cssFramework} — replicate its class patterns and design system`);
   if (iconLibraries && iconLibraries.length > 0) enrichmentSections.push(`## ICON LIBRARIES: ${iconLibraries.join(', ')} — use the same icon CDN`);
   if (animationLibraries && animationLibraries.length > 0) enrichmentSections.push(`## ANIMATION LIBRARIES DETECTED: ${animationLibraries.join(', ')} — reproduce these animation patterns`);
+
+  // ─── NEW: Advanced extraction data from ai-website-cloner methodology ─────
+
+  // Interaction models — tells the AI whether sections are click-driven vs scroll-driven
+  if (interactionModels && interactionModels.length > 0) {
+    enrichmentSections.push(
+      '## ⚡ INTERACTION MODELS (CRITICAL — build the correct interaction type):\n' +
+      interactionModels.map(m =>
+        `- **${m.section}**: ${m.model.toUpperCase()} — ${m.details}\n  Triggers: ${m.triggers.join(', ')}`
+      ).join('\n') +
+      '\n\n⚠️ CRITICAL: If a section is scroll-driven, do NOT build it with click handlers.\n' +
+      'If it\'s click-driven, do NOT make it scroll-dependent. Getting the interaction model wrong requires a COMPLETE rewrite.'
+    );
+  }
+
+  // Scroll behaviors — specific scroll-related mechanics to reproduce
+  if (scrollBehaviors && scrollBehaviors.length > 0) {
+    enrichmentSections.push(
+      '## 📜 SCROLL BEHAVIORS (reproduce these exact scroll mechanics):\n' +
+      scrollBehaviors.map(b => `- **${b.type}**: ${b.mechanism} → affects: ${b.elements}`).join('\n') +
+      '\n\nImplement each scroll behavior using the exact mechanism detected. Use GSAP ScrollTrigger for complex scroll animations, Lenis for smooth scroll, IntersectionObserver for reveal animations.'
+    );
+  }
+
+  // Computed style patterns — granular CSS values per component (emulates getComputedStyle)
+  if (computedPatterns && Object.keys(computedPatterns).length > 0) {
+    const patternLines: string[] = [];
+    for (const [component, props] of Object.entries(computedPatterns)) {
+      const propsStr = Object.entries(props).map(([k, v]) => `  ${k}: ${v}`).join('\n');
+      patternLines.push(`### ${component}\n${propsStr}`);
+    }
+    enrichmentSections.push(
+      '## 🎯 COMPUTED STYLE PATTERNS (exact CSS values per component — MATCH THESE):\n' +
+      patternLines.join('\n\n') +
+      '\n\nThese values are extracted from the site\'s actual CSS rules. Apply them EXACTLY — ' +
+      'do not approximate. "font-size: 18px" means 18px, not text-lg.'
+    );
+  }
+
+  // Multi-state content — tabs, accordions, carousels that have multiple states
+  if (multiStateContent && multiStateContent.length > 0) {
+    enrichmentSections.push(
+      '## 🔄 MULTI-STATE CONTENT (build ALL states, not just the default):\n' +
+      multiStateContent.map(s =>
+        `- **${s.type.toUpperCase()}** (${s.stateCount} states): ${s.stateLabels.map(l => `"${l}"`).join(', ')}` +
+        (s.defaultState ? ` | Default: "${s.defaultState}"` : '')
+      ).join('\n') +
+      '\n\n⚠️ You MUST build the content for EVERY state/tab, not just the default one.\n' +
+      'Each tab/accordion should have its own real content. Extract shows the tab labels — ' +
+      'build the content for each based on the page data provided.'
+    );
+  }
+
+  // Layered assets — backgrounds + foregrounds + overlays stacked together
+  if (layeredAssets && layeredAssets.length > 0) {
+    enrichmentSections.push(
+      '## 🎨 LAYERED ASSET COMPOSITIONS (sections with stacked image/video layers):\n' +
+      layeredAssets.map(la =>
+        `- **${la.container}**: ${la.layers.length} layers\n` +
+        la.layers.map(l => `  - ${l.type}: ${l.src}${l.position ? ` (${l.position})` : ''}`).join('\n')
+      ).join('\n') +
+      '\n\nThese sections have multiple visual layers. Reproduce ALL layers with correct z-ordering.\n' +
+      'A missing overlay image or background makes the section look empty even if other layers are present.'
+    );
+  }
+
+  // Z-index stacking context — how overlays are layered
+  if (zIndexLayers && zIndexLayers.length > 0) {
+    enrichmentSections.push(
+      '## 📐 Z-INDEX STACKING (layer ordering from front to back):\n' +
+      zIndexLayers.slice(0, 10).map(l => `- ${l.element}: z-index:${l.zIndex} (${l.position})`).join('\n')
+    );
+  }
+
+  // ─── NEW: Page Topology from ai-website-cloner pipeline Phase 1 ─────
+  // Gives the AI a complete map of the page structure BEFORE building
+  if (pageTopology && Array.isArray(pageTopology) && pageTopology.length > 0) {
+    enrichmentSections.push(
+      '## 🗺️ PAGE TOPOLOGY (section-by-section map — build in this EXACT order):\n' +
+      pageTopology.map(s =>
+        `${s.order}. [${s.tag.toUpperCase()}] **${s.role}** (${s.position})` +
+        ` — ${s.interactionModel}` +
+        (s.headingText ? ` — "${s.headingText}"` : '') +
+        ` — ${s.contentSummary}` +
+        (s.hasVideo ? ' 🎬' : '') + (s.hasImages ? ' 🖼️' : '')
+      ).join('\n') +
+      '\n\n⚠️ Build EVERY section in this list. Missing ANY section = incomplete clone.' +
+      '\nSections marked as scroll-driven MUST use IntersectionObserver/ScrollTrigger, NOT click handlers.' +
+      '\nSections marked as click-driven MUST use event listeners/tabs, NOT scroll triggers.'
+    );
+  }
+
+  // ─── NEW: Font Stack from ai-website-cloner pipeline Phase 1 Global Extraction ─────
+  if (fontStack && Array.isArray(fontStack) && fontStack.length > 0) {
+    enrichmentSections.push(
+      '## 🔤 FONT STACK (exact fonts to import and use):\n' +
+      fontStack.map(f =>
+        `- **${f.family}** (${f.source})` +
+        ` — weights: ${f.weights.join(', ')}` +
+        (f.importUrl ? `\n  Import: ${f.importUrl}` : '')
+      ).join('\n') +
+      '\n\n⚠️ CRITICAL: Import THESE exact fonts. Match the weights listed. Do NOT substitute with Syne/DM Sans or any other font.' +
+      '\nThese are the ACTUAL fonts used by the source site. Using different fonts = failed clone.' +
+      '\nOverride ANY font instruction from the system prompt — these extracted fonts take absolute priority.'
+    );
+  }
+
+  // ─── NEW: Hover Transitions from ai-website-cloner pipeline Phase 3 multi-state extraction ─────
+  if (hoverTransitions && Array.isArray(hoverTransitions) && hoverTransitions.length > 0) {
+    const topTransitions = hoverTransitions.slice(0, 15);
+    enrichmentSections.push(
+      '## 🎯 HOVER STATE TRANSITIONS (exact before → after CSS changes):\n' +
+      topTransitions.map(t =>
+        `### ${t.selector}:hover\n` +
+        t.changes.map(c => `  ${c.property}: ${c.before} → ${c.after}`).join('\n') +
+        (t.transition ? `\n  transition: ${t.transition}` : '')
+      ).join('\n') +
+      '\n\n⚠️ Reproduce these EXACT hover effects with the specified transitions.' +
+      '\nDon\'t invent hover effects — use these extracted values.'
+    );
+  }
+
+  // ─── NEW: Responsive Breakpoints from ai-website-cloner pipeline ─────
+  if (responsiveBreakpoints && Array.isArray(responsiveBreakpoints) && responsiveBreakpoints.length > 0) {
+    enrichmentSections.push(
+      '## 📱 RESPONSIVE BREAKPOINTS (actual media queries used by the site):\n' +
+      responsiveBreakpoints.map(b =>
+        `- **${b.query}**: affects ${b.affectedSelectors.slice(0, 5).join(', ')}`
+      ).join('\n') +
+      '\n\nUse THESE exact breakpoints in your @media rules — not generic ones.'
+    );
+  }
 
   // Color frequency — tell AI which colors are most used
   if (colorFrequency && Object.keys(colorFrequency).length > 0) {
@@ -652,10 +661,8 @@ export async function POST(req: NextRequest) {
     enrichmentSections.push('## BREAKPOINTS: ' + tokens.mediaQueries.join(' | '));
   }
 
-  // Clean HTML before building prompt — strip obfuscated CSS classes, style tags, empty elements
-  let cleanedHtml = html || '';
-  cleanedHtml = cleanedHtml.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
-  cleanedHtml = cleanedHtml.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+  // Clean HTML before building prompt — use Claude Code's context compression
+  let cleanedHtml = compressHtmlForPrompt(html || '', 120000);
   // Extract body content
   const bodyMatch = cleanedHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
   if (bodyMatch) {
@@ -690,11 +697,21 @@ export async function POST(req: NextRequest) {
 
   console.log(`[clone] enrichments=${enrichmentSections.length} sections, refine=${isRefine}`);
 
-  // Join all enrichment sections — cap total to 100KB to avoid exceeding model context
+  // Join all enrichment sections — use Claude Code's budget system for context management
   let enrichmentBlock = enrichmentSections.join('\n\n') + '\n\n' + PREMIUM_UI_PATTERNS + '\n\n' + FRAMER_LEVEL_SYSTEM;
-  if (enrichmentBlock.length > 100000) {
-    // Truncate enrichment if too large — keep design context and tokens, trim HTML/CSS
-    enrichmentBlock = enrichmentBlock.slice(0, 100000) + '\n\n[enrichment truncated for context window]';
+
+  // ─── Claude Code pattern: Smart context budget allocation ──────────────
+  const MAX_ENRICHMENT = 100000;
+  if (enrichmentBlock.length > MAX_ENRICHMENT) {
+    // Budget allocation: prioritize design tokens > content map > CSS patterns > effects library
+    const budgeted = budgetPromptSections([
+      { name: 'design_context', content: enrichmentSections.slice(0, 3).join('\n\n'), priority: 10 },
+      { name: 'content_map', content: enrichmentSections.slice(3, 6).join('\n\n'), priority: 9 },
+      { name: 'extraction_data', content: enrichmentSections.slice(6).join('\n\n'), priority: 7 },
+      { name: 'premium_patterns', content: PREMIUM_UI_PATTERNS, priority: 5 },
+      { name: 'framer_system', content: FRAMER_LEVEL_SYSTEM, priority: 4 },
+    ], MAX_ENRICHMENT);
+    enrichmentBlock = Array.from(budgeted.values()).filter(Boolean).join('\n\n');
   }
 
   const encoder = new TextEncoder();

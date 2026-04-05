@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>V Vortex — Creative Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
+  body{font-family:'Inter',sans-serif;background:#000;color:#fff;overflow-x:hidden;cursor:none}
+
+  /* Custom Cursor */
+  .cursor{position:fixed;width:16px;height:16px;border:1.5px solid rgba(255,255,255,0.5);border-radius:50%;pointer-events:none;z-index:99999;transition:width 0.2s,height 0.2s,border 0.2s;mix-blend-mode:difference;transform:translate(-50%,-50%)}
+  .cursor.hovering{width:48px;height:48px;border-color:rgba(255,255,255,0.8)}
+  .cursor-dot{position:fixed;width:4px;height:4px;background:#fff;border-radius:50%;pointer-events:none;z-index:99999;mix-blend-mode:difference;transform:translate(-50%,-50%)}
+
+  /* Fixed Bottom Nav */
+  .bottom-nav{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:100;display:flex;align-items:center;gap:4px;padding:6px 8px;border-radius:99px;background:rgba(255,255,255,0.06);backdrop-filter:blur(30px);border:1px solid rgba(255,255,255,0.06);box-shadow:0 8px 32px rgba(0,0,0,0.4)}
+  .bottom-nav a{padding:8px 20px;border-radius:99px;font-size:13px;font-weight:500;color:rgba(255,255,255,0.4);text-decoration:none;transition:all 0.3s}
+  .bottom-nav a:hover,.bottom-nav a.active{color:#fff;background:rgba(255,255,255,0.08)}
+
+  /* Hero */
+  .hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:120px 24px 80px;position:relative;overflow:hidden}
+  .hero::after{content:'';position:absolute;bottom:0;left:0;width:100%;height:200px;background:linear-gradient(to top,#000,transparent)}
+  .hero-eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:0.2em;color:rgba(255,255,255,0.3);margin-bottom:24px;opacity:0;animation:fadeUp 0.6s 0.1s ease forwards}
+  .hero-headline{font-family:'Playfair Display',serif;font-size:56px;line-height:1;letter-spacing:-0.03em;margin-bottom:24px;opacity:0;animation:fadeUp 0.6s 0.2s ease forwards}
+  @media(min-width:768px){.hero-headline{font-size:96px}}
+  @media(min-width:1200px){.hero-headline{font-size:120px}}
+  .hero-headline em{font-style:italic;font-weight:400}
+  .hero-subtitle{font-size:18px;font-weight:300;color:rgba(255,255,255,0.35);max-width:480px;margin:0 auto 40px;line-height:1.7;opacity:0;animation:fadeUp 0.6s 0.3s ease forwards}
+  .hero-btn{display:inline-flex;align-items:center;gap:12px;padding:14px 36px;border-radius:99px;background:#fff;color:#000;font-size:15px;font-weight:600;border:none;cursor:pointer;transition:all 0.3s;opacity:0;animation:fadeUp 0.6s 0.4s ease forwards}
+  .hero-btn:hover{transform:scale(1.03)}
+
+  /* Marquee */
+  .marquee-section{padding:60px 0;border-top:1px solid rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.04);overflow:hidden}
+  .marquee-track{display:flex;animation:marquee 30s linear infinite;gap:24px;width:max-content}
+  .marquee-item{flex-shrink:0;width:300px;height:200px;border-radius:16px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.04);overflow:hidden;display:flex;align-items:center;justify-content:center;position:relative}
+  .marquee-item-overlay{position:absolute;inset:0;background:linear-gradient(180deg,transparent 60%,rgba(0,0,0,0.6));z-index:1}
+  .marquee-item-label{position:absolute;bottom:16px;left:16px;z-index:2;font-size:13px;color:rgba(255,255,255,0.6)}
+  .marquee-item .placeholder{width:80%;height:60%;border-radius:12px;background:linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))}
+  @keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+  /* Works */
+  .works{padding:120px 24px}
+  .works-inner{max-width:1200px;margin:0 auto}
+  .section-label{font-size:12px;text-transform:uppercase;letter-spacing:0.2em;color:rgba(255,255,255,0.3);margin-bottom:16px;text-align:center}
+  .section-title{font-family:'Playfair Display',serif;font-size:48px;text-align:center;margin-bottom:64px}
+  @media(min-width:768px){.section-title{font-size:56px}}
+  .works-grid{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:768px){.works-grid{grid-template-columns:repeat(2,1fr)}}
+  .work-card{position:relative;aspect-ratio:4/3;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);cursor:pointer;transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .work-card.visible{opacity:1;transform:translateY(0)}
+  .work-card:hover{transform:scale(1.02)}
+  .work-card-bg{position:absolute;inset:0;background:linear-gradient(145deg,rgba(255,255,255,0.02),rgba(255,255,255,0.005))}
+  .work-card-info{position:absolute;bottom:24px;left:24px;z-index:2}
+  .work-card-name{font-size:18px;font-weight:600;color:#fff}
+  .work-card-tag{font-size:13px;color:rgba(255,255,255,0.3);margin-top:4px}
+
+  /* Pricing */
+  .pricing{padding:120px 24px;border-top:1px solid rgba(255,255,255,0.04)}
+  .pricing-inner{max-width:1200px;margin:0 auto}
+  .pricing-grid{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:768px){.pricing-grid{grid-template-columns:repeat(3,1fr)}}
+  .price-card{padding:40px 32px;border-radius:20px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .price-card.visible{opacity:1;transform:translateY(0)}
+  .price-card.featured{border-color:rgba(255,255,255,0.1);background:rgba(255,255,255,0.04)}
+  .price-card:hover{border-color:rgba(255,255,255,0.1);transform:translateY(-4px)}
+  .price-tier{font-size:14px;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.3);margin-bottom:8px}
+  .price-amount{font-family:'Playfair Display',serif;font-size:56px;color:#fff;margin-bottom:8px}
+  .price-amount span{font-family:'Inter',sans-serif;font-size:16px;font-weight:300;color:rgba(255,255,255,0.3)}
+  .price-desc{font-size:14px;font-weight:300;color:rgba(255,255,255,0.35);margin-bottom:28px;line-height:1.6}
+  .price-features{list-style:none;margin-bottom:32px}
+  .price-features li{font-size:14px;color:rgba(255,255,255,0.5);padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;align-items:center;gap:8px}
+  .price-features li::before{content:'';width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,0.2);flex-shrink:0}
+  .price-btn{display:block;width:100%;padding:14px;border-radius:99px;font-size:14px;font-weight:600;border:none;cursor:pointer;transition:all 0.3s;text-align:center}
+  .price-btn.primary{background:#fff;color:#000}
+  .price-btn.secondary{background:transparent;border:1px solid rgba(255,255,255,0.1);color:#fff}
+  .price-btn:hover{transform:scale(1.02)}
+
+  /* Testimonial Carousel */
+  .carousel{padding:120px 24px;border-top:1px solid rgba(255,255,255,0.04)}
+  .carousel-inner{max-width:900px;margin:0 auto;text-align:center;position:relative;min-height:200px}
+  .carousel-slide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;opacity:0;transition:opacity 0.6s;pointer-events:none}
+  .carousel-slide.active{opacity:1;pointer-events:auto}
+  .carousel-text{font-family:'Playfair Display',serif;font-size:28px;font-style:italic;color:rgba(255,255,255,0.7);line-height:1.5;margin-bottom:24px}
+  @media(min-width:768px){.carousel-text{font-size:36px}}
+  .carousel-author{font-size:14px;color:rgba(255,255,255,0.3)}
+  .carousel-dots{display:flex;gap:8px;justify-content:center;margin-top:200px}
+  .carousel-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;cursor:pointer;transition:all 0.3s}
+  .carousel-dot.active{background:#fff;width:24px;border-radius:4px}
+
+  /* CTA */
+  .cta{padding:120px 24px;text-align:center}
+  .cta-inner{max-width:640px;margin:0 auto}
+  .cta-title{font-family:'Playfair Display',serif;font-size:56px;margin-bottom:16px}
+  @media(min-width:768px){.cta-title{font-size:72px}}
+  .cta-sub{font-size:18px;font-weight:300;color:rgba(255,255,255,0.4);margin-bottom:40px}
+
+  /* Footer */
+  .footer{padding:40px 24px;border-top:1px solid rgba(255,255,255,0.04)}
+  .footer-inner{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px}
+  @media(min-width:768px){.footer-inner{flex-direction:row;justify-content:space-between}}
+  .footer-copy{font-size:13px;color:rgba(255,255,255,0.2)}
+  .footer-socials{display:flex;gap:16px}
+  .footer-socials a{font-size:13px;color:rgba(255,255,255,0.2);text-decoration:none}
+  .footer-socials a:hover{color:rgba(255,255,255,0.5)}
+
+  @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+
+<!-- Custom Cursor -->
+<div class="cursor" id="cursor"></div>
+<div class="cursor-dot" id="cursorDot"></div>
+
+<!-- Fixed Bottom Nav -->
+<nav class="bottom-nav">
+  <a href="#" class="active">Home</a>
+  <a href="#works">Works</a>
+  <a href="#pricing">Pricing</a>
+  <a href="#testimonials">About</a>
+  <a href="#cta">Contact</a>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-eyebrow">Creative Studio — 2026</div>
+  <h1 class="hero-headline">We craft<br><em>digital</em> visions</h1>
+  <p class="hero-subtitle">Award-winning creative studio specializing in brand identity, digital experience, and motion design.</p>
+  <button class="hero-btn">View Our Work</button>
+</section>
+
+<!-- Marquee -->
+<section class="marquee-section">
+  <div class="marquee-track" id="marqueeTrack">
+    <div class="marquee-item"><div class="placeholder"></div><div class="marquee-item-overlay"></div><div class="marquee-item-label">Oracle Brand</div></div>
+    <div class="marquee-item"><div class="placeholder"></div><div class="marquee-item-overlay"></div><div class="marquee-item-label">Nebula App</div></div>
+    <div class="marquee-item"><div class="placeholder"></div><div class="marquee-item-overlay"></div><div class="marquee-item-label">Axiom Identity</div></div>
+    <div class="marquee-item"><div class="placeholder"></div><div class="marquee-item-overlay"></div><div class="marquee-item-label">Flux Motion</div></div>
+    <div class="marquee-item"><div class="placeholder"></div><div class="marquee-item-overlay"></div><div class="marquee-item-label">Prism Website</div></div>
+    <div class="marquee-item"><div class="placeholder"></div><div class="marquee-item-overlay"></div><div class="marquee-item-label">Helix Campaign</div></div>
+    <!-- duplicate for seamless loop -->
+    <div class="marquee-item"><div class="placeholder"></div><div class="marquee-item-overlay"></div><div class="marquee-item-label">Oracle Brand</div></div>
+    <div class="marquee-item"><div class="placeholder"></div><div class="marquee-item-overlay"></div><div class="marquee-item-label">Nebula App</div></div>
+    <div class="marquee-item"><div class="placeholder"></div><div class="marquee-item-overlay"></div><div class="marquee-item-label">Axiom Identity</div></div>
+    <div class="marquee-item"><div class="placeholder"></div><div class="marquee-item-overlay"></div><div class="marquee-item-label">Flux Motion</div></div>
+    <div class="marquee-item"><div class="placeholder"></div><div class="marquee-item-overlay"></div><div class="marquee-item-label">Prism Website</div></div>
+    <div class="marquee-item"><div class="placeholder"></div><div class="marquee-item-overlay"></div><div class="marquee-item-label">Helix Campaign</div></div>
+  </div>
+</section>
+
+<!-- Works -->
+<section class="works" id="works">
+  <div class="works-inner">
+    <div class="section-label">Selected Projects</div>
+    <h2 class="section-title">Our work</h2>
+    <div class="works-grid">
+      <div class="work-card" data-delay="0"><div class="work-card-bg"></div><div class="work-card-info"><div class="work-card-name">Oracle Rebrand</div><div class="work-card-tag">Branding / Identity / Motion</div></div></div>
+      <div class="work-card" data-delay="100"><div class="work-card-bg"></div><div class="work-card-info"><div class="work-card-name">Nebula Dashboard</div><div class="work-card-tag">UI/UX / Frontend / Design System</div></div></div>
+      <div class="work-card" data-delay="200"><div class="work-card-bg"></div><div class="work-card-info"><div class="work-card-name">Flux Interactive</div><div class="work-card-tag">WebGL / 3D / Experience</div></div></div>
+      <div class="work-card" data-delay="300"><div class="work-card-bg"></div><div class="work-card-info"><div class="work-card-name">Helix Launch</div><div class="work-card-tag">Campaign / Digital / Social</div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Pricing -->
+<section class="pricing" id="pricing">
+  <div class="pricing-inner">
+    <div class="section-label">Investment</div>
+    <h2 class="section-title">Pricing</h2>
+    <div class="pricing-grid">
+      <div class="price-card" data-delay="0">
+        <div class="price-tier">Starter</div>
+        <div class="price-amount">$5K<span>/project</span></div>
+        <p class="price-desc">Perfect for small brands and startups needing a polished identity.</p>
+        <ul class="price-features"><li>Brand Strategy</li><li>Logo + Moodboard</li><li>Basic Guidelines</li><li>3 Revisions</li></ul>
+        <button class="price-btn secondary">Get Started</button>
+      </div>
+      <div class="price-card featured" data-delay="100">
+        <div class="price-tier">Studio</div>
+        <div class="price-amount">$15K<span>/project</span></div>
+        <p class="price-desc">Full creative suite for ambitious brands and digital products.</p>
+        <ul class="price-features"><li>Everything in Starter</li><li>Web Design + Dev</li><li>Motion System</li><li>Design System</li><li>Unlimited Revisions</li></ul>
+        <button class="price-btn primary">Get Started</button>
+      </div>
+      <div class="price-card" data-delay="200">
+        <div class="price-tier">Enterprise</div>
+        <div class="price-amount">Custom</div>
+        <p class="price-desc">Ongoing creative partnership for large organizations and agencies.</p>
+        <ul class="price-features"><li>Dedicated Team</li><li>Multi-Project Support</li><li>Priority Delivery</li><li>White-Glove Service</li></ul>
+        <button class="price-btn secondary">Contact Us</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Testimonial Carousel -->
+<section class="carousel" id="testimonials">
+  <div class="section-label">What They Say</div>
+  <h2 class="section-title" style="margin-bottom:40px">Testimonials</h2>
+  <div class="carousel-inner">
+    <div class="carousel-slide active" data-slide="0">
+      <p class="carousel-text">"V Vortex completely transformed how our brand is perceived. Their creative direction is unmatched."</p>
+      <div class="carousel-author">Sarah Chen — CEO, Nebula</div>
+    </div>
+    <div class="carousel-slide" data-slide="1">
+      <p class="carousel-text">"Working with their team felt like magic. They took our vague ideas and made them into something beautiful."</p>
+      <div class="carousel-author">Marcus Lee — Founder, Flux</div>
+    </div>
+    <div class="carousel-slide" data-slide="2">
+      <p class="carousel-text">"The most talented creative studio we've ever worked with. Period."</p>
+      <div class="carousel-author">Elena Voss — CMO, Helix</div>
+    </div>
+    <div class="carousel-dots">
+      <button class="carousel-dot active" data-dot="0"></button>
+      <button class="carousel-dot" data-dot="1"></button>
+      <button class="carousel-dot" data-dot="2"></button>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta" id="cta">
+  <div class="cta-inner">
+    <h2 class="cta-title">Let's create<br><em style="font-family:'Playfair Display',serif;font-style:italic;font-weight:400">together</em></h2>
+    <p class="cta-sub">Tell us about your vision. We'll make it real.</p>
+    <button class="hero-btn" style="opacity:1;animation:none">Start a Project</button>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-copy">© 2026 V Vortex Studio</div>
+    <div class="footer-socials"><a href="#">Instagram</a><a href="#">Dribbble</a><a href="#">Twitter</a></div>
+  </div>
+</footer>
+
+<script>
+/* Custom cursor */
+const cursor=document.getElementById('cursor'),dot=document.getElementById('cursorDot');
+let cx=0,cy=0,dx=0,dy=0;
+document.addEventListener('mousemove',e=>{cx=e.clientX;cy=e.clientY;dot.style.left=cx+'px';dot.style.top=cy+'px'});
+function animCursor(){dx+=(cx-dx)*0.12;dy+=(cy-dy)*0.12;cursor.style.left=dx+'px';cursor.style.top=dy+'px';requestAnimationFrame(animCursor)}
+animCursor();
+document.querySelectorAll('a,button,.work-card').forEach(el=>{el.addEventListener('mouseenter',()=>cursor.classList.add('hovering'));el.addEventListener('mouseleave',()=>cursor.classList.remove('hovering'))});
+
+/* Carousel */
+let currentSlide=0;const slides=document.querySelectorAll('.carousel-slide'),dots=document.querySelectorAll('.carousel-dot');
+function goToSlide(i){slides.forEach(s=>s.classList.remove('active'));dots.forEach(d=>d.classList.remove('active'));slides[i].classList.add('active');dots[i].classList.add('active');currentSlide=i}
+dots.forEach(d=>d.addEventListener('click',()=>goToSlide(parseInt(d.dataset.dot))));
+setInterval(()=>goToSlide((currentSlide+1)%slides.length),4000);
+
+/* Scroll reveals */
+const io=new IntersectionObserver(e=>{e.forEach(en=>{if(en.isIntersecting){const d=en.target.dataset.delay||0;setTimeout(()=>en.target.classList.add('visible'),parseInt(d));io.unobserve(en.target)}})},{threshold:0.1,rootMargin:'-50px'});
+document.querySelectorAll('.work-card,.price-card').forEach(el=>io.observe(el));
+</script>
+</body>
+</html>

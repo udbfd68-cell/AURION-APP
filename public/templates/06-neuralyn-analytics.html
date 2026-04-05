@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neuralyn — AI Analytics Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
+  body{font-family:'Inter',sans-serif;background:#0a0a0a;color:#fff;overflow-x:hidden}
+
+  /* ═══════════════════ NAVBAR ═══════════════════ */
+  .navbar{position:fixed;top:0;left:0;width:100%;z-index:100;padding:16px 24px;transition:all 0.5s}
+  @media(min-width:1024px){.navbar{padding:16px 80px}}
+  .navbar.scrolled{background:rgba(10,10,10,0.85);backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,0.04)}
+  .nav-inner{max-width:1400px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+  .nav-logo{font-family:'Inter',sans-serif;font-weight:700;font-size:20px;color:#fff;text-decoration:none;letter-spacing:-0.03em}
+  .nav-links{display:none;align-items:center;gap:32px}
+  @media(min-width:1024px){.nav-links{display:flex}}
+  .nav-links a{font-size:14px;font-weight:400;color:rgba(255,255,255,0.5);text-decoration:none;transition:color 0.3s}
+  .nav-links a:hover{color:#fff}
+  .nav-actions{display:flex;align-items:center;gap:12px}
+  .nav-btn{padding:10px 24px;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.3s;border:none}
+  .nav-btn-ghost{background:transparent;color:rgba(255,255,255,0.6)}
+  .nav-btn-ghost:hover{color:#fff}
+  .nav-btn-solid{background:#fff;color:#0a0a0a}
+  .nav-btn-solid:hover{transform:scale(1.02)}
+
+  /* ═══════════════════ HERO ═══════════════════ */
+  .hero{position:relative;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding-top:140px;overflow:hidden}
+  .hero-content{position:relative;z-index:2;text-align:center;padding:0 24px;max-width:900px}
+  .hero-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 20px;border-radius:99px;background:linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.01));backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.06);font-size:13px;font-weight:500;color:rgba(255,255,255,0.5);margin-bottom:32px;opacity:0;animation:fadeUp 0.6s 0.1s ease forwards;box-shadow:inset 0 1px 0 rgba(255,255,255,0.04),0 10px 30px rgba(0,0,0,0.2)}
+  .hero-pill .badge{padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.08);font-size:12px;font-weight:600;color:#fff}
+
+  .hero-headline{font-family:'Instrument Serif',serif;font-size:48px;line-height:1.05;color:#fff;margin-bottom:24px;opacity:0;animation:fadeUp 0.6s 0.2s ease forwards}
+  @media(min-width:768px){.hero-headline{font-size:72px}}
+  @media(min-width:1200px){.hero-headline{font-size:90px}}
+
+  .hero-subtitle{font-size:18px;font-weight:300;color:rgba(255,255,255,0.4);max-width:560px;margin:0 auto 40px;line-height:1.7;opacity:0;animation:fadeUp 0.6s 0.3s ease forwards}
+
+  .hero-buttons{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:16px;margin-bottom:80px;opacity:0;animation:fadeUp 0.6s 0.4s ease forwards}
+  .btn-white{padding:14px 32px;border-radius:99px;background:#fff;color:#0a0a0a;font-size:15px;font-weight:600;border:none;cursor:pointer;transition:all 0.3s}
+  .btn-white:hover{transform:scale(1.03);box-shadow:0 0 30px rgba(255,255,255,0.12)}
+  .btn-ghost{padding:14px 32px;border-radius:99px;background:transparent;border:1px solid rgba(255,255,255,0.12);color:#fff;font-size:15px;font-weight:500;cursor:pointer;transition:all 0.3s}
+  .btn-ghost:hover{background:rgba(255,255,255,0.04)}
+
+  /* PARALLAX DASHBOARD */
+  .hero-dashboard{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:0 24px;perspective:1000px;opacity:0;animation:fadeIn 1s 0.6s ease forwards}
+  .dashboard-wrapper{border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transform:rotateX(8deg) rotateY(0deg);transition:transform 0.3s ease-out;box-shadow:0 40px 80px rgba(0,0,0,0.5)}
+  .dashboard-bar{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.04);background:rgba(0,0,0,0.3)}
+  .dashboard-dot{width:10px;height:10px;border-radius:50%}
+  .dashboard-dot:nth-child(1){background:#ff5f57}
+  .dashboard-dot:nth-child(2){background:#ffbd2e}
+  .dashboard-dot:nth-child(3){background:#28ca41}
+  .dashboard-body{padding:32px;display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:768px){.dashboard-body{grid-template-columns:repeat(3,1fr)}}
+  .db-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.04);border-radius:12px;padding:20px}
+  .db-card-label{font-size:12px;color:rgba(255,255,255,0.3);margin-bottom:8px}
+  .db-card-value{font-family:'Instrument Serif',serif;font-size:32px;color:#fff;margin-bottom:4px}
+  .db-card-change{font-size:12px;font-weight:600;color:#4ade80}
+  .db-card-change.red{color:#f87171}
+  .db-chart{grid-column:1/-1;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.04);border-radius:12px;padding:20px;min-height:200px}
+  .db-chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+  .db-chart-title{font-size:14px;font-weight:600;color:#fff}
+  .db-chart-tabs{display:flex;gap:4px}
+  .db-chart-tab{padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:none;background:transparent;color:rgba(255,255,255,0.3)}
+  .db-chart-tab.active{background:rgba(255,255,255,0.06);color:#fff}
+  .db-chart-svg{width:100%;height:120px}
+
+  /* ═══════════════════ FEATURES ═══════════════════ */
+  .features{padding:120px 24px;background:#0a0a0a}
+  .features-inner{max-width:1200px;margin:0 auto}
+  .features-header{text-align:center;margin-bottom:80px}
+  .features-title{font-family:'Instrument Serif',serif;font-size:48px;color:#fff;margin-bottom:16px}
+  @media(min-width:768px){.features-title{font-size:56px}}
+  .features-subtitle{font-size:18px;font-weight:300;color:rgba(255,255,255,0.4);max-width:480px;margin:0 auto}
+  .features-grid{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:768px){.features-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(min-width:1024px){.features-grid{grid-template-columns:repeat(3,1fr)}}
+  .ft-card{padding:36px 28px;border-radius:20px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .ft-card.visible{opacity:1;transform:translateY(0)}
+  .ft-card:hover{border-color:rgba(255,255,255,0.1);transform:translateY(-4px)}
+  .ft-icon{width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+  .ft-icon svg{width:22px;height:22px;stroke:rgba(255,255,255,0.6);fill:none;stroke-width:1.5}
+  .ft-card h3{font-size:18px;font-weight:600;color:#fff;margin-bottom:8px}
+  .ft-card p{font-size:14px;font-weight:300;color:rgba(255,255,255,0.4);line-height:1.6}
+
+  /* ═══════════════════ TESTIMONIAL WORD REVEAL ═══════════════════ */
+  .word-reveal-section{padding:120px 24px;background:#0a0a0a;border-top:1px solid rgba(255,255,255,0.04)}
+  .word-reveal-inner{max-width:900px;margin:0 auto;text-align:center}
+  .word-reveal-label{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.15em;color:rgba(255,255,255,0.3);margin-bottom:40px}
+  .word-reveal-text{font-family:'Instrument Serif',serif;font-size:36px;line-height:1.4;color:rgba(255,255,255,0.15)}
+  @media(min-width:768px){.word-reveal-text{font-size:48px}}
+  .word-reveal-text .word{display:inline-block;transition:color 0.4s;margin-right:0.25em}
+  .word-reveal-text .word.revealed{color:#fff}
+  .word-reveal-author{margin-top:40px;font-size:14px;color:rgba(255,255,255,0.3)}
+  .word-reveal-author strong{color:rgba(255,255,255,0.6)}
+
+  /* ═══════════════════ STATS ═══════════════════ */
+  .stats{padding:100px 24px;border-top:1px solid rgba(255,255,255,0.04)}
+  .stats-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);gap:48px}
+  @media(min-width:768px){.stats-inner{grid-template-columns:repeat(4,1fr)}}
+  .stat{text-align:center;opacity:0;transform:translateY(20px)}
+  .stat.visible{opacity:1;transform:translateY(0);transition:all 0.6s}
+  .stat-num{font-family:'Instrument Serif',serif;font-size:56px;color:#fff}
+  .stat-lbl{font-size:14px;font-weight:300;color:rgba(255,255,255,0.3);margin-top:4px}
+
+  /* ═══════════════════ CTA ═══════════════════ */
+  .cta{padding:120px 24px;text-align:center;position:relative;overflow:hidden}
+  .cta-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:500px;height:300px;background:rgba(255,255,255,0.03);filter:blur(100px);border-radius:50%;pointer-events:none}
+  .cta-inner{position:relative;z-index:1;max-width:640px;margin:0 auto}
+  .cta-title{font-family:'Instrument Serif',serif;font-size:48px;color:#fff;margin-bottom:16px}
+  @media(min-width:768px){.cta-title{font-size:64px}}
+  .cta-sub{font-size:18px;font-weight:300;color:rgba(255,255,255,0.4);margin-bottom:40px}
+
+  /* ═══════════════════ FOOTER ═══════════════════ */
+  .footer{padding:40px 24px;border-top:1px solid rgba(255,255,255,0.04)}
+  .footer-inner{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px}
+  @media(min-width:768px){.footer-inner{flex-direction:row;justify-content:space-between}}
+  .footer-copy{font-size:13px;color:rgba(255,255,255,0.2)}
+  .footer-links{display:flex;gap:24px}
+  .footer-links a{font-size:13px;color:rgba(255,255,255,0.2);text-decoration:none;transition:color 0.3s}
+  .footer-links a:hover{color:rgba(255,255,255,0.5)}
+
+  @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+</style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar" id="navbar">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">Neuralyn</a>
+    <div class="nav-links">
+      <a href="#">Product</a>
+      <a href="#">Features</a>
+      <a href="#">Pricing</a>
+      <a href="#">Docs</a>
+    </div>
+    <div class="nav-actions">
+      <button class="nav-btn nav-btn-ghost">Sign In</button>
+      <button class="nav-btn nav-btn-solid">Get Started</button>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-pill">
+      <span class="badge">New</span>
+      Introducing Neuralyn v4.0 — Predictive AI Analytics
+    </div>
+    <h1 class="hero-headline">Analytics that<br><em style="font-family:'Instrument Serif',serif;font-style:italic">think</em> ahead</h1>
+    <p class="hero-subtitle">AI-powered analytics platform that doesn't just show you what happened — it predicts what's coming next.</p>
+    <div class="hero-buttons">
+      <button class="btn-white">Start Free Trial</button>
+      <button class="btn-ghost">Watch Demo</button>
+    </div>
+  </div>
+  <div class="hero-dashboard" id="parallaxDash">
+    <div class="dashboard-wrapper" id="dashWrapper">
+      <div class="dashboard-bar">
+        <span class="dashboard-dot"></span><span class="dashboard-dot"></span><span class="dashboard-dot"></span>
+      </div>
+      <div class="dashboard-body">
+        <div class="db-card">
+          <div class="db-card-label">Total Revenue</div>
+          <div class="db-card-value">$2.4M</div>
+          <div class="db-card-change">↗ +12.5% from last month</div>
+        </div>
+        <div class="db-card">
+          <div class="db-card-label">Active Users</div>
+          <div class="db-card-value">48.2K</div>
+          <div class="db-card-change">↗ +8.3% from last month</div>
+        </div>
+        <div class="db-card">
+          <div class="db-card-label">Churn Rate</div>
+          <div class="db-card-value">2.1%</div>
+          <div class="db-card-change red">↘ -0.4% from last month</div>
+        </div>
+        <div class="db-chart">
+          <div class="db-chart-header">
+            <div class="db-chart-title">Revenue Forecast</div>
+            <div class="db-chart-tabs">
+              <button class="db-chart-tab">7D</button>
+              <button class="db-chart-tab active">30D</button>
+              <button class="db-chart-tab">90D</button>
+            </div>
+          </div>
+          <svg class="db-chart-svg" viewBox="0 0 600 120" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="rgba(255,255,255,0.08)"/>
+                <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+              </linearGradient>
+            </defs>
+            <path d="M0 100 Q50 80 100 85 T200 60 T300 70 T400 40 T500 50 T600 20 V120 H0 Z" fill="url(#chartGrad)"/>
+            <path d="M0 100 Q50 80 100 85 T200 60 T300 70 T400 40 T500 50 T600 20" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2"/>
+            <path d="M0 100 Q50 90 100 95 T200 80 T300 85 T400 65 T500 75 T600 45" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" stroke-dasharray="6 4"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features" id="features" style="margin-top:120px">
+  <div class="features-inner">
+    <div class="features-header">
+      <h2 class="features-title">Intelligent insights</h2>
+      <p class="features-subtitle">Every feature designed to give you an unfair advantage.</p>
+    </div>
+    <div class="features-grid">
+      <div class="ft-card" data-delay="0">
+        <div class="ft-icon"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+        <h3>Predictive Analytics</h3>
+        <p>Machine learning models forecast trends, anomalies, and opportunities before they happen.</p>
+      </div>
+      <div class="ft-card" data-delay="80">
+        <div class="ft-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>
+        <h3>Real-time Processing</h3>
+        <p>Sub-second data ingestion and processing. See changes the moment they happen.</p>
+      </div>
+      <div class="ft-card" data-delay="160">
+        <div class="ft-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg></div>
+        <h3>Custom Dashboards</h3>
+        <p>Drag-and-drop builder with 50+ widget types. Create the perfect view for your data.</p>
+      </div>
+      <div class="ft-card" data-delay="240">
+        <div class="ft-icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+        <h3>SOC 2 Compliant</h3>
+        <p>Enterprise-grade security with encryption at rest and in transit. GDPR and CCPA ready.</p>
+      </div>
+      <div class="ft-card" data-delay="320">
+        <div class="ft-icon"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+        <h3>SQL + AI Queries</h3>
+        <p>Write SQL or ask questions in plain English. Our AI translates intent to insights instantly.</p>
+      </div>
+      <div class="ft-card" data-delay="400">
+        <div class="ft-icon"><svg viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 012 2v7"/><path d="M11 18H8a2 2 0 01-2-2V9"/></svg></div>
+        <h3>200+ Integrations</h3>
+        <p>Connect every tool in your stack. Snowflake, BigQuery, Stripe, Salesforce, and more.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WORD-BY-WORD TESTIMONIAL REVEAL -->
+<section class="word-reveal-section">
+  <div class="word-reveal-inner">
+    <div class="word-reveal-label">What our customers say</div>
+    <p class="word-reveal-text" id="wordReveal"></p>
+    <div class="word-reveal-author">— <strong>Sarah Chen</strong>, VP of Data, Vercel</div>
+  </div>
+</section>
+
+<!-- STATS -->
+<section class="stats">
+  <div class="stats-inner">
+    <div class="stat" data-delay="0"><div class="stat-num">10B+</div><div class="stat-lbl">Events Processed Daily</div></div>
+    <div class="stat" data-delay="100"><div class="stat-num">99.99%</div><div class="stat-lbl">Uptime SLA</div></div>
+    <div class="stat" data-delay="200"><div class="stat-num">3,200+</div><div class="stat-lbl">Companies</div></div>
+    <div class="stat" data-delay="300"><div class="stat-num">&lt;50ms</div><div class="stat-lbl">Avg Query Time</div></div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta">
+  <div class="cta-glow"></div>
+  <div class="cta-inner">
+    <h2 class="cta-title">Start predicting, not reacting</h2>
+    <p class="cta-sub">Join 3,200+ data teams using Neuralyn to see around corners.</p>
+    <div style="display:flex;align-items:center;justify-content:center;gap:16px">
+      <button class="btn-white">Start Free Trial</button>
+      <button class="btn-ghost">Talk to Sales</button>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-copy">© 2026 Neuralyn. All rights reserved.</div>
+    <div class="footer-links"><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Status</a></div>
+  </div>
+</footer>
+
+<script>
+/* Navbar scroll */
+window.addEventListener('scroll',()=>{
+  document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 80);
+});
+
+/* Parallax dashboard */
+(function(){
+  const wrapper = document.getElementById('dashWrapper');
+  if(!wrapper) return;
+  document.addEventListener('mousemove',(e)=>{
+    const x = (e.clientX / window.innerWidth - 0.5) * 8;
+    const y = (e.clientY / window.innerHeight - 0.5) * 4;
+    wrapper.style.transform = `rotateX(${8 - y}deg) rotateY(${x}deg)`;
+  });
+})();
+
+/* Word-by-word testimonial reveal */
+(function(){
+  const text = "Neuralyn completely transformed how we think about data. Their predictive models caught a churn signal three weeks before it materialized, saving us $400K in a single quarter. It is not analytics — it is a competitive superpower.";
+  const container = document.getElementById('wordReveal');
+  const words = text.split(' ');
+  container.innerHTML = words.map(w => `<span class="word">${w}</span>`).join('');
+
+  const observer = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){
+        const wordEls = container.querySelectorAll('.word');
+        wordEls.forEach((el, i) => {
+          setTimeout(()=>{ el.classList.add('revealed')}, i * 60);
+        });
+        observer.unobserve(entry.target);
+      }
+    });
+  },{threshold:0.3});
+  observer.observe(container);
+})();
+
+/* Scroll Reveals */
+(function(){
+  const observer = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){
+        const delay = entry.target.dataset.delay || 0;
+        setTimeout(()=>{entry.target.classList.add('visible')}, parseInt(delay));
+        observer.unobserve(entry.target);
+      }
+    });
+  },{threshold:0.1,rootMargin:'-50px'});
+  document.querySelectorAll('.ft-card,.stat').forEach(el=>observer.observe(el));
+})();
+</script>
+</body>
+</html>

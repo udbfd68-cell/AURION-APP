@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import hljs from 'highlight.js';
 import dynamic from 'next/dynamic';
+import { useWebContainer } from '@/hooks/useWebContainer';
+import { buildReactBitsContextSection } from '@/lib/system-prompts';
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react').then(m => m.default), { ssr: false, loading: () => <div className="flex-1 bg-[#1e1e1e]" /> });
 
@@ -11,13 +13,12 @@ const MonacoEditor = dynamic(() => import('@monaco-editor/react').then(m => m.de
 async function fetchWithRetry(
   url: string,
   options: RequestInit & { timeout?: number } = {},
-  maxRetries = 2,
+  maxRetries = 0,
 ): Promise<Response> {
-  const { timeout = 30000, ...fetchOpts } = options;
+  const { timeout = 0, ...fetchOpts } = options;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const controller = new AbortController();
     if (fetchOpts.signal) {
-      // Chain external AbortSignal so caller can still cancel
       fetchOpts.signal.addEventListener('abort', () => controller.abort(), { once: true });
       if (fetchOpts.signal.aborted) { controller.abort(); }
     }
@@ -25,22 +26,17 @@ async function fetchWithRetry(
     try {
       const res = await fetch(url, { ...fetchOpts, signal: controller.signal });
       if (timer) clearTimeout(timer);
-      // Don't retry on client errors (4xx) — only server errors
       if (!res.ok && res.status >= 500 && attempt < maxRetries) {
-        const delay = 1000 * Math.pow(2, attempt);
-        await new Promise(r => setTimeout(r, delay));
+        await new Promise(r => setTimeout(r, 1000));
         continue;
       }
       return res;
     } catch (err: unknown) {
       if (timer) clearTimeout(timer);
       const isAbort = (err as Error).name === 'AbortError';
-      // If original signal was aborted by caller, don't retry
       if (isAbort && fetchOpts.signal?.aborted) throw err;
-      // Timeout or network error — retry with backoff
       if (attempt < maxRetries) {
-        const delay = 1000 * Math.pow(2, attempt);
-        await new Promise(r => setTimeout(r, delay));
+        await new Promise(r => setTimeout(r, 1000));
         continue;
       }
       if (isAbort && !fetchOpts.signal?.aborted) {
@@ -49,7 +45,7 @@ async function fetchWithRetry(
       throw err;
     }
   }
-  throw new Error('Max retries exceeded');
+  throw new Error('Request failed');
 }
 
 /* ────────── IndexedDB helpers ────────── */
@@ -178,11 +174,257 @@ function buildFileTree(files: VirtualFS): { dirs: Set<string>; entries: { path: 
   return { dirs, entries };
 }
 
-/* ── Assemble multi-file preview ── */
+/* ── React/Tailwind CDN runtime injection ── */
+const REACT_CDN = `<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>`;
+const TAILWIND_CDN = `<script crossorigin src="https://cdn.tailwindcss.com"></script>`;
+const LUCIDE_CDN = `<script crossorigin src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>`;
+const RECHARTS_CDN = `<script crossorigin src="https://unpkg.com/recharts@2/umd/Recharts.js"></script>`;
+const REACT_ROUTER_CDN = `<script crossorigin src="https://unpkg.com/react-router-dom@6/dist/umd/react-router-dom.production.min.js"></script>`;
+const FRAMER_MOTION_CDN = `<script crossorigin src="https://unpkg.com/framer-motion@11/dist/framer-motion.js"></script>`;
+
+/* ── Premium font + animation CDNs (always available in previews) ── */
+const PREMIUM_FONTS_CDN = `<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">`;
+const GSAP_CDN = `<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>`;
+const LENIS_CDN = `<script crossorigin src="https://unpkg.com/lenis@1.1.18/dist/lenis.min.js"></script>`;
+const FA_CDN = `<link rel="stylesheet" crossorigin href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">`;
+
+/* ── Premium design system CSS (dark-first, Awwwards-quality) ── */
+const SHADCN_BASE_CSS = `<style id="aurion-design-system">
+/* ── CSS variables — dark-first (shadcn/radix compatible) ── */
+:root {
+  --background: 0 0% 3.9%; --foreground: 0 0% 96%;
+  --card: 0 0% 5%; --card-foreground: 0 0% 96%;
+  --popover: 0 0% 5%; --popover-foreground: 0 0% 96%;
+  --primary: 240 100% 68%; --primary-foreground: 0 0% 100%;
+  --secondary: 240 3.7% 12%; --secondary-foreground: 0 0% 96%;
+  --muted: 240 3.7% 12%; --muted-foreground: 240 5% 58%;
+  --accent: 240 3.7% 12%; --accent-foreground: 0 0% 96%;
+  --destructive: 0 62.8% 55%; --destructive-foreground: 0 0% 98%;
+  --border: 240 3.7% 15.9%; --input: 240 3.7% 15.9%; --ring: 240 100% 68%;
+  --radius: 0.75rem;
+}
+.light,:root[class~="light"] {
+  --background: 0 0% 100%; --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%; --card-foreground: 240 10% 3.9%;
+  --primary: 240 5.9% 10%; --primary-foreground: 0 0% 98%;
+  --secondary: 240 4.8% 95.9%; --secondary-foreground: 240 5.9% 10%;
+  --muted: 240 4.8% 95.9%; --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%; --accent-foreground: 240 5.9% 10%;
+  --destructive: 0 84.2% 60.2%; --destructive-foreground: 0 0% 98%;
+  --border: 240 5.9% 90%; --input: 240 5.9% 90%; --ring: 240 5.9% 10%;
+}
+/* ── Base reset — premium typography ── */
+*,*::before,*::after{box-sizing:border-box;border-width:0;border-style:solid;border-color:hsl(var(--border))}
+html{scroll-behavior:smooth;scrollbar-width:thin;scrollbar-color:#333 transparent}
+body{margin:0;font-family:'DM Sans',system-ui,-apple-system,BlinkMacSystemFont,sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;color:hsl(var(--foreground));background:hsl(var(--background));overflow-x:hidden;text-rendering:optimizeLegibility}
+h1,h2,h3,h4{font-family:'Syne','Space Grotesk',system-ui,sans-serif;font-weight:700;letter-spacing:-0.02em;line-height:1.1}
+h1{font-size:clamp(2.5rem,6vw,5rem);letter-spacing:-0.03em;line-height:1.05}
+h2{font-size:clamp(1.8rem,4vw,3rem)}
+h3{font-size:clamp(1.2rem,2.5vw,1.75rem)}
+p{line-height:1.7;color:hsl(var(--muted-foreground))}
+/* ── Selection + focus ── */
+::selection{background:hsl(var(--primary)/0.2);color:hsl(var(--primary-foreground))}
+:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px;border-radius:var(--radius)}
+/* ── Premium scrollbar ── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:hsl(var(--muted-foreground)/0.2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:hsl(var(--muted-foreground)/0.4)}
+/* ── Animation keyframes ── */
+@keyframes fadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-20px)}to{opacity:1;transform:translateX(0)}}
+@keyframes scaleIn{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:scale(1)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{50%{opacity:0.5}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes glow{0%,100%{box-shadow:0 0 20px hsl(var(--primary)/0.3)}50%{box-shadow:0 0 40px hsl(var(--primary)/0.5)}}
+@keyframes gradient-shift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes blur-in{from{opacity:0;filter:blur(10px)}to{opacity:1;filter:blur(0)}}
+.animate-fadeIn{animation:fadeIn 0.6s cubic-bezier(0.16,1,0.3,1) both}
+.animate-slideIn{animation:slideIn 0.5s cubic-bezier(0.16,1,0.3,1) both}
+.animate-scaleIn{animation:scaleIn 0.4s cubic-bezier(0.16,1,0.3,1) both}
+.animate-spin{animation:spin 1s linear infinite}
+.animate-pulse{animation:pulse 2s cubic-bezier(0.4,0,0.6,1) infinite}
+.animate-shimmer{animation:shimmer 2.5s linear infinite;background-size:200% 100%}
+.animate-float{animation:float 3s ease-in-out infinite}
+.animate-glow{animation:glow 2s ease-in-out infinite}
+.animate-gradient{animation:gradient-shift 4s ease infinite;background-size:200% 200%}
+/* ── Reduced motion ── */
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;transition-duration:0.01ms!important}}
+</style>`;
+
+function detectReactCode(files: VirtualFS): boolean {
+  for (const f of Object.values(files)) {
+    if (/\b(useState|useEffect|useRef|useCallback|useMemo|React\.|ReactDOM\.|createRoot|jsx|<\w+\s[^>]*\/?>)/i.test(f.content)) return true;
+    if (f.language === 'tsx' || f.language === 'jsx') return true;
+  }
+  return false;
+}
+
+function detectTailwindCode(files: VirtualFS): boolean {
+  for (const f of Object.values(files)) {
+    if (/\bclassName=["'][^"']*(?:flex|grid|p-|m-|text-|bg-|rounded|border|shadow|hover:|dark:|sm:|md:|lg:)/.test(f.content)) return true;
+    if (/\bclass=["'][^"']*(?:flex|grid|p-|m-|text-|bg-|rounded|border|shadow)/.test(f.content)) return true;
+  }
+  return false;
+}
+
+function detectRechartsCode(files: VirtualFS): boolean {
+  for (const f of Object.values(files)) {
+    if (/\b(Recharts|LineChart|BarChart|PieChart|AreaChart|ResponsiveContainer)\b/.test(f.content)) return true;
+  }
+  return false;
+}
+
+function detectReactRouter(files: VirtualFS): boolean {
+  for (const f of Object.values(files)) {
+    if (/\b(BrowserRouter|HashRouter|Routes|Route|Link|useNavigate|useParams|useLocation|NavLink)\b/.test(f.content)) return true;
+  }
+  return false;
+}
+
+function detectFramerMotion(files: VirtualFS): boolean {
+  for (const f of Object.values(files)) {
+    if (/\b(motion\.|AnimatePresence|useAnimation|useMotionValue|useTransform|useSpring)\b/.test(f.content)) return true;
+  }
+  return false;
+}
+
+/* ── Auto-detect popular library usage and return CDN scripts ── */
+function detectLibraryCDNs(files: VirtualFS): string[] {
+  const cdns: string[] = [];
+  const all = Object.values(files).map(f => f.content).join('\n');
+  // Three.js
+  if (/\b(THREE\.|new THREE|Scene|PerspectiveCamera|WebGLRenderer|OrbitControls)\b/.test(all) && !/three.*\.js/.test(all)) {
+    cdns.push('<script crossorigin src="https://unpkg.com/three@0.169.0/build/three.min.js"></script>');
+  }
+  // GSAP
+  if (/\b(gsap\.|ScrollTrigger|timeline|gsap\.to|gsap\.from|gsap\.fromTo)\b/.test(all) && !/gsap.*\.js/.test(all)) {
+    cdns.push('<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>');
+    cdns.push('<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>');
+  }
+  // Anime.js
+  if (/\banime\(|anime\.timeline/.test(all) && !/anime.*\.js/.test(all)) {
+    cdns.push('<script crossorigin src="https://unpkg.com/animejs@3/lib/anime.min.js"></script>');
+  }
+  // Chart.js
+  if (/\b(new Chart|Chart\.register|chart\.js)\b/i.test(all) && !/chart\.js|chartjs/.test(all)) {
+    cdns.push('<script crossorigin src="https://unpkg.com/chart.js@4"></script>');
+  }
+  // Axios
+  if (/\baxios\.(get|post|put|delete|patch|create)\b/.test(all) && !/axios.*\.js/.test(all)) {
+    cdns.push('<script crossorigin src="https://unpkg.com/axios/dist/axios.min.js"></script>');
+  }
+  // Marked (markdown)
+  if (/\bmarked\(|marked\.parse/.test(all) && !/marked.*\.js/.test(all)) {
+    cdns.push('<script crossorigin src="https://unpkg.com/marked/marked.min.js"></script>');
+  }
+  // Day.js
+  if (/\bdayjs\(/.test(all) && !/dayjs.*\.js/.test(all)) {
+    cdns.push('<script crossorigin src="https://unpkg.com/dayjs@1/dayjs.min.js"></script>');
+  }
+  // Lodash
+  if (/\b_\.(map|filter|reduce|debounce|throttle|cloneDeep|merge|groupBy|sortBy)\b/.test(all) && !/lodash.*\.js/.test(all)) {
+    cdns.push('<script crossorigin src="https://unpkg.com/lodash@4/lodash.min.js"></script>');
+  }
+  // Font Awesome
+  if (/\bfa-|fas |far |fab |fa /.test(all) && !/font-?awesome/.test(all)) {
+    cdns.push('<link rel="stylesheet" crossorigin href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">');
+  }
+  // Lenis smooth scroll
+  if (/\bLenis\b|new Lenis|lenis\.raf/.test(all) && !/lenis.*\.js/.test(all)) {
+    cdns.push('<script crossorigin src="https://unpkg.com/lenis@1.1.18/dist/lenis.min.js"></script>');
+  }
+  // Vanta.js
+  if (/\bVANTA\.|vanta\./.test(all) && !/vanta.*\.js/.test(all)) {
+    // Vanta requires Three.js
+    if (!cdns.some(c => c.includes('three'))) {
+      cdns.push('<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>');
+    }
+    cdns.push('<script crossorigin src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.topology.min.js"></script>');
+  }
+  // tsParticles
+  if (/\btsParticles\b|loadSlim/.test(all) && !/tsparticles.*\.js/.test(all)) {
+    cdns.push('<script crossorigin src="https://cdn.jsdelivr.net/npm/tsparticles-slim@2/tsparticles.slim.bundle.min.js"></script>');
+  }
+  return cdns;
+}
+
+/* ── Assemble multi-file preview with React/Tailwind runtime ── */
 function assemblePreview(files: VirtualFS): string | null {
+  const isReact = detectReactCode(files);
+  const isTailwind = detectTailwindCode(files);
+  const isRecharts = detectRechartsCode(files);
+  const isRouter = detectReactRouter(files);
+  const isFramer = detectFramerMotion(files);
+  const libCDNs = detectLibraryCDNs(files);
+
+  // For React projects: assemble from App.jsx/tsx + components
+  if (isReact && !files['index.html']) {
+    const appFile = files['App.jsx'] || files['App.tsx'] || files['app.jsx'] || files['app.tsx']
+      || files['src/App.jsx'] || files['src/App.tsx'];
+    if (appFile) {
+      // Gather all component files
+      const components: string[] = [];
+      for (const [path, file] of Object.entries(files)) {
+        if (path === 'index.html' || path === 'package.json') continue;
+        if (file.language === 'css') {
+          components.push(`<style>/* ${path} */\n${file.content}</style>`);
+        }
+      }
+      // Gather all JSX/TSX files (non-App)
+      const jsxFiles: string[] = [];
+      for (const [path, file] of Object.entries(files)) {
+        if (path === 'package.json' || path === 'index.html') continue;
+        if (['jsx', 'tsx', 'javascript', 'typescript'].includes(file.language) && path !== 'App.jsx' && path !== 'App.tsx' && path !== 'app.jsx' && path !== 'app.tsx' && path !== 'src/App.jsx' && path !== 'src/App.tsx') {
+          jsxFiles.push(`// ── ${path} ──\n${file.content}`);
+        }
+      }
+
+      // Build CDN stack
+      const cdns = [REACT_CDN, PREMIUM_FONTS_CDN];
+      if (isTailwind) cdns.push(TAILWIND_CDN);
+      if (isRecharts) cdns.push(RECHARTS_CDN);
+      if (isRouter) cdns.push(REACT_ROUTER_CDN);
+      if (isFramer) cdns.push(FRAMER_MOTION_CDN);
+      cdns.push(LUCIDE_CDN);
+      cdns.push(...libCDNs);
+
+      // Router wrapper: wrap App in HashRouter if React Router detected
+      const mountCode = isRouter
+        ? `const {HashRouter,Routes,Route,Link,NavLink,useNavigate,useParams,useLocation}=ReactRouterDOM;
+const _root=ReactDOM.createRoot(document.getElementById('root'));
+_root.render(React.createElement(HashRouter,null,React.createElement(typeof App!=='undefined'?App:()=>React.createElement('div',null,'Loading...'))));`
+        : `const _root=ReactDOM.createRoot(document.getElementById('root'));
+_root.render(React.createElement(typeof App!=='undefined'?App:()=>React.createElement('div',null,'Loading...')));`;
+
+      return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+${cdns.join('\n')}
+${SHADCN_BASE_CSS}
+${components.join('\n')}
+</head><body><div id="root"></div>
+<script type="text/babel" data-type="module">
+${jsxFiles.join('\n\n')}
+
+// ── App ──
+${appFile.content}
+
+// ── Mount ──
+${mountCode}
+</script></body></html>`;
+    }
+  }
+
   const index = files['index.html'];
   if (!index) return null;
   let html = index.content;
+
   // Inline <link rel="stylesheet" href="X"> from VFS
   html = html.replace(/<link\s+[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*\/?>/gi, (match, href) => {
     const cssFile = files[href] || files[href.replace(/^\.?\//, '')];
@@ -195,25 +437,127 @@ function assemblePreview(files: VirtualFS): string | null {
     if (jsFile) return `<script>/* ${src} */\n${jsFile.content}</script>`;
     return match;
   });
+
+  // Inject React runtime if the HTML contains JSX/React code
+  if (isReact && !html.includes('react.production') && !html.includes('react.development')) {
+    const headEnd = html.indexOf('</head>');
+    if (headEnd !== -1) {
+      html = html.slice(0, headEnd) + '\n' + REACT_CDN + '\n' + html.slice(headEnd);
+    }
+    // Convert any <script> with JSX to type="text/babel"
+    html = html.replace(/<script(?![^>]*type=)(?![^>]*src=)([^>]*)>/gi, '<script type="text/babel"$1>');
+  }
+
+  // Inject Tailwind if classes detected
+  if (isTailwind && !html.includes('tailwindcss') && !html.includes('cdn.tailwindcss')) {
+    const headEnd = html.indexOf('</head>');
+    if (headEnd !== -1) {
+      html = html.slice(0, headEnd) + '\n' + TAILWIND_CDN + '\n' + html.slice(headEnd);
+    }
+  }
+
+  // Inject Recharts if detected
+  if (isRecharts && !html.includes('Recharts')) {
+    const headEnd = html.indexOf('</head>');
+    if (headEnd !== -1) {
+      html = html.slice(0, headEnd) + '\n' + RECHARTS_CDN + '\n' + html.slice(headEnd);
+    }
+  }
+
+  // Inject React Router if detected
+  if (isRouter && !html.includes('react-router-dom')) {
+    const headEnd = html.indexOf('</head>');
+    if (headEnd !== -1) {
+      html = html.slice(0, headEnd) + '\n' + REACT_ROUTER_CDN + '\n' + html.slice(headEnd);
+    }
+  }
+
+  // Inject Framer Motion if detected
+  if (isFramer && !html.includes('framer-motion')) {
+    const headEnd = html.indexOf('</head>');
+    if (headEnd !== -1) {
+      html = html.slice(0, headEnd) + '\n' + FRAMER_MOTION_CDN + '\n' + html.slice(headEnd);
+    }
+  }
+
+  // Inject shadcn design system CSS only if the HTML lacks its own design system
+  const _hasOwnCSS = /<style[^>]*>[\s\S]{300,}<\/style>/i.test(html) && (/:root\s*\{/.test(html) || /--\w+\s*:/.test(html));
+  if (!html.includes('aurion-design-system') && !_hasOwnCSS) {
+    const headEnd = html.indexOf('</head>');
+    if (headEnd !== -1) {
+      html = html.slice(0, headEnd) + '\n' + SHADCN_BASE_CSS + '\n' + html.slice(headEnd);
+    }
+  }
+
+  // Inject premium fonts if not already present
+  if (!html.includes('fonts.googleapis.com') && !html.includes('fonts.gstatic.com')) {
+    const headEnd = html.indexOf('</head>');
+    if (headEnd !== -1) {
+      html = html.slice(0, headEnd) + '\n' + PREMIUM_FONTS_CDN + '\n' + html.slice(headEnd);
+    }
+  }
+
+  // Inject GSAP + Lenis if code uses them (only if not already injected by detectLibraryCDNs)
+  const allContent = Object.values(files).map(f => f.content).join('\n');
+  const hasGsap = (/\bgsap\b|ScrollTrigger|gsap\./i.test(allContent) || /\bgsap\b|ScrollTrigger|gsap\./i.test(html)) && !html.includes('gsap.min.js');
+  const hasLenis = (/\bLenis\b|lenis/i.test(allContent) || /\bLenis\b|lenis/i.test(html)) && !html.includes('lenis.min.js');
+  if (hasGsap) {
+    const headEnd = html.indexOf('</head>');
+    if (headEnd !== -1) html = html.slice(0, headEnd) + '\n' + GSAP_CDN + '\n' + html.slice(headEnd);
+  }
+  if (hasLenis) {
+    const headEnd = html.indexOf('</head>');
+    if (headEnd !== -1) html = html.slice(0, headEnd) + '\n' + LENIS_CDN + '\n' + html.slice(headEnd);
+  }
+
+  // Inject Font Awesome if used (only if not already injected)
+  if (/\bfa-|fas |far |fab |fa /.test(html) && !html.includes('font-awesome')) {
+    const headEnd = html.indexOf('</head>');
+    if (headEnd !== -1) html = html.slice(0, headEnd) + '\n' + FA_CDN + '\n' + html.slice(headEnd);
+  }
+
+  // Inject auto-detected library CDNs (skip duplicates already present)
+  const filteredLibCDNs = libCDNs.filter(cdn => {
+    if (cdn.includes('gsap') && html.includes('gsap.min.js')) return false;
+    if (cdn.includes('lenis') && html.includes('lenis.min.js')) return false;
+    if (cdn.includes('font-awesome') && html.includes('font-awesome')) return false;
+    return true;
+  });
+  if (filteredLibCDNs.length > 0) {
+    const headEnd = html.indexOf('</head>');
+    if (headEnd !== -1) {
+      html = html.slice(0, headEnd) + '\n' + filteredLibCDNs.join('\n') + '\n' + html.slice(headEnd);
+    }
+  }
+
+  // Replace unresolved __GEMINI_IMAGE_*__ and __LTX_VIDEO_URL__ placeholders with fallbacks
+  html = html.replace(/__GEMINI_IMAGE_([a-zA-Z0-9_-]+)__/g, (_m, id) =>
+    `https://placehold.co/800x600/1a1a2e/eaeaea?text=${encodeURIComponent(id)}`
+  );
+  html = html.replace(/__LTX_VIDEO_URL__/g, '');
+
   return html;
 }
 
-type AIModel = { id: string; name: string; provider: 'ollama'; tags: string[] };
+type AIModel = { id: string; name: string; provider: 'google' | 'anthropic' | 'ollama'; tags: string[] };
 
 const MODELS: AIModel[] = [
-  // ── Vision Models (Screenshot-to-Code, Image Analysis) ──
-  { id: 'gemini-3-flash', name: 'Gemini 3 Flash', provider: 'ollama', tags: ['Vision', 'Fast'] },
-  { id: 'glm-4.7', name: 'GLM-4.7', provider: 'ollama', tags: ['Vision', 'Code'] },
-  { id: 'glm-4.6', name: 'GLM-4.6', provider: 'ollama', tags: ['Vision', 'Agent'] },
-  { id: 'kimi-k2.5', name: 'Kimi K2.5', provider: 'ollama', tags: ['Vision'] },
-  { id: 'qwen3.5-397b', name: 'Qwen3.5 397B', provider: 'ollama', tags: ['Vision', 'Large'] },
-  // ── Coding Models (Code Generation, App Building) ──
-  { id: 'qwen3-coder-480b', name: 'Qwen3 Coder 480B', provider: 'ollama', tags: ['Code', 'Best'] },
-  { id: 'qwen3-coder-next', name: 'Qwen3 Coder Next', provider: 'ollama', tags: ['Code', 'New'] },
-  { id: 'devstral-2', name: 'Devstral 2 123B', provider: 'ollama', tags: ['Code'] },
-  { id: 'devstral-small-2', name: 'Devstral Small 2', provider: 'ollama', tags: ['Code', 'Fast'] },
-  { id: 'deepseek-v3.2', name: 'DeepSeek V3.2', provider: 'ollama', tags: ['Code'] },
-  { id: 'glm-5', name: 'GLM-5 744B', provider: 'ollama', tags: ['Code', 'Large'] },
+  // ── Ollama Cloud — FREE unlimited AI ──
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', provider: 'ollama', tags: ['Vision', 'Best'] },
+  { id: 'gemma4', name: 'Gemma 4', provider: 'ollama', tags: ['Vision', 'Fast'] },
+  { id: 'glm-4.7-flash', name: 'GLM-4.7 Flash', provider: 'ollama', tags: ['Vision', 'Fast'] },
+  // ── Google Gemini — All models via Google AI API ──
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google', tags: ['Vision', 'Best'] },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'google', tags: ['Vision', 'Fast'] },
+  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'google', tags: ['Code', 'Fast'] },
+  { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite', provider: 'google', tags: ['Code', 'Fast'] },
+  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'google', tags: ['Vision', 'Large'] },
+  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'google', tags: ['Code'] },
+  // ── Anthropic Claude — via Mammoth AI ──
+  { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', provider: 'anthropic', tags: ['Code', 'Best'] },
+  { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'anthropic', tags: ['Code', 'Fast'] },
+  { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', provider: 'anthropic', tags: ['Fast'] },
+  { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', provider: 'anthropic', tags: ['Large'] },
 ];
 
 const TAG_COLORS: Record<string, string> = {
@@ -226,31 +570,29 @@ const TAG_COLORS: Record<string, string> = {
   Agent: 'text-pink-400 bg-pink-500/10 border-pink-500/20',
 };
 
-const PROVIDER_LABELS: Record<string, string> = { ollama: 'Ollama Cloud' };
+const PROVIDER_LABELS: Record<string, string> = { ollama: 'Ollama Cloud', google: 'Google AI', anthropic: 'Mammoth AI (Claude)' };
 
 const PROVIDER_ICON: Record<string, ReactNode> = {
-  ollama: <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 opacity-60"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>,
+  ollama: <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 opacity-60"><circle cx="12" cy="8" r="5"/><ellipse cx="12" cy="18" rx="8" ry="5"/></svg>,
+  google: <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 opacity-60"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>,
+  anthropic: <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 opacity-60"><path d="M13.827 3.52h3.603L24 20.48h-3.603l-6.57-16.96zm-7.258 0h3.604L16.742 20.48h-3.603L6.57 3.52zM0 20.48h3.604L7.68 9.928 6.07 5.64 0 20.48z"/></svg>,
 };
 
 function getApiEndpoint(provider: string): string {
-  return '/api/huggingface';
+  // Route Anthropic models through the Claude Code endpoint for Mammoth AI
+  if (provider === 'anthropic') return '/api/claude-code';
+  // Route Ollama models through the HuggingFace endpoint (Ollama Cloud)
+  if (provider === 'ollama') return '/api/huggingface';
+  return '/api/gemini';
 }
 
-// Vision model IDs for auto-routing
-const VISION_MODELS = new Set(['gemini-3-flash', 'glm-4.7', 'glm-4.6', 'kimi-k2.5', 'qwen3.5-397b']);
-const BEST_CODING_MODEL = 'qwen3-coder-480b';
-const BEST_VISION_MODEL = 'gemini-3-flash';
+// Vision model IDs — all Gemini models support vision
+const VISION_MODELS = new Set(['gemini-3-flash-preview', 'gemma4', 'glm-4.7-flash', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-1.5-flash']);
+const BEST_VISION_MODEL = 'gemini-3-flash-preview';
 
-// Smart model auto-routing: picks the optimal model for the task
-function getOptimalModel(currentModel: string, text: string, hasImages: boolean): string {
-  // If images are attached, MUST use a vision model
+// Only auto-route when images require a vision model — never override user's choice otherwise
+function getOptimalModel(currentModel: string, _text: string, hasImages: boolean): string {
   if (hasImages && !VISION_MODELS.has(currentModel)) return BEST_VISION_MODEL;
-  // If user explicitly mentions screenshot/image analysis, route to vision
-  const visionKeywords = /screenshot|image|photo|picture|look at|analyze.*image|from.*screenshot/i;
-  if (visionKeywords.test(text) && !VISION_MODELS.has(currentModel)) return BEST_VISION_MODEL;
-  // If heavy code generation, prefer coding model
-  const heavyCodeKeywords = /build.*app|create.*dashboard|full.*page|entire.*site|refactor|rewrite|complex.*component/i;
-  if (heavyCodeKeywords.test(text) && VISION_MODELS.has(currentModel) && !hasImages) return BEST_CODING_MODEL;
   return currentModel;
 }
 
@@ -264,6 +606,26 @@ function extractPreviewHtml(messages: Message[]): string | null {
     const msg = messages[i];
     if (msg.role !== 'assistant' || !msg.content) continue;
 
+    // 0. Match <<FILE:index.html>>...<</FILE>> or <FILE:index.html>...</FILE>
+    const fileTagMatch = msg.content.match(/<<FILE:index\.html?>>([\s\S]*?)<<\/FILE>>/) ||
+                         msg.content.match(/<FILE:index\.html?>([\s\S]*?)<\/FILE>/);
+    if (fileTagMatch) {
+      const inner = fileTagMatch[1].trim();
+      if (inner.length > 50) return inner;
+    }
+
+    // 0b. Fallback: unclosed <FILE:index.html> tag (model may omit </FILE>)
+    if (!fileTagMatch) {
+      const unclosedMatch = msg.content.match(/<<?FILE:index\.html?>>?([\s\S]+)/i);
+      if (unclosedMatch) {
+        let inner = unclosedMatch[1].trim();
+        inner = inner.replace(/<\/?FILE>/gi, '').replace(/<<\/FILE>>/g, '');
+        const htmlEnd = inner.search(/<\/html>/i);
+        if (htmlEnd !== -1) inner = inner.slice(0, htmlEnd + 7);
+        if (inner.length > 50 && /<!doctype|<html|<head|<body/i.test(inner)) return inner;
+      }
+    }
+
     // 1. Match <file path="...">...</file> wrapper (screenshot-to-code format)
     const fileMatch = msg.content.match(/<file\s+path="[^"]+"\s*>([\s\S]*?)<\/file>/i);
     if (fileMatch) {
@@ -274,9 +636,30 @@ function extractPreviewHtml(messages: Message[]): string | null {
     // 2. Match ```html ... ``` blocks
     const htmlBlocks = [...msg.content.matchAll(/```html\s*\n([\s\S]*?)```/g)];
     if (htmlBlocks.length > 0) {
-      // Prefer the block that looks like a full document
       const fullDoc = htmlBlocks.find(m => /<!doctype|<html/i.test(m[1]));
       return (fullDoc ?? htmlBlocks[htmlBlocks.length - 1])[1].trim();
+    }
+
+    // 2b. Match ```jsx/tsx ... ``` blocks — wrap in React runtime
+    const jsxBlocks = [...msg.content.matchAll(/```(?:jsx|tsx)\s*\n([\s\S]*?)```/g)];
+    if (jsxBlocks.length > 0) {
+      const code = jsxBlocks.map(m => m[1].trim()).join('\n\n');
+      if (code.length > 50) {
+        const useTailwind = /className=["'][^"']*(?:flex|grid|p-|m-|text-|bg-|rounded)/.test(code);
+        return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+${useTailwind ? '<script crossorigin src="https://cdn.tailwindcss.com"></script>' : ''}
+<script crossorigin src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+${PREMIUM_FONTS_CDN}
+${SHADCN_BASE_CSS}
+</head><body><div id="root"></div>
+<script type="text/babel">
+${code}
+if (typeof App !== 'undefined') ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+</script></body></html>`;
+      }
     }
 
     // 3. Match full HTML documents outside of code fences
@@ -341,8 +724,12 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
 
 /* ────────── Markdown Renderer ────────── */
 function MarkdownContent({ content }: { content: string }) {
-  // Strip AI action tags and FILE tags from visible output
-  const cleanContent = content.replace(/<<(TERMINAL|CONNECT|DEPLOY|TAB|CLONE|SHOW_TERMINAL|SHOW_INTEGRATIONS|LTX_VIDEO|GEMINI_IMAGE):?[^>]*>>/g, '').replace(/<<FILE:[^>]+>>[\s\S]*?<<\/FILE>>/g, '').trim();
+  // Strip AI action tags and FILE tags from visible output (both <<...>> and <...> formats)
+  const cleanContent = content
+    .replace(/<<(TERMINAL|CONNECT|DEPLOY|TAB|CLONE|SHOW_TERMINAL|SHOW_INTEGRATIONS|LTX_VIDEO|GEMINI_IMAGE):?[^>]*>>/g, '')
+    .replace(/<<FILE:[^>]+>>[\s\S]*?<<\/FILE>>/g, '')
+    .replace(/<FILE:[^>]+>[\s\S]*?<\/FILE>/g, '')
+    .trim();
   return (
     <ReactMarkdown
       components={{
@@ -508,6 +895,41 @@ const FileIcon = ({ size = 14 }: { size?: number }) => (
   </svg>
 );
 
+const getFileIcon = (filename: string, size = 14) => {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const colors: Record<string, string> = {
+    html: 'text-orange-400', htm: 'text-orange-400',
+    css: 'text-blue-400', scss: 'text-pink-400', sass: 'text-pink-400', less: 'text-blue-300',
+    js: 'text-yellow-400', mjs: 'text-yellow-400', cjs: 'text-yellow-400',
+    ts: 'text-blue-500', mts: 'text-blue-500',
+    jsx: 'text-cyan-400', tsx: 'text-cyan-500',
+    json: 'text-yellow-300', jsonc: 'text-yellow-300',
+    md: 'text-gray-400', mdx: 'text-gray-400',
+    svg: 'text-green-400', png: 'text-green-300', jpg: 'text-green-300', jpeg: 'text-green-300', gif: 'text-green-300', webp: 'text-green-300', ico: 'text-green-300',
+    py: 'text-green-500', rb: 'text-red-400', go: 'text-cyan-300', rs: 'text-orange-300',
+    yaml: 'text-red-300', yml: 'text-red-300', toml: 'text-gray-500',
+    env: 'text-yellow-600', gitignore: 'text-gray-600',
+    lock: 'text-gray-600',
+  };
+  const labels: Record<string, string> = {
+    html: 'H', htm: 'H', css: '#', scss: 'S', sass: 'S',
+    js: 'JS', mjs: 'JS', cjs: 'JS', ts: 'TS', mts: 'TS',
+    jsx: 'JX', tsx: 'TX', json: '{}', md: 'M', mdx: 'M',
+    svg: '◇', py: 'Py', rb: 'Rb', go: 'Go', rs: 'Rs',
+    yaml: 'Y', yml: 'Y', toml: 'T',
+  };
+  const color = colors[ext] || 'text-[#666]';
+  const label = labels[ext];
+  if (label) {
+    return (
+      <span className={`shrink-0 inline-flex items-center justify-center font-bold ${color}`} style={{ width: size, height: size, fontSize: size * 0.55, lineHeight: 1 }}>
+        {label}
+      </span>
+    );
+  }
+  return <FileIcon size={size} />;
+};
+
 const FolderIcon = ({ open = false, size = 14 }: { open?: boolean; size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
     {open ? (
@@ -522,7 +944,7 @@ const FolderIcon = ({ open = false, size = 14 }: { open?: boolean; size?: number
 const INTEGRATIONS: { name: string; desc: string; cat: string; keyPlaceholder?: string; keyPrefix?: string; builtIn?: boolean }[] = [
   { name: 'Vercel', desc: 'Auto-deploy to production', cat: 'Deploy', builtIn: true },
   { name: 'Firecrawl', desc: 'Web scraping & cloning', cat: 'Scraping', builtIn: true },
-  { name: 'Ollama Cloud', desc: 'Gemini 3 Flash, GLM-4.7, Qwen3 Coder 480B, DeepSeek V3.2, Kimi K2.5 — FREE unlimited cloud AI with Vision', cat: 'AI', builtIn: true },
+  { name: 'Ollama Cloud', desc: 'Gemma 4, GLM-4.7 Flash, Gemini 3 Flash — FREE unlimited cloud AI with Vision', cat: 'AI', builtIn: true },
   { name: 'Stripe', desc: 'Payment processing & subscriptions', cat: 'Payments', keyPlaceholder: 'sk_live_...', keyPrefix: 'sk_' },
   { name: 'Resend', desc: 'Transactional email API', cat: 'Email', keyPlaceholder: 're_...', keyPrefix: 're_' },
   { name: 'Klaviyo', desc: 'Email & SMS marketing automation', cat: 'Email', keyPlaceholder: 'pk_...', keyPrefix: 'pk_' },
@@ -548,6 +970,8 @@ const INTEGRATIONS: { name: string; desc: string; cat: string; keyPlaceholder?: 
   { name: 'Slack', desc: 'Team messaging webhooks', cat: 'Comms', keyPlaceholder: 'xoxb-...', keyPrefix: 'xoxb' },
   { name: 'Discord', desc: 'Bot & webhook integration', cat: 'Comms', keyPlaceholder: 'Bot token...', keyPrefix: '' },
   { name: 'GitHub', desc: 'Push code to repositories', cat: 'Dev', keyPlaceholder: 'ghp_...', keyPrefix: 'ghp_' },
+  { name: 'NotebookLM', desc: 'AI research & deep analysis engine', cat: 'AI', builtIn: true },
+  { name: 'Claude Code', desc: 'Enhanced execution — smart retry, quality gates', cat: 'AI', builtIn: true },
 ];
 
 /* ── Sandbox Mock Data ── */
@@ -626,10 +1050,10 @@ html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased;-moz-osx-font-smo
 body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--text);background:var(--bg);line-height:1.6;overflow-x:hidden}
 
 /* ===== ANIMATIONS ===== */
-@keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
-@keyframes fadeDown{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
-@keyframes scaleIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+@keyframes fadeUp{from{opacity:0;filter:blur(8px);transform:translateY(30px)}to{opacity:1;filter:blur(0);transform:translateY(0)}}
+@keyframes fadeDown{from{opacity:0;filter:blur(6px);transform:translateY(-20px)}to{opacity:1;filter:blur(0);transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0;filter:blur(4px)}to{opacity:1;filter:blur(0)}}
+@keyframes scaleIn{from{opacity:0;filter:blur(10px);transform:scale(.92)}to{opacity:1;filter:blur(0);transform:scale(1)}}
 @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
 @keyframes floatSlow{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-8px) rotate(2deg)}}
 @keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
@@ -644,18 +1068,19 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--text);ba
 @keyframes typing{from{width:0}to{width:100%}}
 @keyframes blink{0%,100%{border-color:transparent}50%{border-color:var(--accent)}}
 
-.reveal{opacity:0;transform:translateY(30px);transition:all .7s cubic-bezier(.16,1,.3,1)}
-.reveal.visible{opacity:1;transform:translateY(0)}
-.reveal-left{opacity:0;transform:translateX(-40px);transition:all .7s cubic-bezier(.16,1,.3,1)}
-.reveal-left.visible{opacity:1;transform:translateX(0)}
-.reveal-right{opacity:0;transform:translateX(40px);transition:all .7s cubic-bezier(.16,1,.3,1)}
-.reveal-right.visible{opacity:1;transform:translateX(0)}
-.reveal-scale{opacity:0;transform:scale(.9);transition:all .7s cubic-bezier(.16,1,.3,1)}
-.reveal-scale.visible{opacity:1;transform:scale(1)}
+.reveal{opacity:0;filter:blur(6px);transform:translateY(30px);transition:all .8s cubic-bezier(.16,1,.3,1)}
+.reveal.visible{opacity:1;filter:blur(0);transform:translateY(0)}
+.reveal-left{opacity:0;filter:blur(6px);transform:translateX(-40px);transition:all .8s cubic-bezier(.16,1,.3,1)}
+.reveal-left.visible{opacity:1;filter:blur(0);transform:translateX(0)}
+.reveal-right{opacity:0;filter:blur(6px);transform:translateX(40px);transition:all .8s cubic-bezier(.16,1,.3,1)}
+.reveal-right.visible{opacity:1;filter:blur(0);transform:translateX(0)}
+.reveal-scale{opacity:0;filter:blur(8px);transform:scale(.9);transition:all .8s cubic-bezier(.16,1,.3,1)}
+.reveal-scale.visible{opacity:1;filter:blur(0);transform:scale(1)}
+.reveal-d1{transition-delay:.1s}.reveal-d2{transition-delay:.2s}.reveal-d3{transition-delay:.3s}.reveal-d4{transition-delay:.4s}.reveal-d5{transition-delay:.5s}
 
 /* ===== NAVIGATION ===== */
-.nav-wrapper{position:fixed;top:0;left:0;right:0;z-index:1000;transition:all .3s ease}
-.nav-wrapper.scrolled{background:rgba(255,255,255,.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--border-light);box-shadow:0 1px 10px rgba(0,0,0,.04)}
+.nav-wrapper{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:1000;transition:all .4s cubic-bezier(.16,1,.3,1);width:auto;max-width:1200px;border-radius:100px;background:rgba(255,255,255,.65);backdrop-filter:blur(24px) saturate(1.8);-webkit-backdrop-filter:blur(24px) saturate(1.8);border:1px solid rgba(255,255,255,.5);box-shadow:0 4px 30px rgba(0,0,0,.06),inset 0 1px 0 rgba(255,255,255,.6)}
+.nav-wrapper.scrolled{background:rgba(255,255,255,.82);backdrop-filter:blur(28px) saturate(2);-webkit-backdrop-filter:blur(28px) saturate(2);border-color:rgba(255,255,255,.4);box-shadow:0 8px 40px rgba(0,0,0,.08),inset 0 1px 0 rgba(255,255,255,.5)}
 nav{display:flex;align-items:center;justify-content:space-between;max-width:1200px;margin:0 auto;padding:18px 24px}
 .logo{display:flex;align-items:center;gap:10px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;text-decoration:none;color:var(--text)}
 .logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--accent),var(--pink));border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:16px}
@@ -673,13 +1098,14 @@ nav{display:flex;align-items:center;justify-content:space-between;max-width:1200
 
 /* ===== HERO ===== */
 .hero{position:relative;text-align:center;max-width:800px;margin:0 auto;padding:140px 24px 60px;overflow:visible}
+.hero-video{position:fixed;top:0;left:0;width:100%;height:100vh;object-fit:cover;z-index:-2;opacity:.12;pointer-events:none}
 .hero-bg{position:absolute;top:-200px;left:50%;transform:translateX(-50%);width:900px;height:900px;background:radial-gradient(circle,rgba(124,58,237,.06) 0%,transparent 70%);pointer-events:none;z-index:0}
 .hero-orb{position:absolute;border-radius:50%;filter:blur(80px);opacity:.3;pointer-events:none}
 .hero-orb-1{width:400px;height:400px;background:var(--accent);top:-100px;right:-100px;animation:floatSlow 12s ease-in-out infinite}
 .hero-orb-2{width:300px;height:300px;background:var(--pink);bottom:-50px;left:-80px;animation:floatSlow 10s ease-in-out infinite reverse}
 .hero-orb-3{width:200px;height:200px;background:var(--cyan);top:50%;left:50%;animation:floatSlow 8s ease-in-out infinite}
 .hero-content{position:relative;z-index:1}
-.hero-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 20px;background:var(--accent-light);color:var(--accent);border-radius:100px;font-size:13px;font-weight:600;margin-bottom:28px;animation:fadeDown .6s ease .1s both}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 20px;background:rgba(124,58,237,.08);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(124,58,237,.15);color:var(--accent);border-radius:100px;font-size:13px;font-weight:600;margin-bottom:28px;animation:fadeDown .6s ease .1s both}
 .hero-badge .dot{width:8px;height:8px;background:var(--accent);border-radius:50%;animation:pulse 2s ease infinite}
 .hero h1{font-family:'Space Grotesk',sans-serif;font-size:clamp(40px,6vw,68px);font-weight:700;line-height:1.08;letter-spacing:-.03em;margin-bottom:24px;animation:fadeUp .7s ease .2s both}
 .hero h1 .gradient-text{background:linear-gradient(135deg,var(--accent),var(--pink),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;background-size:200% 200%;animation:gradient-shift 4s ease infinite}
@@ -749,23 +1175,23 @@ nav{display:flex;align-items:center;justify-content:space-between;max-width:1200
 /* ===== STATS COUNTER ===== */
 .stats-section{max-width:1000px;margin:0 auto;padding:80px 24px}
 .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
-.stat-block{text-align:center;padding:32px 20px;border-radius:var(--radius);background:var(--card);border:1px solid var(--border-light);transition:all .3s}
-.stat-block:hover{border-color:var(--accent);transform:translateY(-4px);box-shadow:var(--shadow)}
-.stat-block .stat-number{font-family:'Space Grotesk',sans-serif;font-size:42px;font-weight:700;color:var(--accent);margin-bottom:4px}
+.stat-block{text-align:center;padding:32px 20px;border-radius:var(--radius);background:rgba(255,255,255,.6);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.5);box-shadow:0 4px 24px rgba(124,58,237,.04),inset 0 1px 0 rgba(255,255,255,.8);transition:all .4s cubic-bezier(.16,1,.3,1)}
+.stat-block:hover{border-color:rgba(124,58,237,.3);transform:translateY(-6px);box-shadow:0 12px 40px rgba(124,58,237,.1),inset 0 1px 0 rgba(255,255,255,.8)}
+.stat-block .stat-number{font-family:'Space Grotesk',sans-serif;font-size:42px;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:4px}
 .stat-block .stat-label{font-size:14px;color:var(--muted);font-weight:500}
 
 /* ===== FEATURES ===== */
 .features-section{max-width:1100px;margin:0 auto;padding:100px 24px}
-.section-label{display:inline-flex;align-items:center;gap:8px;padding:8px 18px;background:var(--accent-light);color:var(--accent);border-radius:100px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:20px}
+.section-label{display:inline-flex;align-items:center;gap:8px;padding:8px 18px;background:rgba(124,58,237,.08);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(124,58,237,.12);color:var(--accent);border-radius:100px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:20px}
 .section-title{font-family:'Space Grotesk',sans-serif;font-size:clamp(32px,4vw,48px);font-weight:700;line-height:1.15;letter-spacing:-.02em;margin-bottom:16px}
 .section-desc{font-size:17px;color:var(--muted);max-width:520px;line-height:1.7}
 .features-header{text-align:center;margin-bottom:60px}
 .features-header .section-desc{margin:0 auto}
 .feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
-.feat-card{position:relative;padding:32px;border-radius:var(--radius);border:1px solid var(--border-light);background:var(--card);transition:all .4s cubic-bezier(.16,1,.3,1);cursor:default;overflow:hidden}
+.feat-card{position:relative;padding:32px;border-radius:var(--radius);border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.55);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:all .4s cubic-bezier(.16,1,.3,1);cursor:default;overflow:hidden}
 .feat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--pink));opacity:0;transition:opacity .3s}
 .feat-card:hover::before{opacity:1}
-.feat-card:hover{border-color:var(--accent);transform:translateY(-6px);box-shadow:0 16px 48px rgba(124,58,237,.08)}
+.feat-card:hover{border-color:rgba(124,58,237,.3);transform:translateY(-6px);box-shadow:0 16px 48px rgba(124,58,237,.1)}
 .feat-icon{width:52px;height:52px;border-radius:14px;background:var(--accent-light);display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--accent);margin-bottom:20px;transition:all .3s}
 .feat-card:hover .feat-icon{background:var(--accent);color:#fff;transform:scale(1.05)}
 .feat-card h3{font-size:18px;font-weight:700;margin-bottom:8px}
@@ -776,8 +1202,8 @@ nav{display:flex;align-items:center;justify-content:space-between;max-width:1200
 /* ===== FEATURE BENTO ===== */
 .bento-section{max-width:1100px;margin:0 auto;padding:0 24px 100px}
 .bento-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:24px}
-.bento-card{border-radius:var(--radius-lg);border:1px solid var(--border-light);background:var(--card);overflow:hidden;transition:all .4s;position:relative}
-.bento-card:hover{border-color:var(--accent);box-shadow:var(--shadow-lg)}
+.bento-card{border-radius:var(--radius-lg);border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.55);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);overflow:hidden;transition:all .4s;position:relative}
+.bento-card:hover{border-color:rgba(124,58,237,.3);box-shadow:0 16px 48px rgba(124,58,237,.08)}
 .bento-card.large{grid-row:span 2}
 .bento-content{padding:32px}
 .bento-content .label{font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
@@ -1031,6 +1457,9 @@ footer{border-top:1px solid var(--border-light);background:#f8fafc}
 </div>
 
 <!-- ===== HERO ===== -->
+<video class="hero-video" autoplay muted loop playsinline>
+  <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260319_165750_358b1e72-c921-48b7-aaac-f200994f32fb.mp4" type="video/mp4">
+</video>
 <section class="hero">
   <div class="hero-bg"></div>
   <div class="magic-dots"></div>
@@ -1779,16 +2208,18 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 ::-webkit-scrollbar-thumb:hover{background:var(--border-light)}
 
 /* ===== ANIMATIONS ===== */
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
-@keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-@keyframes slideDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
-@keyframes scaleIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+@keyframes fadeIn{from{opacity:0;filter:blur(4px)}to{opacity:1;filter:blur(0)}}
+@keyframes slideUp{from{opacity:0;filter:blur(6px);transform:translateY(12px)}to{opacity:1;filter:blur(0);transform:translateY(0)}}
+@keyframes slideDown{from{opacity:0;filter:blur(4px);transform:translateY(-12px)}to{opacity:1;filter:blur(0);transform:translateY(0)}}
+@keyframes scaleIn{from{opacity:0;filter:blur(8px);transform:scale(.95)}to{opacity:1;filter:blur(0);transform:scale(1)}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes grow{from{width:0}to{width:var(--w)}}
-@keyframes countUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes countUp{from{opacity:0;filter:blur(4px);transform:translateY(8px)}to{opacity:1;filter:blur(0);transform:translateY(0)}}
 @keyframes chartIn{from{opacity:0;transform:scaleY(0)}to{opacity:1;transform:scaleY(1)}}
+@keyframes skeletonPulse{0%{background-position:-200% 0}100%{background-position:200% 0}}
+@keyframes livePulse{0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,.4)}70%{box-shadow:0 0 0 6px rgba(16,185,129,0)}}
 
 .anim-fade{animation:fadeIn .4s ease both}
 .anim-slide{animation:slideUp .5s ease both}
@@ -1796,7 +2227,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 .anim-d5{animation-delay:.25s}.anim-d6{animation-delay:.3s}.anim-d7{animation-delay:.35s}.anim-d8{animation-delay:.4s}
 
 /* ===== SIDEBAR ===== */
-.sidebar{width:260px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;z-index:10}
+.sidebar{width:260px;background:rgba(17,17,19,.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-right:1px solid rgba(39,39,42,.6);display:flex;flex-direction:column;flex-shrink:0;z-index:10}
 .sidebar-header{padding:20px 18px;display:flex;align-items:center;justify-content:space-between}
 .brand{display:flex;align-items:center;gap:12px;text-decoration:none}
 .brand-icon{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--pink));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;font-family:'Space Grotesk',sans-serif}
@@ -1828,7 +2259,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 
 /* ===== MAIN AREA ===== */
 main{flex:1;overflow-y:auto;display:flex;flex-direction:column;background:var(--bg)}
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;position:sticky;top:0;z-index:5;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid rgba(39,39,42,.6);background:rgba(17,17,19,.7);flex-shrink:0;position:sticky;top:0;z-index:5;backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5)}
 .topbar-left{display:flex;align-items:center;gap:16px}
 .topbar-left h1{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700}
 .topbar-left .breadcrumb{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
@@ -1860,9 +2291,9 @@ main{flex:1;overflow-y:auto;display:flex;flex-direction:column;background:var(--
 
 /* ===== STAT CARDS ===== */
 .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
-.stat-card{padding:20px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);transition:all .3s;position:relative;overflow:hidden}
+.stat-card{padding:20px;background:rgba(24,24,27,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(39,39,42,.5);border-radius:var(--radius-lg);transition:all .4s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden}
 .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;opacity:0;transition:opacity .3s}
-.stat-card:hover{border-color:var(--border-light);transform:translateY(-2px);box-shadow:var(--shadow)}
+.stat-card:hover{border-color:rgba(63,63,70,.7);transform:translateY(-4px);box-shadow:0 12px 40px rgba(0,0,0,.3)}
 .stat-card:hover::before{opacity:1}
 .stat-card.purple::before{background:var(--accent)}.stat-card.cyan::before{background:var(--accent2)}.stat-card.green::before{background:var(--green)}.stat-card.amber::before{background:var(--amber)}
 .stat-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
@@ -1880,8 +2311,8 @@ main{flex:1;overflow-y:auto;display:flex;flex-direction:column;background:var(--
 
 /* ===== CHARTS ===== */
 .charts-row{display:grid;grid-template-columns:1.8fr 1fr;gap:16px;margin-bottom:24px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:all .3s}
-.card:hover{border-color:var(--border-light)}
+.card{background:rgba(24,24,27,.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(39,39,42,.5);border-radius:var(--radius-lg);overflow:hidden;transition:all .4s cubic-bezier(.16,1,.3,1)}
+.card:hover{border-color:rgba(63,63,70,.6);box-shadow:0 8px 32px rgba(0,0,0,.2)}
 .card-header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid rgba(255,255,255,.04)}
 .card-header h3{font-size:14px;font-weight:700;font-family:'Space Grotesk',sans-serif}
 .card-header .subtitle{font-size:11px;color:var(--muted);margin-top:2px}
@@ -2117,6 +2548,7 @@ tbody tr:last-child td{border-bottom:none}
   <div class="topbar">
     <div class="topbar-left">
       <h1>Dashboard</h1>
+      <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);border-radius:100px;font-size:11px;font-weight:600;color:var(--green);margin-left:12px"><span style="width:7px;height:7px;background:var(--green);border-radius:50%;animation:livePulse 2s ease infinite"></span>Live</span>
       <div class="breadcrumb">
         <a href="#"><i class="fas fa-home"></i></a>
         <i class="fas fa-chevron-right" style="font-size:8px"></i>
@@ -2806,7 +3238,7 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
    UTILITY CLASSES
    ═══════════════════════════════════════ */
 .container { max-width: 1100px; margin: 0 auto; padding: 0 28px; }
-.section-label { display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px; border: 1px solid var(--border); border-radius: 100px; font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 20px; }
+.section-label { display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px; border: 1px solid rgba(255,255,255,.06); background: rgba(255,255,255,.03); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-radius: 100px; font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 20px; }
 .section-heading { font-family: 'Space Grotesk', sans-serif; font-size: clamp(32px, 5vw, 48px); font-weight: 700; letter-spacing: -.03em; line-height: 1.1; margin-bottom: 20px; }
 .section-desc { font-size: 16px; color: var(--text-secondary); max-width: 540px; line-height: 1.7; }
 .gradient-text { background: linear-gradient(135deg, var(--accent), var(--accent-pink), var(--accent-orange)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
@@ -2815,11 +3247,11 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 /* ═══════════════════════════════════════
    KEYFRAME ANIMATIONS
    ═══════════════════════════════════════ */
-@keyframes fadeInUp { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes fadeInLeft { from { opacity: 0; transform: translateX(-32px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes fadeInRight { from { opacity: 0; transform: translateX(32px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes scaleIn { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: scale(1); } }
+@keyframes fadeInUp { from { opacity: 0; filter: blur(8px); transform: translateY(32px); } to { opacity: 1; filter: blur(0); transform: translateY(0); } }
+@keyframes fadeInDown { from { opacity: 0; filter: blur(6px); transform: translateY(-20px); } to { opacity: 1; filter: blur(0); transform: translateY(0); } }
+@keyframes fadeInLeft { from { opacity: 0; filter: blur(6px); transform: translateX(-32px); } to { opacity: 1; filter: blur(0); transform: translateX(0); } }
+@keyframes fadeInRight { from { opacity: 0; filter: blur(6px); transform: translateX(32px); } to { opacity: 1; filter: blur(0); transform: translateX(0); } }
+@keyframes scaleIn { from { opacity: 0; filter: blur(10px); transform: scale(.92); } to { opacity: 1; filter: blur(0); transform: scale(1); } }
 @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
 @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
@@ -2834,14 +3266,14 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 @keyframes orbit { from { transform: rotate(0deg) translateX(120px) rotate(0deg); } to { transform: rotate(360deg) translateX(120px) rotate(-360deg); } }
 
 /* Reveal animations */
-.reveal { opacity: 0; transform: translateY(32px); transition: all var(--transition-slow); }
-.reveal.visible { opacity: 1; transform: translateY(0); }
-.reveal-left { opacity: 0; transform: translateX(-40px); transition: all var(--transition-slow); }
-.reveal-left.visible { opacity: 1; transform: translateX(0); }
-.reveal-right { opacity: 0; transform: translateX(40px); transition: all var(--transition-slow); }
-.reveal-right.visible { opacity: 1; transform: translateX(0); }
-.reveal-scale { opacity: 0; transform: scale(.9); transition: all var(--transition-slow); }
-.reveal-scale.visible { opacity: 1; transform: scale(1); }
+.reveal { opacity: 0; filter: blur(8px); transform: translateY(32px); transition: all var(--transition-slow); }
+.reveal.visible { opacity: 1; filter: blur(0); transform: translateY(0); }
+.reveal-left { opacity: 0; filter: blur(6px); transform: translateX(-40px); transition: all var(--transition-slow); }
+.reveal-left.visible { opacity: 1; filter: blur(0); transform: translateX(0); }
+.reveal-right { opacity: 0; filter: blur(6px); transform: translateX(40px); transition: all var(--transition-slow); }
+.reveal-right.visible { opacity: 1; filter: blur(0); transform: translateX(0); }
+.reveal-scale { opacity: 0; filter: blur(10px); transform: scale(.9); transition: all var(--transition-slow); }
+.reveal-scale.visible { opacity: 1; filter: blur(0); transform: scale(1); }
 
 /* Stagger delays */
 .delay-1 { transition-delay: .1s !important; }
@@ -2878,22 +3310,26 @@ body::before {
    ═══════════════════════════════════════ */
 .nav {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 1000;
   padding: 0 28px;
-  height: 72px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  backdrop-filter: blur(16px) saturate(1.8);
-  -webkit-backdrop-filter: blur(16px) saturate(1.8);
-  background: rgba(5,5,5,.7);
-  border-bottom: 1px solid transparent;
-  transition: all var(--transition);
+  backdrop-filter: blur(24px) saturate(2);
+  -webkit-backdrop-filter: blur(24px) saturate(2);
+  background: rgba(5,5,5,.5);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 100px;
+  width: auto;
+  max-width: 1100px;
+  box-shadow: 0 4px 30px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.04);
+  transition: all .4s cubic-bezier(.16,1,.3,1);
 }
-.nav.scrolled { border-bottom-color: var(--border); background: rgba(5,5,5,.92); }
+.nav.scrolled { background: rgba(5,5,5,.8); border-color: rgba(255,255,255,.08); box-shadow: 0 8px 40px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.04); }
 .nav .logo {
   font-family: 'Space Grotesk', sans-serif;
   font-weight: 700;
@@ -2948,6 +3384,8 @@ body::before {
   position: relative;
   overflow: hidden;
 }
+.hero-video-bg { position: absolute; inset: 0; z-index: -1; }
+.hero-video-bg video { width: 100%; height: 100%; object-fit: cover; opacity: .08; }
 .hero-bg {
   position: absolute;
   inset: 0;
@@ -3382,13 +3820,16 @@ body::before {
 .projects-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
 .project-card {
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255,255,255,.06);
   overflow: hidden;
-  background: var(--bg-card);
-  transition: all .4s;
+  background: rgba(12,12,12,.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all .5s cubic-bezier(.16,1,.3,1);
   cursor: pointer;
+  transform-style: preserve-3d;
 }
-.project-card:hover { border-color: var(--border-hover); transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+.project-card:hover { border-color: rgba(255,255,255,.12); transform: translateY(-6px) rotateX(2deg); box-shadow: 0 20px 60px rgba(167,139,250,.08),0 0 0 1px rgba(167,139,250,.1); }
 .project-card .thumb { height: 240px; position: relative; overflow: hidden; }
 .project-card .thumb .view-label {
   position: absolute;
@@ -3777,6 +4218,7 @@ body::before {
 
 <!-- ═══════════════ 2. HERO ═══════════════ -->
 <section class="hero" id="hero">
+  <div class="hero-video-bg"><video autoplay muted loop playsinline><source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260319_165750_358b1e72-c921-48b7-aaac-f200994f32fb.mp4" type="video/mp4"></video></div>
   <div class="hero-bg">
     <div class="orb orb-1"></div>
     <div class="orb orb-2"></div>
@@ -4576,8 +5018,8 @@ button{font-family:var(--font);cursor:pointer}
 .container{max-width:1200px;margin:0 auto;padding:0 24px}
 
 /* ───── NAV ───── */
-.nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:16px 24px;transition:all .4s}
-.nav.scrolled{background:rgba(5,5,7,.85);backdrop-filter:blur(20px) saturate(1.8);border-bottom:1px solid var(--border)}
+.nav{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:100;padding:12px 24px;transition:all .4s cubic-bezier(.16,1,.3,1);border-radius:100px;background:rgba(5,5,7,.4);backdrop-filter:blur(24px) saturate(2);-webkit-backdrop-filter:blur(24px) saturate(2);border:1px solid rgba(255,255,255,.05);box-shadow:0 4px 30px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.03);width:auto;max-width:1200px}
+.nav.scrolled{background:rgba(5,5,7,.75);border-color:rgba(255,255,255,.08);box-shadow:0 8px 40px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.04)}
 .nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
 .nav-logo{font-size:20px;font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:10px}
 .nav-logo .logo-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--accent),var(--accent-light));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;font-weight:900}
@@ -4628,12 +5070,12 @@ button{font-family:var(--font);cursor:pointer}
 /* ───── PRICING CARDS ───── */
 .pricing{padding:40px 24px 100px}
 .pricing-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;max-width:1200px;margin:0 auto;align-items:start}
-.p-card{position:relative;padding:36px 28px;border-radius:var(--radius-lg);border:1px solid var(--border);background:var(--card);transition:all .4s cubic-bezier(.22,1,.36,1);overflow:hidden}
+.p-card{position:relative;padding:36px 28px;border-radius:var(--radius-lg);border:1px solid rgba(255,255,255,.05);background:rgba(15,15,23,.6);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);transition:all .4s cubic-bezier(.22,1,.36,1);overflow:hidden}
 .p-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:transparent;transition:background .3s}
-.p-card:hover{transform:translateY(-8px);border-color:var(--border-hover);box-shadow:var(--shadow-lg)}
-.p-card.featured{border-color:var(--accent);background:linear-gradient(180deg,rgba(124,58,237,.06) 0%,var(--card) 60%)}
+.p-card:hover{transform:translateY(-8px);border-color:rgba(255,255,255,.1);box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.p-card.featured{border-color:rgba(124,58,237,.3);background:linear-gradient(180deg,rgba(124,58,237,.08) 0%,rgba(15,15,23,.6) 60%)}
 .p-card.featured::before{background:linear-gradient(90deg,var(--accent),var(--accent-light))}
-.p-card.featured:hover{box-shadow:0 12px 48px rgba(124,58,237,.2)}
+.p-card.featured:hover{box-shadow:0 20px 60px rgba(124,58,237,.15),0 0 0 1px rgba(124,58,237,.2)}
 .p-badge{position:absolute;top:16px;right:16px;padding:4px 12px;border-radius:var(--radius-full);font-size:11px;font-weight:700;background:var(--accent);color:#fff;animation:badgePulse 2s ease infinite}
 @keyframes badgePulse{0%,100%{box-shadow:0 0 0 0 rgba(124,58,237,.4)}50%{box-shadow:0 0 0 8px rgba(124,58,237,0)}}
 .p-card .p-icon{width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:20px}
@@ -5449,8 +5891,22 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
 
 /* ── Add animation keyframes ── */
 const style = document.createElement('style');
-style.textContent = '@keyframes fadeIn{from{opacity:0}to{opacity:1}}@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}';
+style.textContent = '@keyframes fadeIn{from{opacity:0}to{opacity:1}}@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes confettiFall{0%{transform:translateY(0) rotateZ(0) scale(1);opacity:1}100%{transform:translateY(120vh) rotateZ(720deg) scale(0);opacity:0}}';
 document.head.appendChild(style);
+
+/* ── Confetti on CTA click ── */
+document.querySelectorAll('.p-btn, .nav-cta').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    const colors = ['#7c3aed','#a78bfa','#ec4899','#3b82f6','#10b981','#f59e0b'];
+    for(let i=0;i<30;i++){
+      const c = document.createElement('div');
+      c.style.cssText = 'position:fixed;width:'+Math.random()*8+4+'px;height:'+Math.random()*8+4+'px;background:'+colors[Math.floor(Math.random()*colors.length)]+';left:'+e.clientX+'px;top:'+e.clientY+'px;pointer-events:none;z-index:9999;border-radius:'+(Math.random()>.5?'50%':'2px')+';animation:confettiFall '+(Math.random()*1.5+1)+'s ease forwards;transform:translate('+(Math.random()*200-100)+'px,0)';
+      document.body.appendChild(c);
+      setTimeout(()=>c.remove(),2500);
+    }
+  });
+});
 
 /* ═══ MAGIC UI — Glow Card Mouse Track ═══ */
 document.querySelectorAll('.glow-card').forEach(card => {
@@ -5518,10 +5974,10 @@ img{max-width:100%;display:block}
 ::-webkit-scrollbar-thumb{background:var(--muted-light);border-radius:3px}
 
 /* ── Animations ── */
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
-@keyframes fadeInUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
-@keyframes fadeInDown{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
-@keyframes scaleIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+@keyframes fadeIn{from{opacity:0;filter:blur(4px)}to{opacity:1;filter:blur(0)}}
+@keyframes fadeInUp{from{opacity:0;filter:blur(6px);transform:translateY(30px)}to{opacity:1;filter:blur(0);transform:translateY(0)}}
+@keyframes fadeInDown{from{opacity:0;filter:blur(4px);transform:translateY(-20px)}to{opacity:1;filter:blur(0);transform:translateY(0)}}
+@keyframes scaleIn{from{opacity:0;filter:blur(8px);transform:scale(.92)}to{opacity:1;filter:blur(0);transform:scale(1)}}
 @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes slideRight{from{transform:translateX(-100%)}to{transform:translateX(0)}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
@@ -5534,8 +5990,8 @@ img{max-width:100%;display:block}
 @keyframes progressFill{from{width:0}to{width:var(--fill,0%)}}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}50%{transform:translateX(4px)}75%{transform:translateX(-4px)}}
 
-.anim{opacity:0;transform:translateY(30px);transition:opacity .7s ease,transform .7s ease}
-.anim.visible{opacity:1;transform:translateY(0)}
+.anim{opacity:0;filter:blur(6px);transform:translateY(30px);transition:opacity .8s ease,filter .8s ease,transform .8s ease}
+.anim.visible{opacity:1;filter:blur(0);transform:translateY(0)}
 .stagger-1{transition-delay:.1s}.stagger-2{transition-delay:.2s}.stagger-3{transition-delay:.3s}
 .stagger-4{transition-delay:.4s}.stagger-5{transition-delay:.5s}.stagger-6{transition-delay:.6s}
 .stagger-7{transition-delay:.7s}.stagger-8{transition-delay:.8s}
@@ -5596,11 +6052,11 @@ img{max-width:100%;display:block}
 .hero-stat .stat-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .hero-visual{position:relative;height:480px;border-radius:var(--radius-xl);overflow:hidden;background:linear-gradient(135deg,#f5f5f4 0%,#e7e5e4 50%,#d6d3d1 100%)}
 .hero-visual .hero-product{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
-.hero-visual .hero-product-card{width:280px;background:#fff;border-radius:var(--radius-lg);padding:24px;box-shadow:var(--shadow-xl);animation:float 6s ease-in-out infinite;text-align:center}
+.hero-visual .hero-product-card{width:280px;background:rgba(255,255,255,.75);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-radius:var(--radius-lg);padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.08),inset 0 1px 0 rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.5);animation:float 6s ease-in-out infinite;text-align:center}
 .hero-visual .hero-product-card .product-icon{font-size:80px;margin-bottom:16px;display:block}
 .hero-visual .hero-product-card .product-name{font-family:var(--serif);font-size:18px;font-weight:600;margin-bottom:4px}
 .hero-visual .hero-product-card .product-price{font-size:22px;font-weight:800;color:var(--gold)}
-.hero-visual .floating-badge{position:absolute;background:#fff;border-radius:12px;padding:10px 16px;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;animation:float 5s ease-in-out infinite}
+.hero-visual .floating-badge{position:absolute;background:rgba(255,255,255,.8);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:12px;border:1px solid rgba(255,255,255,.5);padding:10px 16px;box-shadow:0 8px 32px rgba(0,0,0,.06);display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;animation:float 5s ease-in-out infinite}
 .hero-visual .floating-badge.b1{top:20%;left:8%;animation-delay:0s}
 .hero-visual .floating-badge.b2{bottom:20%;right:8%;animation-delay:2s}
 .hero-visual .floating-badge.b3{top:15%;right:10%;animation-delay:4s}
@@ -5630,8 +6086,8 @@ img{max-width:100%;display:block}
 
 /* ── Products Grid ── */
 .products{max-width:var(--max-w);margin:0 auto;padding:0 32px 64px;display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
-.product{background:var(--card);border-radius:var(--radius-lg);border:1px solid var(--border);overflow:hidden;transition:var(--transition);cursor:pointer;position:relative}
-.product:hover{transform:translateY(-6px);box-shadow:var(--shadow-lg)}
+.product{background:var(--card);border-radius:var(--radius-lg);border:1px solid var(--border);overflow:hidden;transition:all .5s cubic-bezier(.16,1,.3,1);cursor:pointer;position:relative}
+.product:hover{transform:translateY(-8px) scale(1.01);box-shadow:0 20px 60px rgba(28,25,23,.12)}
 .product:hover .product-img .overlay{opacity:1}
 .product .badge-tag{position:absolute;top:14px;left:14px;padding:5px 12px;border-radius:8px;font-size:10px;font-weight:700;z-index:2;letter-spacing:.02em;text-transform:uppercase}
 .badge-new{background:var(--accent);color:#fff}
@@ -6667,12 +7123,12 @@ img{max-width:100%;display:block}
 button{font-family:inherit}
 
 /* ── Animations ── */
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
-@keyframes fadeInUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
-@keyframes fadeInDown{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
-@keyframes fadeInLeft{from{opacity:0;transform:translateX(-30px)}to{opacity:1;transform:translateX(0)}}
-@keyframes fadeInRight{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
-@keyframes scaleIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+@keyframes fadeIn{from{opacity:0;filter:blur(4px)}to{opacity:1;filter:blur(0)}}
+@keyframes fadeInUp{from{opacity:0;filter:blur(6px);transform:translateY(30px)}to{opacity:1;filter:blur(0);transform:translateY(0)}}
+@keyframes fadeInDown{from{opacity:0;filter:blur(4px);transform:translateY(-20px)}to{opacity:1;filter:blur(0);transform:translateY(0)}}
+@keyframes fadeInLeft{from{opacity:0;filter:blur(4px);transform:translateX(-30px)}to{opacity:1;filter:blur(0);transform:translateX(0)}}
+@keyframes fadeInRight{from{opacity:0;filter:blur(4px);transform:translateX(30px)}to{opacity:1;filter:blur(0);transform:translateX(0)}}
+@keyframes scaleIn{from{opacity:0;filter:blur(8px);transform:scale(.92)}to{opacity:1;filter:blur(0);transform:scale(1)}}
 @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
@@ -6685,8 +7141,8 @@ button{font-family:inherit}
 @keyframes ripple{to{transform:scale(4);opacity:0}}
 @keyframes dotPulse{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}
 
-.animate-on-scroll{opacity:0;transform:translateY(30px);transition:opacity .7s ease,transform .7s ease}
-.animate-on-scroll.visible{opacity:1;transform:translateY(0)}
+.animate-on-scroll{opacity:0;filter:blur(6px);transform:translateY(30px);transition:opacity .8s ease,filter .8s ease,transform .8s ease}
+.animate-on-scroll.visible{opacity:1;filter:blur(0);transform:translateY(0)}
 .stagger-1{transition-delay:.1s}.stagger-2{transition-delay:.2s}.stagger-3{transition-delay:.3s}
 .stagger-4{transition-delay:.4s}.stagger-5{transition-delay:.5s}.stagger-6{transition-delay:.6s}
 
@@ -6695,8 +7151,8 @@ button{font-family:inherit}
 .reading-progress::after{content:'';position:absolute;right:0;top:0;width:40px;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.4));border-radius:0 2px 2px 0}
 
 /* ── Navigation ── */
-.nav{position:sticky;top:0;z-index:1000;background:rgba(250,250,249,.85);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--border);transition:var(--transition)}
-[data-theme="dark"] .nav{background:rgba(12,10,9,.85)}
+.nav{position:sticky;top:0;z-index:1000;background:rgba(250,250,249,.7);backdrop-filter:blur(24px) saturate(2);-webkit-backdrop-filter:blur(24px) saturate(2);border-bottom:1px solid rgba(231,229,228,.5);transition:var(--transition)}
+[data-theme="dark"] .nav{background:rgba(12,10,9,.7);border-bottom-color:rgba(41,37,36,.5)}
 .nav-inner{max-width:var(--max-w);margin:0 auto;padding:0 32px;height:64px;display:flex;align-items:center;justify-content:space-between}
 .nav-brand{font-family:var(--serif);font-size:24px;font-weight:700;letter-spacing:-.02em;display:flex;align-items:center;gap:10px}
 .nav-brand .logo-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--accent),#ec4899);border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-family:var(--serif);font-size:16px;font-weight:700;font-style:italic}
@@ -6737,8 +7193,8 @@ button{font-family:inherit}
 
 /* ── Hero / Featured Post ── */
 .hero{max-width:var(--max-w);margin:48px auto 0;padding:0 32px}
-.hero-card{display:grid;grid-template-columns:1.1fr 1fr;border-radius:var(--radius-xl);overflow:hidden;background:var(--card);border:1px solid var(--border);transition:var(--transition);cursor:pointer;position:relative}
-.hero-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-4px)}
+.hero-card{display:grid;grid-template-columns:1.1fr 1fr;border-radius:var(--radius-xl);overflow:hidden;background:rgba(255,255,255,.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.5);transition:all .5s cubic-bezier(.16,1,.3,1);cursor:pointer;position:relative}
+.hero-card:hover{box-shadow:0 20px 60px rgba(28,25,23,.1);transform:translateY(-6px)}
 .hero-image{min-height:440px;background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 40%,#a855f7 70%,#ec4899 100%);background-size:200% 200%;animation:gradientShift 8s ease infinite;position:relative;overflow:hidden}
 .hero-image::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cpattern id='g' width='60' height='60' patternUnits='userSpaceOnUse'%3E%3Cpath d='M30 0L60 30L30 60L0 30Z' fill='none' stroke='rgba(255,255,255,0.08)' stroke-width='1'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23g)'/%3E%3C/svg%3E");opacity:.5}
 .hero-image .hero-badge{position:absolute;top:24px;left:24px;padding:6px 16px;background:rgba(255,255,255,.95);border-radius:8px;font-size:12px;font-weight:700;color:var(--accent);display:flex;align-items:center;gap:6px;z-index:1;box-shadow:0 2px 8px rgba(0,0,0,.1)}
@@ -6780,8 +7236,8 @@ button{font-family:inherit}
 .articles-header .view-btn{width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;transition:var(--transition)}
 .articles-header .view-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .articles-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
-.article-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:var(--transition);cursor:pointer;position:relative}
-.article-card:hover{transform:translateY(-6px);box-shadow:var(--shadow-lg)}
+.article-card{background:rgba(255,255,255,.5);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.4);border-radius:var(--radius-lg);overflow:hidden;transition:all .5s cubic-bezier(.16,1,.3,1);cursor:pointer;position:relative}
+.article-card:hover{transform:translateY(-8px);box-shadow:0 20px 60px rgba(28,25,23,.1)}
 .article-card:hover .article-img::after{opacity:1}
 .article-card.featured-article{grid-column:span 2;display:grid;grid-template-columns:1.2fr 1fr}
 .article-card.featured-article .article-img{min-height:280px}
@@ -7802,6 +8258,201 @@ document.querySelectorAll('.glow-card').forEach(function(card){
     },
   },
   {
+    name: 'React Dashboard', desc: 'Interactive React dashboard with charts, state, dark theme & Tailwind', icon: '⚛️',
+    files: {
+      'App.jsx': { content: `function StatCard({ title, value, change, icon }) {
+  return (
+    <div className="bg-gray-800/40 backdrop-blur-lg border border-gray-700/40 rounded-xl p-5 hover:border-purple-500/30 hover:-translate-y-1 transition-all duration-500 group shadow-lg shadow-black/5">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-gray-400 text-sm">{title}</span>
+        <span className="text-2xl">{icon}</span>
+      </div>
+      <p className="text-2xl font-bold text-white bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">{value}</p>
+      <p className={\`text-xs mt-1 \${change > 0 ? 'text-emerald-400' : 'text-red-400'}\`}>
+        {change > 0 ? '↑' : '↓'} {Math.abs(change)}% from last month
+      </p>
+    </div>
+  );
+}
+
+function App() {
+  const [activeTab, setActiveTab] = React.useState('overview');
+  const [sidebarOpen, setSidebarOpen] = React.useState(true);
+
+  const stats = [
+    { title: 'Total Revenue', value: '$45,231', change: 12.5, icon: '💰' },
+    { title: 'Active Users', value: '2,350', change: 8.2, icon: '👥' },
+    { title: 'Conversion', value: '3.24%', change: -2.1, icon: '📈' },
+    { title: 'Avg Order', value: '$89.50', change: 4.7, icon: '🛒' },
+  ];
+
+  const navItems = [
+    { id: 'overview', label: 'Overview', icon: '📊' },
+    { id: 'analytics', label: 'Analytics', icon: '📈' },
+    { id: 'customers', label: 'Customers', icon: '👥' },
+    { id: 'settings', label: 'Settings', icon: '⚙️' },
+  ];
+
+  return (
+    <div className="flex min-h-screen bg-gray-950 text-white">
+      {sidebarOpen && (
+        <aside className="w-64 bg-gray-900/60 backdrop-blur-xl border-r border-gray-800/50 p-4 flex flex-col animate-fadeIn">
+          <div className="flex items-center gap-2 mb-8 px-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-sm font-bold">A</div>
+            <span className="font-semibold text-lg">Aurion</span>
+          </div>
+          <nav className="flex-1 space-y-1">
+            {navItems.map(item => (
+              <button key={item.id} onClick={() => setActiveTab(item.id)}
+                className={\`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all \${activeTab === item.id ? 'bg-purple-500/20 text-purple-300 font-medium' : 'text-gray-400 hover:text-white hover:bg-gray-800/50'}\`}>
+                <span>{item.icon}</span> {item.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+      )}
+      <main className="flex-1 p-6 overflow-auto">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="mr-4 text-gray-400 hover:text-white">☰</button>
+            <span className="text-2xl font-bold">Dashboard</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <input type="text" placeholder="Search..." className="bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500" />
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-sm font-bold cursor-pointer">U</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {stats.map((s, i) => <StatCard key={i} {...s} />)}
+        </div>
+        <div className="bg-gray-800/20 backdrop-blur-md border border-gray-700/40 rounded-xl p-6">
+          <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
+          {['New user signup — john@example.com', 'Payment received — $129.00', 'Feature deployed — v2.4.1', 'Support ticket resolved — #1234'].map((item, i) => (
+            <div key={i} className="flex items-center gap-3 py-3 border-b border-gray-800 last:border-0">
+              <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+              <span className="text-sm text-gray-300">{item}</span>
+              <span className="ml-auto text-xs text-gray-500">{i + 1}h ago</span>
+            </div>
+          ))}
+        </div>
+      </main>
+    </div>
+  );
+}`, language: 'jsx' },
+      'styles.css': { content: `@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');\nbody { font-family: 'Inter', sans-serif; }`, language: 'css' },
+    },
+  },
+  {
+    name: 'React Multi-Page', desc: 'Multi-page React app with routing, nav & 4 pages', icon: '🔀',
+    files: {
+      'App.jsx': { content: `const { HashRouter, Routes, Route, Link, useLocation } = ReactRouterDOM;
+
+function Navbar() {
+  const location = useLocation();
+  const links = [
+    { path: '/', label: 'Home', icon: '🏠' },
+    { path: '/about', label: 'About', icon: '👋' },
+    { path: '/projects', label: 'Projects', icon: '💼' },
+    { path: '/contact', label: 'Contact', icon: '✉️' },
+  ];
+  return (
+    <nav className="fixed top-4 left-1/2 -translate-x-1/2 z-50 glass-dark rounded-full px-2 py-1 border border-gray-800/50 shadow-lg shadow-black/20 backdrop-blur-xl">
+      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+        <span className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">MyApp</span>
+        <div className="flex gap-1">
+          {links.map(l => (
+            <Link key={l.path} to={l.path}
+              className={\`px-4 py-2 rounded-lg text-sm transition-all \${location.pathname === l.path ? 'bg-purple-500/20 text-purple-300' : 'text-gray-400 hover:text-white'}\`}>
+              {l.icon} {l.label}
+            </Link>
+          ))}
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+function HomePage() {
+  return (
+    <div className="min-h-screen flex items-center justify-center pt-16">
+      <div className="text-center animate-fadeIn">
+        <h1 className="text-6xl font-bold mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-orange-400 bg-clip-text text-transparent">Welcome Home</h1>
+        <p className="text-gray-400 text-xl mb-8">A modern multi-page React app</p>
+        <Link to="/projects" className="px-8 py-3 bg-purple-600 hover:bg-purple-500 rounded-xl text-white font-medium transition-all hover:scale-105">View Projects →</Link>
+      </div>
+    </div>
+  );
+}
+
+function AboutPage() {
+  return (
+    <div className="min-h-screen pt-24 px-6 max-w-4xl mx-auto animate-fadeIn">
+      <h1 className="text-4xl font-bold mb-6">About Us</h1>
+      <p className="text-gray-400 text-lg leading-relaxed">We build beautiful, fast, and accessible web applications using modern technologies. Our team is passionate about creating great user experiences.</p>
+    </div>
+  );
+}
+
+function ProjectsPage() {
+  const projects = [
+    { title: 'Design System', desc: 'Component library for rapid UI development', color: 'from-blue-500 to-cyan-500' },
+    { title: 'Analytics App', desc: 'Real-time data visualization dashboard', color: 'from-purple-500 to-pink-500' },
+    { title: 'E-Commerce', desc: 'Full-stack shopping platform', color: 'from-orange-500 to-red-500' },
+  ];
+  return (
+    <div className="min-h-screen pt-24 px-6 max-w-6xl mx-auto animate-fadeIn">
+      <h1 className="text-4xl font-bold mb-8">Projects</h1>
+      <div className="grid md:grid-cols-3 gap-6">
+        {projects.map((p, i) => (
+          <div key={i} className="group rounded-2xl border border-gray-800/50 overflow-hidden hover:border-gray-600 transition-all duration-500 hover:-translate-y-2 backdrop-blur-sm bg-gray-900/30">
+            <div className={\`h-40 bg-gradient-to-br \${p.color} flex items-center justify-center text-4xl\`}>💎</div>
+            <div className="p-5">
+              <h3 className="font-semibold text-lg mb-1">{p.title}</h3>
+              <p className="text-sm text-gray-400">{p.desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ContactPage() {
+  const [sent, setSent] = React.useState(false);
+  return (
+    <div className="min-h-screen pt-24 px-6 max-w-lg mx-auto animate-fadeIn">
+      <h1 className="text-4xl font-bold mb-8">Contact</h1>
+      {sent ? (
+        <div className="text-center py-12"><span className="text-4xl">✅</span><p className="mt-4 text-gray-300">Message sent!</p></div>
+      ) : (
+        <form onSubmit={(e) => { e.preventDefault(); setSent(true); }} className="space-y-4">
+          <input type="text" placeholder="Your name" required className="w-full bg-gray-800/50 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500" />
+          <input type="email" placeholder="Email" required className="w-full bg-gray-800/50 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500" />
+          <textarea placeholder="Message" rows={4} required className="w-full bg-gray-800/50 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 resize-none"></textarea>
+          <button type="submit" className="w-full py-3 bg-purple-600 hover:bg-purple-500 rounded-xl text-white font-medium transition-all">Send Message</button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <React.Fragment>
+      <Navbar />
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/projects" element={<ProjectsPage />} />
+        <Route path="/contact" element={<ContactPage />} />
+      </Routes>
+    </React.Fragment>
+  );
+}`, language: 'jsx' },
+      'styles.css': { content: `@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');\nbody { font-family: 'Inter', sans-serif; background: #0a0a0a; color: #fff; }`, language: 'css' },
+    },
+  },
+  {
     name: 'Next.js App', desc: 'Full-stack React with file-based routing and Tailwind', icon: '▲',
     files: {
       'app/page.tsx': { content: `export default function Home() {\n  return (\n    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-black">\n      <div className="text-center">\n        <h1 className="text-5xl font-bold text-white mb-4">Welcome to Next.js</h1>\n        <p className="text-gray-400 text-lg">Edit app/page.tsx to get started</p>\n      </div>\n    </main>\n  );\n}`, language: 'typescript' },
@@ -7841,8 +8492,61 @@ export default function HomePage() {
   const [abResultB, setAbResultB] = useState<string>('');
   const [abStreaming, setAbStreaming] = useState(false);
   const abAbortRef = useRef<AbortController | null>(null);
-  const [activeTab, setActiveTab] = useState<'app' | 'code' | 'database' | 'payments'>('app');
+  const [activeTab, setActiveTab] = useState<'app' | 'code' | 'database' | 'payments' | 'ide'>('app');
+  // IDE (code-server on Render) state
+  const [ideServiceId, setIdeServiceId] = useState<string | null>(null);
+  const [ideUrl, setIdeUrl] = useState<string | null>(null);
+  const [ideLoading, setIdeLoading] = useState(false);
+  const [ideError, setIdeError] = useState<string | null>(null);
+  const [ideStatus, setIdeStatus] = useState<'none' | 'creating' | 'deploying' | 'booting' | 'live' | 'error'>('none');
+  const [ideCountdown, setIdeCountdown] = useState(0);
+  const idePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Auto-launch IDE when switching to IDE tab
+  useEffect(() => {
+    if (activeTab !== 'ide' || ideStatus !== 'none' || ideLoading) return;
+    (async () => {
+      setIdeLoading(true); setIdeError(null); setIdeStatus('creating');
+      try {
+        const res = await fetch('/api/render', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName: currentProjectId, files: projectFiles }) });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        setIdeServiceId(data.id); setIdeStatus('deploying');
+        if (idePollRef.current) clearInterval(idePollRef.current);
+        idePollRef.current = setInterval(async () => {
+          try {
+            const st = await fetch('/api/render?serviceId=' + data.id).then(r => r.json());
+            if (st.url && st.status === 'not_suspended') {
+              if (idePollRef.current) clearInterval(idePollRef.current);
+              const baseUrl = st.url.startsWith('http') ? st.url : 'https://' + st.url;
+              const fullUrl = baseUrl.replace(/\/$/, '') + '/?folder=/home/coder/project';
+              // Service is deployed on Render, now wait ~90s for code-server to fully boot
+              setIdeStatus('booting');
+              let remaining = 90;
+              setIdeCountdown(remaining);
+              const countdownTimer = setInterval(() => {
+                remaining--;
+                setIdeCountdown(remaining);
+                if (remaining <= 0) {
+                  clearInterval(countdownTimer);
+                  setIdeUrl(fullUrl); setIdeStatus('live'); setIdeLoading(false);
+                }
+              }, 1000);
+            }
+          } catch {}
+        }, 8000);
+        setTimeout(() => { if (idePollRef.current) clearInterval(idePollRef.current); setIdeError('Deployment timed out. Check Render dashboard.'); setIdeStatus('error'); setIdeLoading(false); }, 300000);
+      } catch (err) {
+        setIdeError((err as Error).message); setIdeStatus('error'); setIdeLoading(false);
+      }
+    })();
+    return () => { if (idePollRef.current) clearInterval(idePollRef.current); };
+  }, [activeTab]);
+
   const [deviceMode, setDeviceMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const [isLandscape, setIsLandscape] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewZoom, setPreviewZoom] = useState(100);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -7874,6 +8578,69 @@ export default function HomePage() {
       try { localStorage.setItem('aurion_integration_keys', JSON.stringify(integrationKeys)); } catch { /* ignore */ }
     }
   }, [integrationKeys]);
+
+  // ── NotebookLM Research & Claude Code Integration ──
+  const [researchMode, setResearchMode] = useState(false);
+  const [researchQuery, setResearchQuery] = useState('');
+  const [researchResults, setResearchResults] = useState<{
+    topic: string;
+    sources: number;
+    insights: string[];
+    summary: string;
+    confidence: number;
+  } | null>(null);
+  const [isResearching, setIsResearching] = useState(false);
+  const [researchError, setResearchError] = useState<string | null>(null);
+  const [showResearchPanel, setShowResearchPanel] = useState(false);
+  const [researchContext, setResearchContext] = useState<string>('');
+  const [claudeCodeMode, setClaudeCodeMode] = useState(false);
+
+  // Perform NotebookLM research
+  const performResearch = useCallback(async (query: string, urls: string[] = []) => {
+    if (!query.trim()) return;
+    setIsResearching(true);
+    setResearchError(null);
+    try {
+      const res = await fetchWithRetry('/api/notebooklm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deep-research', query, urls }),
+        timeout: 60000,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Research failed');
+      const { analysis, context } = data.data;
+      setResearchResults({
+        topic: analysis.topic,
+        sources: analysis.sources?.length || 0,
+        insights: analysis.key_insights || [],
+        summary: analysis.summary || '',
+        confidence: analysis.confidence || 0,
+      });
+      setResearchContext(context || '');
+    } catch (err) {
+      setResearchError(err instanceof Error ? err.message : 'Research failed');
+    } finally {
+      setIsResearching(false);
+    }
+  }, []);
+
+  // Enhance tool with research
+  const enhanceWithResearch = useCallback(async (tool: string, prompt: string) => {
+    try {
+      const res = await fetchWithRetry('/api/notebooklm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'enhance-tool', tool, prompt }),
+        timeout: 30000,
+      });
+      const data = await res.json();
+      if (data.success) {
+        return data.data.systemPromptAddition || '';
+      }
+    } catch { /* continue without enhancement */ }
+    return '';
+  }, []);
 
   // Deploy
   const [isDeploying, setIsDeploying] = useState(false);
@@ -7917,12 +8684,2110 @@ export default function HomePage() {
   // Virtual File System
   const [projectFiles, setProjectFiles] = useState<VirtualFS>({});
   const [selectedFile, setSelectedFile] = useState<string>('index.html');
+  const [openTabs, setOpenTabs] = useState<string[]>(['index.html']);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+
+  // Streaming stats
+  const [streamingChars, setStreamingChars] = useState(0);
+  const streamStartTime = useRef<number>(0);
+
+  // Tab management helpers
+  const openFile = useCallback((file: string) => {
+    setSelectedFile(file);
+    setOpenTabs(prev => prev.includes(file) ? prev : [...prev, file]);
+  }, []);
+  const closeTab = useCallback((file: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setOpenTabs(prev => {
+      const next = prev.filter(f => f !== file);
+      if (next.length === 0) return prev;
+      if (selectedFile === file) setSelectedFile(next[next.length - 1]);
+      return next;
+    });
+  }, [selectedFile]);
+
+  // Split view
+  const [splitFile, setSplitFile] = useState<string | null>(null);
+
+  // Quick Component Palette
+  const [showComponentPalette, setShowComponentPalette] = useState(false);
+
+  // Conversation History
+  type ConversationEntry = { id: string; title: string; messages: Message[]; timestamp: number };
+  const [conversations, setConversations] = useState<ConversationEntry[]>([]);
+  const [showConversationHistory, setShowConversationHistory] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState<string>('conv_default');
+
+  // Code Snippet Bookmarks
+  type Bookmark = { id: string; label: string; code: string; language: string; file: string; timestamp: number };
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [showBookmarks, setShowBookmarks] = useState(false);
+
+  // AI Prompt Templates
+  const [showPromptTemplates, setShowPromptTemplates] = useState(false);
+
+  // Version Timeline
+  const [showVersionTimeline, setShowVersionTimeline] = useState(false);
+
+  // Find & Replace
+  const [showFindReplace, setShowFindReplace] = useState(false);
+  const [findQuery, setFindQuery] = useState('');
+  const [replaceQuery, setReplaceQuery] = useState('');
+  const [findRegex, setFindRegex] = useState(false);
+  const [findCaseSensitive, setFindCaseSensitive] = useState(false);
+  const findInputRef = useRef<HTMLInputElement>(null);
+
+  // Keyboard Shortcuts Cheatsheet
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // Editor Theme
+  const [editorTheme, setEditorTheme] = useState<string>('vs-dark');
+  const [showThemeSelector, setShowThemeSelector] = useState(false);
+
+  // Quick File Creator
+  const [showNewFileInput, setShowNewFileInput] = useState(false);
+  const [newFileName, setNewFileName] = useState('');
+  const newFileInputRef = useRef<HTMLInputElement>(null);
+
+  // AI Explain
+  const [isExplaining, setIsExplaining] = useState(false);
+
+  // Minimap & Word Wrap toggles
+  const [minimapEnabled, setMinimapEnabled] = useState(true);
+  const [wordWrapEnabled, setWordWrapEnabled] = useState(true);
+
+  // Auto-save indicator
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved');
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Color picker
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [pickedColor, setPickedColor] = useState('#3b82f6');
+
+  // Toast notifications
+  const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'error' | 'info' }[]>([]);
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = 'toast_' + Date.now().toString(36);
+    setToasts(prev => [...prev, { id, message, type }].slice(-5));
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+  }, []);
+
+  // Tab context menu
+  const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; file: string } | null>(null);
+
+  // Goto Line
+  const [showGotoLine, setShowGotoLine] = useState(false);
+  const [gotoLineValue, setGotoLineValue] = useState('');
+  const gotoLineRef = useRef<HTMLInputElement>(null);
+  const monacoEditorRef = useRef<unknown>(null);
+
+  // Explorer context menu
+  const [explorerContextMenu, setExplorerContextMenu] = useState<{ x: number; y: number; path: string; isDir: boolean } | null>(null);
+  const [renameTarget, setRenameTarget] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  // Image preview hover
+  const [hoveredImage, setHoveredImage] = useState<{ path: string; x: number; y: number } | null>(null);
+
+  // Responsive breakpoint ruler
+  const [showBreakpointRuler, setShowBreakpointRuler] = useState(false);
+
+  // Modified file tracking
+  const [savedFileContents, setSavedFileContents] = useState<Record<string, string>>({});
+  const isFileModified = useCallback((path: string) => {
+    if (!projectFiles[path] || savedFileContents[path] === undefined) return false;
+    return projectFiles[path].content !== savedFileContents[path];
+  }, [projectFiles, savedFileContents]);
+
+  // A11y Audit
+  const [showA11yPanel, setShowA11yPanel] = useState(false);
+  const [a11yIssues, setA11yIssues] = useState<{ type: 'error' | 'warning' | 'info'; message: string; element: string }[]>([]);
+  const runA11yAudit = useCallback(() => {
+    const issues: { type: 'error' | 'warning' | 'info'; message: string; element: string }[] = [];
+    const html = Object.values(projectFiles).map(f => f.content).join('\n');
+    // Check for images without alt
+    const imgNoAlt = html.match(/<img(?![^>]*alt=)[^>]*>/gi);
+    if (imgNoAlt) imgNoAlt.forEach(m => issues.push({ type: 'error', message: 'Image missing alt attribute', element: m.slice(0, 60) }));
+    // Check for missing lang
+    if (html.includes('<html') && !html.includes('lang=')) issues.push({ type: 'warning', message: 'Missing lang attribute on <html>', element: '<html>' });
+    // Check for empty buttons/links
+    const emptyBtns = html.match(/<button[^>]*>\s*<\/button>/gi);
+    if (emptyBtns) emptyBtns.forEach(() => issues.push({ type: 'error', message: 'Empty button without text content', element: '<button></button>' }));
+    const emptyLinks = html.match(/<a[^>]*>\s*<\/a>/gi);
+    if (emptyLinks) emptyLinks.forEach(() => issues.push({ type: 'error', message: 'Empty link without text content', element: '<a></a>' }));
+    // Check for missing form labels
+    const inputs = html.match(/<input(?![^>]*aria-label)[^>]*>/gi);
+    const labels = (html.match(/<label/gi) || []).length;
+    if (inputs && inputs.length > labels) issues.push({ type: 'warning', message: `${inputs.length - labels} input(s) may be missing associated labels`, element: '<input>' });
+    // Check color contrast hint
+    if (html.includes('text-gray-300') && html.includes('bg-gray-200')) issues.push({ type: 'info', message: 'Potential low contrast: light text on light background', element: 'text-gray-300 on bg-gray-200' });
+    // Check for heading hierarchy
+    const h1Count = (html.match(/<h1/gi) || []).length;
+    if (h1Count === 0 && html.includes('<h2')) issues.push({ type: 'warning', message: 'Page has <h2> but no <h1> — check heading hierarchy', element: '<h2>' });
+    if (h1Count > 1) issues.push({ type: 'warning', message: `Multiple <h1> tags found (${h1Count}) — use only one per page`, element: '<h1>' });
+    // Check for missing viewport
+    if (html.includes('<head') && !html.includes('viewport')) issues.push({ type: 'info', message: 'Missing viewport meta tag for responsive design', element: '<meta viewport>' });
+    if (issues.length === 0) issues.push({ type: 'info', message: 'No accessibility issues detected!', element: '✓' });
+    setA11yIssues(issues);
+    setShowA11yPanel(true);
+    showToast(`A11y audit: ${issues.filter(i => i.type === 'error').length} errors, ${issues.filter(i => i.type === 'warning').length} warnings`, issues.some(i => i.type === 'error') ? 'error' : 'success');
+  }, [projectFiles, showToast]);
+
+  // SEO Meta Editor
+  const [showSeoPanel, setShowSeoPanel] = useState(false);
+  const [seoTitle, setSeoTitle] = useState('');
+  const [seoDescription, setSeoDescription] = useState('');
+  const [seoOgImage, setSeoOgImage] = useState('');
+
+  // Cursor position tracking
+  const [cursorPosition, setCursorPosition] = useState<{ line: number; col: number }>({ line: 1, col: 1 });
+
+  // Tailwind classes browser
+  const [showTailwindPanel, setShowTailwindPanel] = useState(false);
+
+  // v13: Color Palette Extractor
+  const [showColorPalettePanel, setShowColorPalettePanel] = useState(false);
+  const extractedColors = useMemo(() => {
+    const all = Object.values(projectFiles).map(f => f.content).join('\n');
+    const colorSet = new Set<string>();
+    // hex
+    (all.match(/#(?:[0-9a-fA-F]{3,4}){1,2}\b/g) || []).forEach(c => colorSet.add(c.toLowerCase()));
+    // rgb/rgba
+    (all.match(/rgba?\([^)]+\)/gi) || []).forEach(c => colorSet.add(c));
+    // hsl/hsla
+    (all.match(/hsla?\([^)]+\)/gi) || []).forEach(c => colorSet.add(c));
+    // Tailwind color classes
+    const twColors: Record<string, string> = { 'red-500': '#ef4444', 'blue-500': '#3b82f6', 'green-500': '#22c55e', 'yellow-500': '#eab308', 'purple-500': '#a855f7', 'pink-500': '#ec4899', 'indigo-500': '#6366f1', 'gray-500': '#6b7280', 'gray-900': '#111827', 'gray-100': '#f3f4f6', 'white': '#ffffff', 'black': '#000000', 'emerald-500': '#10b981', 'orange-500': '#f97316', 'cyan-500': '#06b6d4', 'teal-500': '#14b8a6' };
+    Object.entries(twColors).forEach(([name, hex]) => { if (all.includes(name)) colorSet.add(hex); });
+    return Array.from(colorSet).slice(0, 50);
+  }, [projectFiles]);
+
+  // v13: Performance Audit
+  const [showPerfPanel, setShowPerfPanel] = useState(false);
+  const [perfIssues, setPerfIssues] = useState<{ type: 'error' | 'warning' | 'info'; message: string; detail: string }[]>([]);
+  const runPerfAudit = useCallback(() => {
+    const issues: { type: 'error' | 'warning' | 'info'; message: string; detail: string }[] = [];
+    const html = Object.values(projectFiles).map(f => f.content).join('\n');
+    const totalSize = new Blob([html]).size;
+    // Large page
+    if (totalSize > 500000) issues.push({ type: 'error', message: 'Page size exceeds 500KB', detail: `Total: ${(totalSize/1024).toFixed(0)}KB — consider code splitting` });
+    else if (totalSize > 200000) issues.push({ type: 'warning', message: 'Page size is over 200KB', detail: `Total: ${(totalSize/1024).toFixed(0)}KB` });
+    // Inline styles
+    const inlineStyles = (html.match(/style="[^"]{100,}"/gi) || []).length;
+    if (inlineStyles > 0) issues.push({ type: 'warning', message: `${inlineStyles} element(s) with large inline styles (>100 chars)`, detail: 'Move styles to CSS classes for better caching' });
+    // Images without lazy loading
+    const imgsNoLazy = html.match(/<img(?![^>]*loading=)[^>]*>/gi);
+    if (imgsNoLazy && imgsNoLazy.length > 2) issues.push({ type: 'warning', message: `${imgsNoLazy.length} images without lazy loading`, detail: 'Add loading="lazy" to below-fold images' });
+    // Images without dimensions
+    const imgsNoDim = html.match(/<img(?![^>]*(?:width|w-))[^>]*>/gi);
+    if (imgsNoDim && imgsNoDim.length > 0) issues.push({ type: 'info', message: `${imgsNoDim.length} images without explicit dimensions`, detail: 'Set width/height to prevent layout shift (CLS)' });
+    // Too many scripts
+    const scripts = (html.match(/<script/gi) || []).length;
+    if (scripts > 10) issues.push({ type: 'warning', message: `${scripts} <script> tags detected`, detail: 'Consider bundling scripts to reduce HTTP requests' });
+    // Render-blocking CSS
+    const linkCSS = (html.match(/<link[^>]*stylesheet[^>]*>/gi) || []).length;
+    if (linkCSS > 5) issues.push({ type: 'info', message: `${linkCSS} external stylesheets`, detail: 'Consider inlining critical CSS' });
+    // DOM depth estimate
+    const divCount = (html.match(/<div/gi) || []).length;
+    if (divCount > 200) issues.push({ type: 'warning', message: `High DOM complexity: ${divCount} <div> elements`, detail: 'Reduce nesting for better rendering performance' });
+    // No compression hints
+    if (html.includes('base64') && html.length > 100000) issues.push({ type: 'info', message: 'Large base64-encoded assets detected', detail: 'Use external files for better caching' });
+    // Score
+    const errorCount = issues.filter(i => i.type === 'error').length;
+    const warnCount = issues.filter(i => i.type === 'warning').length;
+    const score = Math.max(0, 100 - errorCount * 20 - warnCount * 10 - issues.filter(i => i.type === 'info').length * 3);
+    if (issues.length === 0) issues.push({ type: 'info', message: 'No performance issues detected!', detail: 'Score: 100/100' });
+    else issues.unshift({ type: score >= 80 ? 'info' : score >= 50 ? 'warning' : 'error', message: `Performance Score: ${score}/100`, detail: `${errorCount} errors, ${warnCount} warnings` });
+    setPerfIssues(issues);
+    setShowPerfPanel(true);
+    showToast(`Perf audit: score ${score}/100`, score >= 80 ? 'success' : score >= 50 ? 'info' : 'error');
+  }, [projectFiles, showToast]);
+
+  // v13: Project Stats
+  const [showStatsPanel, setShowStatsPanel] = useState(false);
+  const projectStats = useMemo(() => {
+    const files = Object.entries(projectFiles);
+    const langMap: Record<string, { files: number; lines: number; bytes: number }> = {};
+    let totalLines = 0, totalBytes = 0;
+    files.forEach(([, f]) => {
+      const lang = f.language || 'plaintext';
+      const lines = f.content.split('\n').length;
+      const bytes = new Blob([f.content]).size;
+      totalLines += lines;
+      totalBytes += bytes;
+      if (!langMap[lang]) langMap[lang] = { files: 0, lines: 0, bytes: 0 };
+      langMap[lang].files++;
+      langMap[lang].lines += lines;
+      langMap[lang].bytes += bytes;
+    });
+    return { total: files.length, totalLines, totalBytes, languages: Object.entries(langMap).sort((a, b) => b[1].lines - a[1].lines) };
+  }, [projectFiles]);
+
+  // v13: CSS Variables Manager
+  const [showCssVarsPanel, setShowCssVarsPanel] = useState(false);
+  const cssVariables = useMemo(() => {
+    const vars: { name: string; value: string; file: string }[] = [];
+    Object.entries(projectFiles).forEach(([path, f]) => {
+      const matches = f.content.matchAll(/--([\w-]+)\s*:\s*([^;]+)/g);
+      for (const m of matches) vars.push({ name: `--${m[1]}`, value: m[2].trim(), file: path });
+    });
+    return vars;
+  }, [projectFiles]);
+
+  // v13: Console capture from preview
+  const [consoleLogs, setConsoleLogs] = useState<{ type: string; message: string; ts: number }[]>([]);
+  const [showConsolePanel, setShowConsolePanel] = useState(false);
+
+  // v14: Dependency Inspector
+  const [showDepsPanel, setShowDepsPanel] = useState(false);
+  const detectedDeps = useMemo(() => {
+    const html = Object.values(projectFiles).map(f => f.content).join('\n');
+    const deps: { name: string; version: string; url: string; type: string }[] = [];
+    const cdnPatterns: [RegExp, string, string][] = [
+      [/react@([\d.]+)/i, 'React', 'UI Library'],
+      [/react-dom@([\d.]+)/i, 'ReactDOM', 'UI Library'],
+      [/tailwindcss[/@]([\d.]+)/i, 'Tailwind CSS', 'CSS Framework'],
+      [/lucide[/@]([\d.]+)/i, 'Lucide Icons', 'Icons'],
+      [/recharts[/@]([\d.]+)/i, 'Recharts', 'Charts'],
+      [/framer-motion[/@]([\d.]+)/i, 'Framer Motion', 'Animation'],
+      [/react-router[/@]([\d.]+)/i, 'React Router', 'Routing'],
+      [/three[/@]([\d.]+)/i, 'Three.js', '3D Graphics'],
+      [/chart\.js[/@]([\d.]+)/i, 'Chart.js', 'Charts'],
+      [/gsap[/@]([\d.]+)/i, 'GSAP', 'Animation'],
+      [/axios[/@]([\d.]+)/i, 'Axios', 'HTTP Client'],
+      [/lodash[/@]([\d.]+)/i, 'Lodash', 'Utility'],
+    ];
+    cdnPatterns.forEach(([regex, name, type]) => {
+      const m = html.match(regex);
+      if (m) deps.push({ name, version: m[1], url: `https://www.npmjs.com/package/${name.toLowerCase().replace(/\s+/g, '-')}`, type });
+    });
+    // Detect without version
+    if (html.includes('tailwindcss') && !deps.find(d => d.name === 'Tailwind CSS')) deps.push({ name: 'Tailwind CSS', version: 'latest', url: 'https://tailwindcss.com', type: 'CSS Framework' });
+    if (html.includes('font-awesome') || html.includes('fontawesome')) deps.push({ name: 'Font Awesome', version: 'detected', url: 'https://fontawesome.com', type: 'Icons' });
+    if (html.includes('bootstrap') && !html.includes('tailwind')) deps.push({ name: 'Bootstrap', version: 'detected', url: 'https://getbootstrap.com', type: 'CSS Framework' });
+    return deps;
+  }, [projectFiles]);
+
+  // v14: Code Complexity Analyzer
+  const [showComplexityPanel, setShowComplexityPanel] = useState(false);
+  const codeComplexity = useMemo(() => {
+    const files = Object.entries(projectFiles);
+    const results: { file: string; lines: number; functions: number; maxDepth: number; complexity: string }[] = [];
+    files.forEach(([path, f]) => {
+      const content = f.content;
+      const lines = content.split('\n').length;
+      const functions = (content.match(/function\s|=>|\bclass\s/g) || []).length;
+      let maxDepth = 0, depth = 0;
+      for (const ch of content) { if (ch === '{') { depth++; maxDepth = Math.max(maxDepth, depth); } else if (ch === '}') depth--; }
+      const score = functions * 2 + maxDepth * 3 + Math.floor(lines / 50);
+      results.push({ file: path, lines, functions, maxDepth, complexity: score > 30 ? 'High' : score > 15 ? 'Medium' : 'Low' });
+    });
+    return results.sort((a, b) => b.functions - a.functions);
+  }, [projectFiles]);
+
+  // v14: Responsive Split Preview
+  const [showSplitPreview, setShowSplitPreview] = useState(false);
+
+  // v15: Code Outline / Symbol Navigator
+  const [showOutlinePanel, setShowOutlinePanel] = useState(false);
+  const codeSymbols = useMemo(() => {
+    if (!selectedFile || !projectFiles[selectedFile]) return [];
+    const content = projectFiles[selectedFile].content;
+    const symbols: { name: string; type: string; line: number }[] = [];
+    content.split('\n').forEach((ln, i) => {
+      const fnMatch = ln.match(/(?:function|const|let|var)\s+(\w+)/);
+      if (fnMatch && (ln.includes('=>') || ln.includes('function'))) symbols.push({ name: fnMatch[1], type: 'function', line: i + 1 });
+      const classMatch = ln.match(/class\s+(\w+)/);
+      if (classMatch) symbols.push({ name: classMatch[1], type: 'class', line: i + 1 });
+      const tagMatch = ln.match(/<(\w+)[\s>]/);
+      if (tagMatch && /^[A-Z]/.test(tagMatch[1])) symbols.push({ name: `<${tagMatch[1]}>`, type: 'component', line: i + 1 });
+      const idMatch = ln.match(/id=["'](\w+)["']/);
+      if (idMatch) symbols.push({ name: `#${idMatch[1]}`, type: 'id', line: i + 1 });
+    });
+    return symbols;
+  }, [selectedFile, projectFiles]);
+
+  // v15: Image Optimizer Panel
+  const [showImageOptPanel, setShowImageOptPanel] = useState(false);
+  const imageAssets = useMemo(() => {
+    const assets: { file: string; count: number; totalSize: number; images: { src: string; sizeKB: number }[] }[] = [];
+    Object.entries(projectFiles).forEach(([path, f]) => {
+      const dataMatches = f.content.match(/data:image\/[^"'\s]+/g) || [];
+      if (dataMatches.length > 0) {
+        const images = dataMatches.map(src => ({ src: src.slice(0, 60) + '...', sizeKB: Math.round(src.length * 0.75 / 1024) }));
+        const totalSize = images.reduce((a, b) => a + b.sizeKB, 0);
+        assets.push({ file: path, count: images.length, totalSize, images });
+      }
+    });
+    return assets;
+  }, [projectFiles]);
+
+  // v15: Code Diff Stats
+  const [showDiffStatsPanel, setShowDiffStatsPanel] = useState(false);
+
+  // v15: Network / API Calls Panel
+  const [showNetworkPanel, setShowNetworkPanel] = useState(false);
+  const networkCalls = useMemo(() => {
+    const calls: { file: string; line: number; method: string; url: string }[] = [];
+    Object.entries(projectFiles).forEach(([path, f]) => {
+      f.content.split('\n').forEach((ln, i) => {
+        const fetchMatch = ln.match(/fetch\(['"`]([^'"`]+)['"`]/);
+        if (fetchMatch) calls.push({ file: path, line: i + 1, method: 'fetch', url: fetchMatch[1] });
+        const axiosMatch = ln.match(/axios\.(get|post|put|delete|patch)\(['"`]([^'"`]+)['"`]/);
+        if (axiosMatch) calls.push({ file: path, line: i + 1, method: `axios.${axiosMatch[1]}`, url: axiosMatch[2] });
+        const xhrMatch = ln.match(/\.open\(['"`](GET|POST|PUT|DELETE)['"`],\s*['"`]([^'"`]+)['"`]/);
+        if (xhrMatch) calls.push({ file: path, line: i + 1, method: xhrMatch[1], url: xhrMatch[2] });
+      });
+    });
+    return calls;
+  }, [projectFiles]);
+
+  // v15: Export Single HTML
+  const exportSingleHtml = useCallback(() => {
+    const html = projectFiles['index.html']?.content || '';
+    if (!html) { showToast('No index.html found', 'error'); return; }
+    let result = html;
+    // Inline CSS files
+    Object.entries(projectFiles).forEach(([path, f]) => {
+      if (path.endsWith('.css')) {
+        const linkRegex = new RegExp(`<link[^>]*href=['"]${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"][^>]*/?>`, 'gi');
+        result = result.replace(linkRegex, `<style>${f.content}</style>`);
+        if (!linkRegex.test(html)) result = result.replace('</head>', `<style>/* ${path} */\n${f.content}</style>\n</head>`);
+      }
+    });
+    // Inline JS files
+    Object.entries(projectFiles).forEach(([path, f]) => {
+      if (path.endsWith('.js') || path.endsWith('.ts')) {
+        const scriptRegex = new RegExp(`<script[^>]*src=['"]${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"][^>]*>\\s*</script>`, 'gi');
+        result = result.replace(scriptRegex, `<script>/* ${path} */\n${f.content}</script>`);
+      }
+    });
+    const blob = new Blob([result], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'export.html'; a.click();
+    URL.revokeObjectURL(url);
+    showToast(`Exported single HTML (${(result.length / 1024).toFixed(1)}KB)`, 'success');
+  }, [projectFiles, showToast]);
+
+  // v15: Responsive Breakpoint Tester
+  const [breakpointTestActive, setBreakpointTestActive] = useState(false);
+  const [breakpointTestIdx, setBreakpointTestIdx] = useState(0);
+  const BREAKPOINT_SIZES = useMemo(() => [
+    { name: 'iPhone SE', w: 320 },
+    { name: 'iPhone 14', w: 375 },
+    { name: 'iPad Mini', w: 768 },
+    { name: 'Laptop', w: 1024 },
+    { name: 'Desktop', w: 1440 },
+  ], []);
+  useEffect(() => {
+    if (!breakpointTestActive) return;
+    const timer = setInterval(() => {
+      setBreakpointTestIdx(prev => (prev + 1) % 5);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [breakpointTestActive]);
+
+  // v14: HTML Minifier
+  const minifyProject = useCallback(() => {
+    const minified = { ...projectFiles };
+    let saved = 0;
+    Object.entries(minified).forEach(([path, f]) => {
+      const orig = f.content.length;
+      let c = f.content;
+      if (path.endsWith('.html') || path.endsWith('.htm')) {
+        c = c.replace(/<!--[\s\S]*?-->/g, '').replace(/\n\s*\n/g, '\n').replace(/^\s+/gm, '').replace(/\s{2,}/g, ' ');
+      } else if (path.endsWith('.css')) {
+        c = c.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\n\s*\n/g, '\n').replace(/\s*([{:;,}])\s*/g, '$1').replace(/^\s+/gm, '');
+      } else if (path.endsWith('.js') || path.endsWith('.ts')) {
+        c = c.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\n\s*\n/g, '\n');
+      }
+      saved += orig - c.length;
+      minified[path] = { ...f, content: c };
+    });
+    setProjectFiles(minified);
+    showToast(`Minified: saved ${(saved / 1024).toFixed(1)}KB`, 'success');
+  }, [projectFiles, showToast]);
+
+  // v16: HTML Validator
+  const [showHtmlValidatorPanel, setShowHtmlValidatorPanel] = useState(false);
+  const htmlErrors = useMemo(() => {
+    const html = projectFiles['index.html']?.content || '';
+    if (!html) return [];
+    const errors: { type: string; message: string; line: number }[] = [];
+    const lines = html.split('\n');
+    // Check doctype
+    if (!html.trim().toLowerCase().startsWith('<!doctype')) errors.push({ type: 'warning', message: 'Missing <!DOCTYPE html> declaration', line: 1 });
+    // Check duplicate IDs
+    const idMap = new Map<string, number[]>();
+    lines.forEach((ln, i) => {
+      const ids = [...ln.matchAll(/id=["'](\w+)["']/g)];
+      ids.forEach(m => { const arr = idMap.get(m[1]) || []; arr.push(i + 1); idMap.set(m[1], arr); });
+    });
+    idMap.forEach((lns, id) => { if (lns.length > 1) errors.push({ type: 'error', message: `Duplicate id="${id}" on lines ${lns.join(', ')}`, line: lns[0] }); });
+    // Check unclosed tags
+    const voidTags = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
+    const stack: { tag: string; line: number }[] = [];
+    lines.forEach((ln, i) => {
+      const opens = [...ln.matchAll(/<([a-zA-Z][a-zA-Z0-9]*)(?:\s|>)/g)];
+      const closes = [...ln.matchAll(/<\/([a-zA-Z][a-zA-Z0-9]*)\s*>/g)];
+      opens.forEach(m => { if (!voidTags.has(m[1].toLowerCase()) && !ln.includes('/>')) stack.push({ tag: m[1].toLowerCase(), line: i + 1 }); });
+      closes.forEach(m => { const idx = stack.findLastIndex(s => s.tag === m[1].toLowerCase()); if (idx >= 0) stack.splice(idx, 1); else errors.push({ type: 'error', message: `Extra closing </${m[1]}> without matching open tag`, line: i + 1 }); });
+    });
+    stack.forEach(s => errors.push({ type: 'error', message: `Unclosed <${s.tag}> tag`, line: s.line }));
+    // Missing lang attribute
+    if (html.includes('<html') && !html.match(/<html[^>]*lang=/)) errors.push({ type: 'warning', message: 'Missing lang attribute on <html>', line: 1 });
+    // Missing charset
+    if (!html.includes('charset')) errors.push({ type: 'warning', message: 'Missing charset meta tag', line: 1 });
+    if (errors.length === 0) errors.push({ type: 'success', message: 'No HTML issues found!', line: 0 });
+    return errors;
+  }, [projectFiles]);
+
+  // v16: Font Inspector
+  const [showFontPanel, setShowFontPanel] = useState(false);
+  const detectedFonts = useMemo(() => {
+    const allContent = Object.values(projectFiles).map(f => f.content).join('\n');
+    const fonts: { name: string; source: string; type: string }[] = [];
+    // Google Fonts
+    const googleFonts = [...allContent.matchAll(/fonts\.googleapis\.com\/css2?\?family=([^"'&\s]+)/g)];
+    googleFonts.forEach(m => { const name = decodeURIComponent(m[1]).replace(/\+/g, ' ').split(':')[0]; if (!fonts.find(f => f.name === name)) fonts.push({ name, source: 'Google Fonts', type: 'Web' }); });
+    // @font-face
+    const fontFaces = [...allContent.matchAll(/@font-face[^}]*font-family:\s*["']?([^"';]+)/g)];
+    fontFaces.forEach(m => { if (!fonts.find(f => f.name === m[1].trim())) fonts.push({ name: m[1].trim(), source: '@font-face', type: 'Custom' }); });
+    // font-family declarations
+    const fontFamilies = [...allContent.matchAll(/font-family:\s*["']?([^"';,}]+)/g)];
+    fontFamilies.forEach(m => {
+      const name = m[1].trim();
+      if (!fonts.find(f => f.name === name) && !['inherit', 'initial', 'unset', 'revert'].includes(name.toLowerCase()))
+        fonts.push({ name, source: 'CSS', type: /mono|code|courier/i.test(name) ? 'Monospace' : /serif/i.test(name) ? 'Serif' : 'Sans-serif' });
+    });
+    return fonts;
+  }, [projectFiles]);
+
+  // v16: Code Snippets Manager
+  const [showSnippetsPanel, setShowSnippetsPanel] = useState(false);
+  const [savedSnippets, setSavedSnippets] = useState<{ id: string; name: string; code: string; language: string }[]>([]);
+  // Load snippets from IDB on mount
+  useEffect(() => {
+    idbGet('aurion-snippets').then(data => { if (Array.isArray(data)) setSavedSnippets(data as typeof savedSnippets); });
+  }, []);
+  const saveSnippet = useCallback((name: string, code: string) => {
+    const snippet = { id: Date.now().toString(), name, code, language: selectedFile?.split('.').pop() || 'text' };
+    setSavedSnippets(prev => { const next = [...prev, snippet]; idbSet('aurion-snippets', next); return next; });
+    showToast(`Snippet "${name}" saved`, 'success');
+  }, [selectedFile, showToast]);
+  const deleteSnippet = useCallback((id: string) => {
+    setSavedSnippets(prev => { const next = prev.filter(s => s.id !== id); idbSet('aurion-snippets', next); return next; });
+  }, []);
+  const insertSnippet = useCallback((code: string) => {
+    if (!selectedFile || !projectFiles[selectedFile]) return;
+    const content = projectFiles[selectedFile].content;
+    setProjectFiles(prev => ({ ...prev, [selectedFile]: { ...prev[selectedFile], content: content + '\n' + code } }));
+    setShowSnippetsPanel(false);
+    showToast('Snippet inserted', 'success');
+  }, [selectedFile, projectFiles, showToast]);
+
+  // v16: Layout Debugger (outline all elements in preview)
+  const [layoutDebugActive, setLayoutDebugActive] = useState(false);
+
+  // v16: Preview Dark/Light Mode Toggle
+  const [previewDarkMode, setPreviewDarkMode] = useState<'auto' | 'dark' | 'light'>('auto');
+
+  // v16: File Size Treemap
+  const [showTreemapPanel, setShowTreemapPanel] = useState(false);
+  const fileSizeTreemap = useMemo(() => {
+    const totalBytes = Object.values(projectFiles).reduce((a, f) => a + f.content.length, 0);
+    return Object.entries(projectFiles).map(([path, f]) => ({
+      path, bytes: f.content.length, pct: totalBytes > 0 ? (f.content.length / totalBytes * 100) : 0,
+      color: path.endsWith('.html') ? '#e34c26' : path.endsWith('.css') ? '#563d7c' : path.endsWith('.js') || path.endsWith('.jsx') ? '#f7df1e' : path.endsWith('.ts') || path.endsWith('.tsx') ? '#3178c6' : '#555',
+    })).sort((a, b) => b.bytes - a.bytes);
+  }, [projectFiles]);
+
+  // v17: Unused CSS Detector
+  const [showUnusedCssPanel, setShowUnusedCssPanel] = useState(false);
+  const unusedCssSelectors = useMemo(() => {
+    const htmlFile = Object.entries(projectFiles).find(([p]) => p.endsWith('.html') || p.endsWith('.htm'));
+    const cssFile = Object.entries(projectFiles).find(([p]) => p.endsWith('.css'));
+    if (!htmlFile || !cssFile) return [];
+    const htmlContent = htmlFile[1].content;
+    const cssContent = cssFile[1].content;
+    const selectorRegex = /([^{}@\n][^{]*?)\s*\{/g;
+    const results: { selector: string; line: number }[] = [];
+    let m;
+    while ((m = selectorRegex.exec(cssContent)) !== null) {
+      const sel = m[1].trim();
+      if (!sel || sel.startsWith('@') || sel.startsWith('from') || sel.startsWith('to') || sel.startsWith('/*') || /^\d+%$/.test(sel)) continue;
+      const parts = sel.split(',').map(s => s.trim());
+      for (const part of parts) {
+        const clean = part.replace(/:hover|:focus|:active|:visited|:first-child|:last-child|:nth-child\([^)]*\)|::before|::after|::placeholder/g, '').trim();
+        if (!clean || clean === '*' || clean === 'html' || clean === 'body') continue;
+        const tagMatch = clean.match(/^([a-zA-Z][a-zA-Z0-9]*)/);
+        const classMatch = clean.match(/\.([a-zA-Z_-][a-zA-Z0-9_-]*)/);
+        const idMatch = clean.match(/#([a-zA-Z_-][a-zA-Z0-9_-]*)/);
+        let found = false;
+        if (idMatch && htmlContent.includes(`id="${idMatch[1]}"`)) found = true;
+        if (!found && classMatch && (htmlContent.includes(`class="${classMatch[1]}"`) || htmlContent.includes(`class="${classMatch[1]} `) || htmlContent.includes(` ${classMatch[1]}"`) || htmlContent.includes(` ${classMatch[1]} `))) found = true;
+        if (!found && tagMatch && !classMatch && !idMatch && new RegExp(`<${tagMatch[1]}[\\s>]`, 'i').test(htmlContent)) found = true;
+        if (!found) {
+          const line = cssContent.substring(0, m.index).split('\n').length;
+          results.push({ selector: part, line });
+        }
+      }
+    }
+    return results.slice(0, 100);
+  }, [projectFiles]);
+
+  // v17: Link Checker
+  const [showLinkCheckerPanel, setShowLinkCheckerPanel] = useState(false);
+  const brokenLinks = useMemo(() => {
+    const htmlFile = Object.entries(projectFiles).find(([p]) => p.endsWith('.html') || p.endsWith('.htm'));
+    if (!htmlFile) return [];
+    const html = htmlFile[1].content;
+    const results: { href: string; type: string; reason: string; line: number }[] = [];
+    const linkRegex = /href=["']([^"']*)["']/g;
+    let m;
+    while ((m = linkRegex.exec(html)) !== null) {
+      const href = m[1];
+      const line = html.substring(0, m.index).split('\n').length;
+      if (href.startsWith('#')) {
+        const anchor = href.slice(1);
+        if (anchor && !html.includes(`id="${anchor}"`) && !html.includes(`name="${anchor}"`)) {
+          results.push({ href, type: 'anchor', reason: `Anchor #${anchor} not found`, line });
+        }
+      } else if (href.startsWith('/') || (!href.startsWith('http') && !href.startsWith('mailto:') && !href.startsWith('tel:') && !href.startsWith('javascript:'))) {
+        const target = href.split('?')[0].split('#')[0];
+        if (target && !projectFiles[target] && !projectFiles[target.replace(/^\//, '')]) {
+          results.push({ href, type: 'internal', reason: 'File not found in project', line });
+        }
+      } else if (!href || href === '#') {
+        results.push({ href: href || '(empty)', type: 'empty', reason: 'Empty or placeholder href', line });
+      }
+    }
+    return results.slice(0, 50);
+  }, [projectFiles]);
+
+  // v17: DOM Tree Viewer
+  const [showDomTreePanel, setShowDomTreePanel] = useState(false);
+  const domTree = useMemo(() => {
+    const htmlFile = Object.entries(projectFiles).find(([p]) => p.endsWith('.html') || p.endsWith('.htm'));
+    if (!htmlFile) return [];
+    const html = htmlFile[1].content;
+    const tagRegex = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)(\s[^>]*)?\/?>|<!--[\s\S]*?-->/g;
+    const tree: { tag: string; depth: number; attrs: string; selfClose: boolean }[] = [];
+    let depth = 0;
+    const selfClosing = new Set(['br','hr','img','input','meta','link','area','base','col','embed','source','track','wbr']);
+    let m;
+    while ((m = tagRegex.exec(html)) !== null) {
+      if (m[0].startsWith('<!--')) continue;
+      const isClose = m[1] === '/';
+      const tag = m[2].toLowerCase();
+      const attrs = (m[3] || '').trim().slice(0, 80);
+      const isSelf = selfClosing.has(tag) || m[0].endsWith('/>');
+      if (isClose) { depth = Math.max(0, depth - 1); continue; }
+      tree.push({ tag, depth, attrs, selfClose: isSelf });
+      if (!isSelf) depth++;
+    }
+    return tree.slice(0, 300);
+  }, [projectFiles]);
+
+  // v17: Meta Tag Editor
+  const [showMetaEditorPanel, setShowMetaEditorPanel] = useState(false);
+  const metaTags = useMemo(() => {
+    const htmlFile = Object.entries(projectFiles).find(([p]) => p.endsWith('.html') || p.endsWith('.htm'));
+    if (!htmlFile) return [];
+    const html = htmlFile[1].content;
+    const tags: { type: string; name: string; content: string }[] = [];
+    const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
+    if (titleMatch) tags.push({ type: 'title', name: 'title', content: titleMatch[1] });
+    const metaRegex = /<meta\s+([^>]*)>/gi;
+    let m;
+    while ((m = metaRegex.exec(html)) !== null) {
+      const attrs = m[1];
+      const nameMatch = attrs.match(/(?:name|property)=["']([^"']*)["']/i);
+      const contentMatch = attrs.match(/content=["']([^"']*)["']/i);
+      const charsetMatch = attrs.match(/charset=["']([^"']*)["']/i);
+      if (nameMatch && contentMatch) tags.push({ type: 'meta', name: nameMatch[1], content: contentMatch[1] });
+      else if (charsetMatch) tags.push({ type: 'charset', name: 'charset', content: charsetMatch[1] });
+    }
+    return tags;
+  }, [projectFiles]);
+
+  // v17: Code Formatter
+  const formatCode = useCallback(() => {
+    if (!selectedFile) return;
+    const file = projectFiles[selectedFile];
+    if (!file) return;
+    let content = file.content;
+    const ext = selectedFile.split('.').pop() || '';
+    if (['html', 'htm'].includes(ext)) {
+      const lines = content.replace(/></g, '>\n<').split('\n');
+      let indent = 0;
+      const sc = new Set(['br','hr','img','input','meta','link','area','base','col','embed','source','track','wbr','!doctype']);
+      const formatted = lines.map(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return '';
+        const isClose = trimmed.startsWith('</') && !trimmed.includes('><');
+        if (isClose) indent = Math.max(0, indent - 1);
+        const result = '  '.repeat(indent) + trimmed;
+        const openMatch = trimmed.match(/^<([a-zA-Z!][a-zA-Z0-9]*)/);
+        if (openMatch && !isClose && !sc.has(openMatch[1].toLowerCase()) && !trimmed.endsWith('/>') && !trimmed.includes('</')) indent++;
+        return result;
+      }).filter((l, i, arr) => !(l === '' && arr[i - 1] === ''));
+      content = formatted.join('\n');
+    } else if (['css'].includes(ext)) {
+      content = content.replace(/\{/g, ' {\n  ').replace(/;/g, ';\n  ').replace(/\}/g, '\n}\n').replace(/  \n}/g, '\n}').replace(/\n\n+/g, '\n\n');
+    } else if (['js', 'ts', 'jsx', 'tsx'].includes(ext)) {
+      content = content.replace(/;(?!\n)/g, ';\n').replace(/\{(?!\n)/g, '{\n').replace(/\}(?!\n)/g, '}\n');
+    }
+    setProjectFiles(prev => ({ ...prev, [selectedFile]: { ...prev[selectedFile], content } }));
+    showToast('Code formatted', 'success');
+  }, [selectedFile, projectFiles, setProjectFiles, showToast]);
+
+  // v17: Shortcuts Reference
+  const [showShortcutsRef, setShowShortcutsRef] = useState(false);
+
+  // v18: CSS Grid/Flex Visualizer
+  const [gridFlexDebugActive, setGridFlexDebugActive] = useState(false);
+
+  // v18: Bookmark Lines
+  const [bookmarkedLines, setBookmarkedLines] = useState<number[]>([]);
+  const toggleBookmark = useCallback((line?: number) => {
+    const l = line ?? (monacoEditorRef.current as any)?.getPosition?.()?.lineNumber;
+    if (!l) return;
+    setBookmarkedLines(prev => prev.includes(l) ? prev.filter(b => b !== l) : [...prev, l].sort((a, b) => a - b));
+  }, []);
+  const jumpToBookmark = useCallback((line: number) => {
+    const ed = monacoEditorRef.current as any;
+    if (ed) { ed.revealLineInCenter(line); ed.setPosition({ lineNumber: line, column: 1 }); ed.focus(); }
+  }, []);
+
+  // v18: Color Contrast Checker
+  const [showContrastPanel, setShowContrastPanel] = useState(false);
+  const contrastIssues = useMemo(() => {
+    const cssFile = Object.entries(projectFiles).find(([p]) => p.endsWith('.css'));
+    const htmlFile = Object.entries(projectFiles).find(([p]) => p.endsWith('.html') || p.endsWith('.htm'));
+    const allContent = (cssFile?.[1]?.content || '') + (htmlFile?.[1]?.content || '');
+    const colorPairs: { fg: string; bg: string; selector: string }[] = [];
+    const blockRegex = /([^{}]+)\{([^}]+)\}/g;
+    let m;
+    while ((m = blockRegex.exec(allContent)) !== null) {
+      const sel = m[1].trim();
+      const body = m[2];
+      const colorM = body.match(/(?:^|;)\s*color\s*:\s*([^;]+)/i);
+      const bgM = body.match(/background(?:-color)?\s*:\s*([^;]+)/i);
+      if (colorM && bgM) colorPairs.push({ fg: colorM[1].trim(), bg: bgM[1].trim(), selector: sel });
+    }
+    const hexToRgb = (hex: string) => {
+      const h = hex.replace('#', '');
+      if (h.length === 3) return [parseInt(h[0]+h[0],16), parseInt(h[1]+h[1],16), parseInt(h[2]+h[2],16)];
+      if (h.length === 6) return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+      return null;
+    };
+    const namedColors: Record<string, string> = { white: '#ffffff', black: '#000000', red: '#ff0000', blue: '#0000ff', green: '#008000', gray: '#808080', grey: '#808080', yellow: '#ffff00', orange: '#ffa500', purple: '#800080', pink: '#ffc0cb', transparent: '#ffffff' };
+    const toHex = (c: string) => namedColors[c.toLowerCase()] || (c.startsWith('#') ? c : null);
+    const luminance = (r: number, g: number, b: number) => {
+      const [rs, gs, bs] = [r, g, b].map(v => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); });
+      return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+    };
+    const results: { selector: string; fg: string; bg: string; ratio: number; aaPass: boolean; aaaPass: boolean }[] = [];
+    for (const pair of colorPairs) {
+      const fgHex = toHex(pair.fg);
+      const bgHex = toHex(pair.bg);
+      if (!fgHex || !bgHex) continue;
+      const fgRgb = hexToRgb(fgHex);
+      const bgRgb = hexToRgb(bgHex);
+      if (!fgRgb || !bgRgb) continue;
+      const l1 = luminance(fgRgb[0], fgRgb[1], fgRgb[2]);
+      const l2 = luminance(bgRgb[0], bgRgb[1], bgRgb[2]);
+      const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+      results.push({ selector: pair.selector.slice(0, 60), fg: pair.fg, bg: pair.bg, ratio: Math.round(ratio * 100) / 100, aaPass: ratio >= 4.5, aaaPass: ratio >= 7 });
+    }
+    return results;
+  }, [projectFiles]);
+
+  // v18: Z-Index Map
+  const [showZIndexPanel, setShowZIndexPanel] = useState(false);
+  const zIndexMap = useMemo(() => {
+    const results: { selector: string; value: number; file: string }[] = [];
+    for (const [path, file] of Object.entries(projectFiles)) {
+      const blockRegex = /([^{}]+)\{([^}]+)\}/g;
+      let m;
+      while ((m = blockRegex.exec(file.content)) !== null) {
+        const sel = m[1].trim();
+        const zM = m[2].match(/z-index\s*:\s*(-?\d+)/i);
+        if (zM) results.push({ selector: sel.slice(0, 60), value: parseInt(zM[1]), file: path });
+      }
+      const inlineRegex = /style=["'][^"']*z-index\s*:\s*(-?\d+)/gi;
+      let im;
+      while ((im = inlineRegex.exec(file.content)) !== null) {
+        results.push({ selector: '(inline style)', value: parseInt(im[1]), file: path });
+      }
+    }
+    return results.sort((a, b) => b.value - a.value).slice(0, 50);
+  }, [projectFiles]);
+
+  // v18: Todo/Fixme Scanner
+  const [showTodoScanPanel, setShowTodoScanPanel] = useState(false);
+  const todoComments = useMemo(() => {
+    const results: { text: string; type: string; file: string; line: number }[] = [];
+    for (const [path, file] of Object.entries(projectFiles)) {
+      const lines = file.content.split('\n');
+      lines.forEach((l, i) => {
+        const m = l.match(/\/\/\s*(TODO|FIXME|HACK|NOTE|BUG|XXX|OPTIMIZE)\b[:\s]*(.*)/i) || l.match(/\/\*\s*(TODO|FIXME|HACK|NOTE|BUG|XXX|OPTIMIZE)\b[:\s]*(.*?)\*\//i) || l.match(/<!--\s*(TODO|FIXME|HACK|NOTE|BUG|XXX|OPTIMIZE)\b[:\s]*(.*?)-->/i);
+        if (m) results.push({ text: m[2].trim() || m[1], type: m[1].toUpperCase(), file: path, line: i + 1 });
+      });
+    }
+    return results.slice(0, 100);
+  }, [projectFiles]);
+
+  // v18: Copy Preview as Image
+  const copyPreviewAsImage = useCallback(async () => {
+    if (!iframeRef.current) return;
+    try {
+      const iframe = iframeRef.current;
+      const doc = iframe.contentDocument;
+      if (!doc) { showToast('Cannot access iframe content', 'error'); return; }
+      const canvas = document.createElement('canvas');
+      const rect = iframe.getBoundingClientRect();
+      canvas.width = rect.width * 2;
+      canvas.height = rect.height * 2;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.scale(2, 2);
+      const svgData = `<svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml">${new XMLSerializer().serializeToString(doc.documentElement)}</div></foreignObject></svg>`;
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob(blob => {
+          if (blob) {
+            navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+            showToast('Preview copied as image!', 'success');
+          }
+        }, 'image/png');
+      };
+      img.onerror = () => showToast('Screenshot failed — CORS restriction', 'error');
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
+    } catch { showToast('Screenshot failed', 'error'); }
+  }, [showToast]);
+
+  // v19: Regex Tester
+  const [showRegexPanel, setShowRegexPanel] = useState(false);
+  const [regexInput, setRegexInput] = useState('');
+  const [regexTestStr, setRegexTestStr] = useState('');
+  const regexMatches = useMemo(() => {
+    if (!regexInput || !regexTestStr) return [];
+    try {
+      const re = new RegExp(regexInput, 'g');
+      const matches: { match: string; index: number; groups: string[] }[] = [];
+      let m;
+      let safety = 0;
+      while ((m = re.exec(regexTestStr)) !== null && safety++ < 200) {
+        matches.push({ match: m[0], index: m.index, groups: m.slice(1) });
+        if (!m[0]) re.lastIndex++;
+      }
+      return matches;
+    } catch { return []; }
+  }, [regexInput, regexTestStr]);
+
+  // v19: CSS Specificity Calculator
+  const [showSpecificityPanel, setShowSpecificityPanel] = useState(false);
+  const cssSpecificity = useMemo(() => {
+    const cssFile = Object.entries(projectFiles).find(([p]) => p.endsWith('.css'));
+    if (!cssFile) return [];
+    const selectorRegex = /([^{}@\n][^{]*?)\s*\{/g;
+    const results: { selector: string; specificity: [number, number, number]; score: number }[] = [];
+    let m;
+    while ((m = selectorRegex.exec(cssFile[1].content)) !== null) {
+      const sel = m[1].trim();
+      if (!sel || sel.startsWith('@') || sel.startsWith('from') || sel.startsWith('to') || /^\d+%$/.test(sel)) continue;
+      const ids = (sel.match(/#[a-zA-Z_-][a-zA-Z0-9_-]*/g) || []).length;
+      const classes = (sel.match(/\.[a-zA-Z_-][a-zA-Z0-9_-]*/g) || []).length + (sel.match(/\[[^\]]+\]/g) || []).length + (sel.match(/:[a-zA-Z-]+/g) || []).filter(p => !p.startsWith('::') && p !== ':not' && p !== ':is' && p !== ':where').length;
+      const elements = (sel.match(/(?:^|[\s>+~])([a-zA-Z][a-zA-Z0-9]*)/g) || []).length + (sel.match(/::[a-zA-Z-]+/g) || []).length;
+      results.push({ selector: sel.slice(0, 80), specificity: [ids, classes, elements], score: ids * 100 + classes * 10 + elements });
+    }
+    return results.sort((a, b) => b.score - a.score).slice(0, 80);
+  }, [projectFiles]);
+
+  // v19: Image Lazy Loading Checker
+  const [showLazyImgPanel, setShowLazyImgPanel] = useState(false);
+  const lazyImgIssues = useMemo(() => {
+    const results: { src: string; file: string; line: number; hasLazy: boolean; hasAlt: boolean; hasWidth: boolean }[] = [];
+    for (const [path, file] of Object.entries(projectFiles)) {
+      const imgRegex = /<img\s([^>]*)>/gi;
+      let m;
+      while ((m = imgRegex.exec(file.content)) !== null) {
+        const attrs = m[1];
+        const src = attrs.match(/src=["']([^"']*)["']/i)?.[1] || '(no src)';
+        const line = file.content.substring(0, m.index).split('\n').length;
+        results.push({
+          src: src.slice(0, 60), file: path, line,
+          hasLazy: /loading=["']lazy["']/i.test(attrs),
+          hasAlt: /alt=["']/i.test(attrs),
+          hasWidth: /width=/i.test(attrs) && /height=/i.test(attrs),
+        });
+      }
+    }
+    return results;
+  }, [projectFiles]);
+
+  // v19: Text Statistics
+  const [showTextStatsPanel, setShowTextStatsPanel] = useState(false);
+  const textStats = useMemo(() => {
+    const htmlFile = Object.entries(projectFiles).find(([p]) => p.endsWith('.html') || p.endsWith('.htm'));
+    if (!htmlFile) return null;
+    const html = htmlFile[1].content;
+    const textOnly = html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+    const words = textOnly.split(/\s+/).filter(w => w.length > 0);
+    const sentences = textOnly.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    const syllables = (word: string) => { const w = word.toLowerCase().replace(/[^a-z]/g, ''); const m = w.match(/[aeiouy]+/g); return m ? m.length : 1; };
+    const totalSyllables = words.reduce((a, w) => a + syllables(w), 0);
+    const fleschKincaid = words.length > 0 && sentences.length > 0 ? 206.835 - 1.015 * (words.length / sentences.length) - 84.6 * (totalSyllables / words.length) : 0;
+    return {
+      chars: textOnly.length, words: words.length, sentences: sentences.length, paragraphs: html.split(/<\/p>/i).length - 1,
+      readingTime: Math.ceil(words.length / 200),
+      readability: Math.round(Math.max(0, Math.min(100, fleschKincaid))),
+      headings: (html.match(/<h[1-6][^>]*>/gi) || []).length,
+      links: (html.match(/<a\s/gi) || []).length,
+      images: (html.match(/<img\s/gi) || []).length,
+    };
+  }, [projectFiles]);
+
+  // v19: Duplicate Code Detector
+  const [showDuplicatePanel, setShowDuplicatePanel] = useState(false);
+  const duplicateBlocks = useMemo(() => {
+    const results: { code: string; files: string[]; count: number }[] = [];
+    const allBlocks: Map<string, string[]> = new Map();
+    for (const [path, file] of Object.entries(projectFiles)) {
+      const lines = file.content.split('\n');
+      for (let i = 0; i < lines.length - 2; i++) {
+        const block = lines.slice(i, i + 3).map(l => l.trim()).join('\n');
+        if (block.length < 30 || block.replace(/\s/g, '').length < 15) continue;
+        const existing = allBlocks.get(block) || [];
+        if (!existing.includes(path)) existing.push(path);
+        allBlocks.set(block, existing);
+      }
+    }
+    for (const [code, files] of allBlocks) {
+      if (files.length > 1 || Array.from(allBlocks.values()).filter(f => f.includes(files[0])).length > 2) {
+        const count = Array.from(allBlocks.entries()).filter(([c]) => c === code).length;
+        if (files.length > 1) results.push({ code: code.slice(0, 150), files, count: files.length });
+      }
+    }
+    return results.sort((a, b) => b.count - a.count).slice(0, 30);
+  }, [projectFiles]);
+
+  // v19: Element Counter
+  const [showElementCountPanel, setShowElementCountPanel] = useState(false);
+  const elementCounts = useMemo(() => {
+    const htmlFile = Object.entries(projectFiles).find(([p]) => p.endsWith('.html') || p.endsWith('.htm'));
+    if (!htmlFile) return null;
+    const html = htmlFile[1].content;
+    const tagCounts: Record<string, number> = {};
+    const tagRegex = /<([a-zA-Z][a-zA-Z0-9]*)(?:\s|>|\/)/g;
+    let m;
+    while ((m = tagRegex.exec(html)) !== null) {
+      const tag = m[1].toLowerCase();
+      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+    }
+    const classes = new Set((html.match(/class=["']([^"']*)["']/g) || []).flatMap(c => c.replace(/class=["']/,'').replace(/["']$/,'').split(/\s+/)));
+    const ids = new Set((html.match(/id=["']([^"']*)["']/g) || []).map(c => c.replace(/id=["']/,'').replace(/["']$/,'')));
+    return {
+      totalElements: Object.values(tagCounts).reduce((a, b) => a + b, 0),
+      uniqueTags: Object.keys(tagCounts).length,
+      tagCounts: Object.entries(tagCounts).sort((a, b) => b[1] - a[1]),
+      totalClasses: classes.size,
+      totalIds: ids.size,
+      scripts: tagCounts['script'] || 0,
+      styles: tagCounts['style'] || 0,
+      divs: tagCounts['div'] || 0,
+      spans: tagCounts['span'] || 0,
+    };
+  }, [projectFiles]);
+
+  // v20: Console Filter & Export
+  const [showConsoleFilter, setShowConsoleFilter] = useState(false);
+  const [consoleFilterLevel, setConsoleFilterLevel] = useState<'all' | 'log' | 'warn' | 'error'>('all');
+  const filteredConsoleLogs = useMemo(() => {
+    if (consoleFilterLevel === 'all') return consoleLogs;
+    return consoleLogs.filter(l => l.type === consoleFilterLevel);
+  }, [consoleLogs, consoleFilterLevel]);
+  const exportConsoleLogs = () => {
+    const text = filteredConsoleLogs.map(l => `[${l.type.toUpperCase()}] ${l.message}`).join('\n');
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `console-${Date.now()}.log`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // v20: Inline Color Picker
+  const [showColorEdit, setShowColorEdit] = useState(false);
+  const [colorEditValue, setColorEditValue] = useState('#ffffff');
+  const [colorEditTarget, setColorEditTarget] = useState<{ file: string; match: string; index: number } | null>(null);
+  const detectedColors = useMemo(() => {
+    const results: { color: string; file: string; line: number; index: number }[] = [];
+    for (const [path, file] of Object.entries(projectFiles)) {
+      const colorRegex = /(#[0-9a-fA-F]{3,8}|rgb\([^)]+\)|rgba\([^)]+\)|hsl\([^)]+\)|hsla\([^)]+\))/g;
+      let m;
+      while ((m = colorRegex.exec(file.content)) !== null) {
+        results.push({ color: m[1], file: path, line: file.content.substring(0, m.index).split('\n').length, index: m.index });
+      }
+    }
+    return results.slice(0, 100);
+  }, [projectFiles]);
+  const applyColorEdit = () => {
+    if (!colorEditTarget) return;
+    setProjectFiles(prev => {
+      const file = prev[colorEditTarget.file];
+      if (!file) return prev;
+      const content = file.content.substring(0, colorEditTarget.index) + colorEditValue + file.content.substring(colorEditTarget.index + colorEditTarget.match.length);
+      return { ...prev, [colorEditTarget.file]: { ...file, content } };
+    });
+    setColorEditTarget(null);
+  };
+
+  // v20: Code Folding Map
+  const [showFoldMap, setShowFoldMap] = useState(false);
+  const foldRegions = useMemo(() => {
+    if (!selectedFile) return [];
+    const content = projectFiles[selectedFile]?.content || '';
+    const lines = content.split('\n');
+    const regions: { start: number; end: number; depth: number; label: string }[] = [];
+    const stack: number[] = [];
+    lines.forEach((line, i) => {
+      const opens = (line.match(/[{(\[]/g) || []).length;
+      const closes = (line.match(/[})\]]/g) || []).length;
+      if (opens > closes) {
+        stack.push(i);
+      } else if (closes > opens && stack.length > 0) {
+        const start = stack.pop()!;
+        if (i - start > 2) {
+          regions.push({ start: start + 1, end: i + 1, depth: stack.length + 1, label: lines[start].trim().slice(0, 50) });
+        }
+      }
+    });
+    return regions.sort((a, b) => a.start - b.start).slice(0, 100);
+  }, [selectedFile, projectFiles]);
+
+  // v20: Dependency Graph
+  const [showDepGraph, setShowDepGraph] = useState(false);
+  const depGraph = useMemo(() => {
+    const nodes: { id: string; type: string }[] = [];
+    const edges: { from: string; to: string }[] = [];
+    const fileNames = Object.keys(projectFiles);
+    for (const [path, file] of Object.entries(projectFiles)) {
+      const ext = path.split('.').pop() || '';
+      nodes.push({ id: path, type: ext });
+      const importRegex = /(?:import|require)\s*(?:\(\s*)?['"]([^'"]+)['"]/g;
+      let m;
+      while ((m = importRegex.exec(file.content)) !== null) {
+        const dep = m[1];
+        const resolved = fileNames.find(f => f.endsWith(dep) || f.endsWith(dep + '.ts') || f.endsWith(dep + '.tsx') || f.endsWith(dep + '.js') || f.endsWith(dep + '.jsx'));
+        if (resolved) edges.push({ from: path, to: resolved });
+      }
+    }
+    return { nodes, edges };
+  }, [projectFiles]);
+
+  // v20: Performance Budget
+  const [showPerfBudget, setShowPerfBudget] = useState(false);
+  const perfBudget = useMemo(() => {
+    const totalSize = Object.values(projectFiles).reduce((a, f) => a + new Blob([f.content]).size, 0);
+    const htmlFile = Object.entries(projectFiles).find(([p]) => p.endsWith('.html'));
+    const html = htmlFile?.[1]?.content || '';
+    const scriptCount = (html.match(/<script/gi) || []).length;
+    const styleCount = (html.match(/<link[^>]*stylesheet/gi) || []).length + (html.match(/<style/gi) || []).length;
+    const imgCount = (html.match(/<img/gi) || []).length;
+    const domDepth = (() => { let max = 0, cur = 0; for (const ch of html) { if (ch === '<') cur++; else if (ch === '/') { cur--; max = Math.max(max, cur); } } return max; })();
+    const checks = [
+      { name: 'Total Size', value: `${(totalSize / 1024).toFixed(1)} KB`, pass: totalSize < 500 * 1024, limit: '< 500 KB' },
+      { name: 'Scripts', value: `${scriptCount}`, pass: scriptCount <= 10, limit: '≤ 10' },
+      { name: 'Stylesheets', value: `${styleCount}`, pass: styleCount <= 5, limit: '≤ 5' },
+      { name: 'Images', value: `${imgCount}`, pass: imgCount <= 20, limit: '≤ 20' },
+      { name: 'DOM Depth', value: `${domDepth}`, pass: domDepth < 32, limit: '< 32' },
+      { name: 'Files', value: `${Object.keys(projectFiles).length}`, pass: Object.keys(projectFiles).length <= 50, limit: '≤ 50' },
+    ];
+    return { checks, score: Math.round((checks.filter(c => c.pass).length / checks.length) * 100) };
+  }, [projectFiles]);
+
+  // v20: Responsive Preview Grid
+  const [showResponsiveGrid, setShowResponsiveGrid] = useState(false);
+  const RESPONSIVE_VIEWPORTS = [
+    { name: 'Mobile', w: 375, h: 667, icon: '📱' },
+    { name: 'Tablet', w: 768, h: 1024, icon: '📋' },
+    { name: 'Laptop', w: 1280, h: 800, icon: '💻' },
+    { name: 'Desktop', w: 1920, h: 1080, icon: '🖥' },
+  ];
+
+  // v21: CSS Animation Inspector
+  const [showAnimPanel, setShowAnimPanel] = useState(false);
+  const cssAnimations = useMemo(() => {
+    const results: { name: string; type: 'keyframes' | 'animation' | 'transition'; detail: string; file: string }[] = [];
+    for (const [path, file] of Object.entries(projectFiles)) {
+      if (!path.endsWith('.css') && !path.endsWith('.html')) continue;
+      const kf = file.content.matchAll(/@keyframes\s+([\w-]+)/g);
+      for (const m of kf) results.push({ name: m[1], type: 'keyframes', detail: 'Keyframe definition', file: path });
+      const anim = file.content.matchAll(/animation(?:-name)?\s*:\s*([^;{]+)/g);
+      for (const m of anim) results.push({ name: m[1].trim().split(/\s+/)[0], type: 'animation', detail: m[1].trim().slice(0, 60), file: path });
+      const trans = file.content.matchAll(/transition\s*:\s*([^;{]+)/g);
+      for (const m of trans) results.push({ name: m[1].trim().split(/\s+/)[0], type: 'transition', detail: m[1].trim().slice(0, 60), file: path });
+    }
+    return results.slice(0, 80);
+  }, [projectFiles]);
+
+  // v21: Event Listener Audit
+  const [showEventAudit, setShowEventAudit] = useState(false);
+  const inlineEvents = useMemo(() => {
+    const results: { event: string; element: string; file: string; line: number; handler: string }[] = [];
+    const eventNames = ['onclick', 'onchange', 'onsubmit', 'onmouseover', 'onmouseout', 'onkeydown', 'onkeyup', 'onkeypress', 'onfocus', 'onblur', 'oninput', 'onload', 'onerror', 'onscroll', 'onresize'];
+    for (const [path, file] of Object.entries(projectFiles)) {
+      const lines = file.content.split('\n');
+      lines.forEach((line, i) => {
+        for (const evt of eventNames) {
+          const regex = new RegExp(`<(\\w+)[^>]*\\s${evt}=(["'])([^"']*?)\\2`, 'gi');
+          let m;
+          while ((m = regex.exec(line)) !== null) {
+            results.push({ event: evt, element: m[1], file: path, line: i + 1, handler: m[3].slice(0, 50) });
+          }
+        }
+      });
+    }
+    return results.slice(0, 100);
+  }, [projectFiles]);
+
+  // v21: Open Graph Preview
+  const [showOgPreview, setShowOgPreview] = useState(false);
+  const ogData = useMemo(() => {
+    const htmlFile = Object.entries(projectFiles).find(([p]) => p.endsWith('.html'));
+    if (!htmlFile) return null;
+    const html = htmlFile[1].content;
+    const getMeta = (prop: string) => html.match(new RegExp(`<meta[^>]*(?:property|name)=["']${prop}["'][^>]*content=["']([^"']*)["']`, 'i'))?.[1] || html.match(new RegExp(`<meta[^>]*content=["']([^"']*)["'][^>]*(?:property|name)=["']${prop}["']`, 'i'))?.[1] || '';
+    const title = getMeta('og:title') || html.match(/<title>([^<]*)<\/title>/i)?.[1] || 'Untitled';
+    const desc = getMeta('og:description') || getMeta('description') || '';
+    const image = getMeta('og:image') || '';
+    const siteName = getMeta('og:site_name') || '';
+    const twitterCard = getMeta('twitter:card') || 'summary';
+    return { title, desc, image, siteName, twitterCard };
+  }, [projectFiles]);
+
+  // v21: Semantic HTML Checker
+  const [showSemanticPanel, setShowSemanticPanel] = useState(false);
+  const semanticIssues = useMemo(() => {
+    const results: { issue: string; suggestion: string; line: number; file: string; severity: 'warn' | 'error' }[] = [];
+    for (const [path, file] of Object.entries(projectFiles)) {
+      if (!path.endsWith('.html') && !path.endsWith('.htm')) continue;
+      const lines = file.content.split('\n');
+      lines.forEach((line, i) => {
+        if (/<div[^>]*class=["'][^"']*header[^"']*["']/i.test(line)) results.push({ issue: '<div> used as header', suggestion: 'Use <header>', line: i + 1, file: path, severity: 'warn' });
+        if (/<div[^>]*class=["'][^"']*footer[^"']*["']/i.test(line)) results.push({ issue: '<div> used as footer', suggestion: 'Use <footer>', line: i + 1, file: path, severity: 'warn' });
+        if (/<div[^>]*class=["'][^"']*nav[^"']*["']/i.test(line)) results.push({ issue: '<div> used as navigation', suggestion: 'Use <nav>', line: i + 1, file: path, severity: 'warn' });
+        if (/<div[^>]*class=["'][^"']*sidebar[^"']*["']/i.test(line)) results.push({ issue: '<div> used as sidebar', suggestion: 'Use <aside>', line: i + 1, file: path, severity: 'warn' });
+        if (/<div[^>]*class=["'][^"']*main[^"']*["']/i.test(line)) results.push({ issue: '<div> used as main content', suggestion: 'Use <main>', line: i + 1, file: path, severity: 'warn' });
+        if (/<div[^>]*class=["'][^"']*article[^"']*["']/i.test(line)) results.push({ issue: '<div> used as article', suggestion: 'Use <article>', line: i + 1, file: path, severity: 'warn' });
+        if (/<div[^>]*class=["'][^"']*section[^"']*["']/i.test(line)) results.push({ issue: '<div> used as section', suggestion: 'Use <section>', line: i + 1, file: path, severity: 'warn' });
+        if (/<b>/i.test(line)) results.push({ issue: '<b> tag used', suggestion: 'Use <strong> for semantic emphasis', line: i + 1, file: path, severity: 'warn' });
+        if (/<i>/i.test(line) && !/<i\s+class/i.test(line)) results.push({ issue: '<i> tag used', suggestion: 'Use <em> for semantic emphasis', line: i + 1, file: path, severity: 'warn' });
+      });
+    }
+    return results.slice(0, 100);
+  }, [projectFiles]);
+
+  // v21: Whitespace/Indent Checker
+  const [showWhitespacePanel, setShowWhitespacePanel] = useState(false);
+  const whitespaceIssues = useMemo(() => {
+    const results: { issue: string; file: string; line: number; type: 'mixed-indent' | 'trailing' | 'inconsistent' }[] = [];
+    for (const [path, file] of Object.entries(projectFiles)) {
+      const lines = file.content.split('\n');
+      let tabCount = 0, spaceCount = 0;
+      lines.forEach((line, i) => {
+        if (line.match(/^\t/)) tabCount++;
+        if (line.match(/^  /)) spaceCount++;
+        if (line.match(/^\t+ /) || line.match(/^ +\t/)) results.push({ issue: 'Mixed tabs and spaces', file: path, line: i + 1, type: 'mixed-indent' });
+        if (line.match(/\s+$/) && line.trim().length > 0) results.push({ issue: 'Trailing whitespace', file: path, line: i + 1, type: 'trailing' });
+      });
+      if (tabCount > 0 && spaceCount > 0 && Math.min(tabCount, spaceCount) > 3) {
+        results.push({ issue: `Inconsistent indentation (${tabCount} tab lines, ${spaceCount} space lines)`, file: path, line: 1, type: 'inconsistent' });
+      }
+    }
+    return results.slice(0, 150);
+  }, [projectFiles]);
+
+  // v22: PWA Checker
+  const [showPwaPanel, setShowPwaPanel] = useState(false);
+  const pwaChecks = useMemo(() => {
+    const manifest = Object.entries(projectFiles).find(([p]) => p.includes('manifest') && p.endsWith('.json'));
+    const sw = Object.entries(projectFiles).find(([p]) => p.includes('service-worker') || p.includes('sw.js'));
+    const htmlFile = Object.entries(projectFiles).find(([p]) => p.endsWith('.html'));
+    const html = htmlFile?.[1]?.content || '';
+    const hasManifestLink = /<link[^>]*manifest/i.test(html);
+    const hasThemeColor = /<meta[^>]*theme-color/i.test(html);
+    const hasViewport = /<meta[^>]*viewport/i.test(html);
+    const hasAppleTouchIcon = /<link[^>]*apple-touch-icon/i.test(html);
+    const hasHttpsLinks = !html.includes('http://') || html.includes('https://');
+    const checks = [
+      { name: 'Manifest file', pass: !!manifest, detail: manifest ? manifest[0] : 'Not found' },
+      { name: 'Manifest link in HTML', pass: hasManifestLink, detail: hasManifestLink ? 'Found' : 'Missing <link rel="manifest">' },
+      { name: 'Service Worker', pass: !!sw, detail: sw ? sw[0] : 'Not found' },
+      { name: 'Theme Color', pass: hasThemeColor, detail: hasThemeColor ? 'Found' : 'Missing <meta name="theme-color">' },
+      { name: 'Viewport Meta', pass: hasViewport, detail: hasViewport ? 'Found' : 'Missing viewport meta' },
+      { name: 'Apple Touch Icon', pass: hasAppleTouchIcon, detail: hasAppleTouchIcon ? 'Found' : 'Missing apple-touch-icon' },
+      { name: 'HTTPS Resources', pass: hasHttpsLinks, detail: hasHttpsLinks ? 'All secure' : 'Mixed content detected' },
+    ];
+    return { checks, score: Math.round((checks.filter(c => c.pass).length / checks.length) * 100) };
+  }, [projectFiles]);
+
+  // v22: Schema.org / JSON-LD Validator
+  const [showSchemaPanel, setShowSchemaPanel] = useState(false);
+  const schemaData = useMemo(() => {
+    const results: { type: string; props: string[]; valid: boolean; raw: string }[] = [];
+    for (const [, file] of Object.entries(projectFiles)) {
+      const regex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+      let m;
+      while ((m = regex.exec(file.content)) !== null) {
+        try {
+          const json = JSON.parse(m[1]);
+          const type = json['@type'] || 'Unknown';
+          const props = Object.keys(json).filter(k => k !== '@context' && k !== '@type');
+          results.push({ type, props, valid: true, raw: m[1].trim().slice(0, 200) });
+        } catch {
+          results.push({ type: 'Invalid JSON', props: [], valid: false, raw: m[1].trim().slice(0, 200) });
+        }
+      }
+    }
+    return results;
+  }, [projectFiles]);
+
+  // v22: Bundle Size Estimator
+  const [showBundlePanel, setShowBundlePanel] = useState(false);
+  const bundleEstimate = useMemo(() => {
+    const files = Object.entries(projectFiles).map(([path, file]) => {
+      const raw = new Blob([file.content]).size;
+      const minified = new Blob([file.content.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ')]).size;
+      const ext = path.split('.').pop() || '';
+      return { path, raw, minified, savings: raw - minified, ext };
+    });
+    const totalRaw = files.reduce((a, f) => a + f.raw, 0);
+    const totalMin = files.reduce((a, f) => a + f.minified, 0);
+    return { files: files.sort((a, b) => b.raw - a.raw), totalRaw, totalMin, savings: totalRaw - totalMin };
+  }, [projectFiles]);
+
+  // v22: ARIA Roles Inspector
+  const [showAriaPanel, setShowAriaPanel] = useState(false);
+  const ariaRoles = useMemo(() => {
+    const results: { role: string; element: string; file: string; line: number; hasLabel: boolean }[] = [];
+    for (const [path, file] of Object.entries(projectFiles)) {
+      const lines = file.content.split('\n');
+      lines.forEach((line, i) => {
+        const roleMatch = line.matchAll(/role=["']([^"']+)["']/gi);
+        for (const m of roleMatch) {
+          const tagMatch = line.match(/<(\w+)/);
+          const hasLabel = /aria-label/i.test(line) || /aria-labelledby/i.test(line);
+          results.push({ role: m[1], element: tagMatch?.[1] || '?', file: path, line: i + 1, hasLabel });
+        }
+        const ariaAttrs = line.matchAll(/aria-([a-z]+)=["']([^"']*)["']/gi);
+        for (const m of ariaAttrs) {
+          if (m[1] === 'label' || m[1] === 'labelledby' || m[1] === 'describedby') continue;
+          const tagMatch = line.match(/<(\w+)/);
+          results.push({ role: `aria-${m[1]}`, element: tagMatch?.[1] || '?', file: path, line: i + 1, hasLabel: true });
+        }
+      });
+    }
+    return results.slice(0, 100);
+  }, [projectFiles]);
+
+  // v22: Security Headers Check
+  const [showSecurityPanel, setShowSecurityPanel] = useState(false);
+  const securityChecks = useMemo(() => {
+    const htmlFile = Object.entries(projectFiles).find(([p]) => p.endsWith('.html'));
+    const html = htmlFile?.[1]?.content || '';
+    const checks = [
+      { name: 'Content-Security-Policy', pass: /<meta[^>]*Content-Security-Policy/i.test(html), detail: 'CSP header/meta tag' },
+      { name: 'X-Frame-Options', pass: /<meta[^>]*X-Frame-Options/i.test(html), detail: 'Clickjacking protection' },
+      { name: 'No inline scripts', pass: !(/<script(?![^>]*src)[^>]*>[^<]+/i.test(html)), detail: 'Avoid inline JS for XSS protection' },
+      { name: 'No eval() usage', pass: !Object.values(projectFiles).some(f => /\beval\s*\(/i.test(f.content)), detail: 'eval() is a security risk' },
+      { name: 'No document.write', pass: !Object.values(projectFiles).some(f => /document\.write/i.test(f.content)), detail: 'document.write is a vulnerability' },
+      { name: 'No innerHTML', pass: !Object.values(projectFiles).some(f => /\.innerHTML\s*=/i.test(f.content)), detail: 'innerHTML enables XSS' },
+      { name: 'Subresource Integrity', pass: /<script[^>]*integrity=/i.test(html) || !(/<script[^>]*src=["']http/i.test(html)), detail: 'SRI for external scripts' },
+      { name: 'HTTPS only', pass: !/(src|href)=["']http:\/\//i.test(html), detail: 'All resources over HTTPS' },
+    ];
+    return { checks, score: Math.round((checks.filter(c => c.pass).length / checks.length) * 100) };
+  }, [projectFiles]);
+
+  // v22: Project Export ZIP
+  const exportProjectZip = async () => {
+    const files = Object.entries(projectFiles);
+    if (files.length === 0) return;
+    // Simple ZIP creation (store method, no compression for browser compat)
+    const encoder = new TextEncoder();
+    const parts: Uint8Array[] = [];
+    const centralDir: Uint8Array[] = [];
+    let offset = 0;
+    for (const [path, file] of files) {
+      const nameBytes = encoder.encode(path);
+      const dataBytes = encoder.encode(file.content);
+      // Local file header
+      const header = new Uint8Array(30 + nameBytes.length);
+      const hView = new DataView(header.buffer);
+      hView.setUint32(0, 0x04034b50, true); // signature
+      hView.setUint16(4, 20, true); // version
+      hView.setUint16(8, 0, true); // method (store)
+      hView.setUint32(18, dataBytes.length, true); // compressed
+      hView.setUint32(22, dataBytes.length, true); // uncompressed
+      hView.setUint16(26, nameBytes.length, true);
+      header.set(nameBytes, 30);
+      parts.push(header, dataBytes);
+      // Central directory entry
+      const cdEntry = new Uint8Array(46 + nameBytes.length);
+      const cdView = new DataView(cdEntry.buffer);
+      cdView.setUint32(0, 0x02014b50, true);
+      cdView.setUint16(4, 20, true);
+      cdView.setUint16(6, 20, true);
+      cdView.setUint32(20, dataBytes.length, true);
+      cdView.setUint32(24, dataBytes.length, true);
+      cdView.setUint16(28, nameBytes.length, true);
+      cdView.setUint32(42, offset, true);
+      cdEntry.set(nameBytes, 46);
+      centralDir.push(cdEntry);
+      offset += header.length + dataBytes.length;
+    }
+    const cdOffset = offset;
+    let cdSize = 0;
+    for (const cd of centralDir) { parts.push(cd); cdSize += cd.length; }
+    // End of central directory
+    const eocd = new Uint8Array(22);
+    const eocdView = new DataView(eocd.buffer);
+    eocdView.setUint32(0, 0x06054b50, true);
+    eocdView.setUint16(8, files.length, true);
+    eocdView.setUint16(10, files.length, true);
+    eocdView.setUint32(12, cdSize, true);
+    eocdView.setUint32(16, cdOffset, true);
+    parts.push(eocd);
+    const blob = new Blob(parts as BlobPart[], { type: 'application/zip' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `project-${Date.now()}.zip`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ═══ v23: Real-Time Collaboration ═══
+  const [showCollabPanel, setShowCollabPanel] = useState(false);
+  const [collabRoomId, setCollabRoomId] = useState('');
+  const [collabUsers, setCollabUsers] = useState<{ id: string; name: string; color: string; active: boolean; cursor?: { file: string; line: number; col: number } }[]>([]);
+  const [collabJoinInput, setCollabJoinInput] = useState('');
+  const collabUserId = useRef(Math.random().toString(36).slice(2, 8));
+  const collabUserName = useRef('User-' + Math.random().toString(36).slice(2, 5).toUpperCase());
+  const collabColors = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316'];
+  const collabColorRef = useRef(collabColors[Math.floor(Math.random() * collabColors.length)]);
+  const collabChannelRef = useRef<BroadcastChannel | null>(null);
+  const collabSSERef = useRef<EventSource | null>(null);
+  const [collabMode, setCollabMode] = useState<'local' | 'remote'>('local');
+
+  const connectCollabSSE = useCallback((roomId: string, selfId: string) => {
+    if (collabSSERef.current) { collabSSERef.current.close(); collabSSERef.current = null; }
+    const es = new EventSource(`/api/collab?roomId=${encodeURIComponent(roomId)}&userId=${encodeURIComponent(selfId)}`);
+    collabSSERef.current = es;
+    es.addEventListener('users', (e) => {
+      try {
+        const users = JSON.parse(e.data);
+        setCollabUsers(users.map((u: { id: string; name: string; color: string; cursor?: { file: string; line: number; col: number } }) => ({ ...u, active: true })));
+      } catch {}
+    });
+    es.addEventListener('signals', (e) => {
+      try { JSON.parse(e.data); /* handle WebRTC signals if needed */ } catch {}
+    });
+    es.addEventListener('file-ops', (e) => {
+      try {
+        const ops = JSON.parse(e.data);
+        for (const op of ops) {
+          setProjectFiles(prev => ({ ...prev, [op.path]: { content: op.content, language: op.language } }));
+        }
+      } catch {}
+    });
+    es.addEventListener('error', () => {
+      // Auto-reconnect is built into EventSource
+    });
+  }, []);
+
+  const startCollabRoom = useCallback(async () => {
+    const roomId = Math.random().toString(36).slice(2, 8).toUpperCase();
+    setCollabRoomId(roomId);
+    const self = { id: collabUserId.current, name: collabUserName.current, color: collabColorRef.current, active: true };
+
+    // Try API-based (cross-device)
+    try {
+      const res = await fetch('/api/collab', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', roomId, userId: self.id, userName: self.name, userColor: self.color }),
+      });
+      if (res.ok) {
+        setCollabMode('remote');
+        setCollabUsers([self]);
+        // Connect SSE stream for real-time updates
+        connectCollabSSE(roomId, self.id);
+        navigator.clipboard?.writeText(roomId).catch(() => {});
+        return;
+      }
+    } catch { /* API unavailable, fall back to BroadcastChannel */ }
+
+    // Fallback: BroadcastChannel (same-origin tabs)
+    setCollabMode('local');
+    const ch = new BroadcastChannel(`aurion-collab-${roomId}`);
+    collabChannelRef.current = ch;
+    setCollabUsers([self]);
+    ch.onmessage = (e) => {
+      const msg = e.data;
+      if (msg.type === 'join') {
+        setCollabUsers(prev => {
+          if (prev.find(u => u.id === msg.user.id)) return prev;
+          return [...prev, { ...msg.user, active: true }];
+        });
+        ch.postMessage({ type: 'presence', user: self });
+      } else if (msg.type === 'presence') {
+        setCollabUsers(prev => {
+          if (prev.find(u => u.id === msg.user.id)) return prev;
+          return [...prev, { ...msg.user, active: true }];
+        });
+      } else if (msg.type === 'file-change' && msg.userId !== collabUserId.current) {
+        setProjectFiles(prev => ({ ...prev, [msg.path]: { content: msg.content, language: msg.language } }));
+      } else if (msg.type === 'cursor-update' && msg.userId !== collabUserId.current) {
+        setCollabUsers(prev => prev.map(u => u.id === msg.userId ? { ...u, cursor: msg.cursor } : u));
+      } else if (msg.type === 'leave') {
+        setCollabUsers(prev => prev.filter(u => u.id !== msg.userId));
+      }
+    };
+    navigator.clipboard?.writeText(roomId).catch(() => {});
+  }, [connectCollabSSE]);
+
+  const joinCollabRoom = useCallback(async (roomId: string) => {
+    if (!roomId.trim()) return;
+    const rid = roomId.trim().toUpperCase();
+    setCollabRoomId(rid);
+    const self = { id: collabUserId.current, name: collabUserName.current, color: collabColorRef.current, active: true };
+
+    // Try API join first
+    try {
+      const res = await fetch('/api/collab', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'join', roomId: rid, userId: self.id, userName: self.name, userColor: self.color }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCollabMode('remote');
+        setCollabUsers(data.users.map((u: { id: string; name: string; color: string }) => ({ ...u, active: true })));
+        // Connect SSE stream for real-time updates
+        connectCollabSSE(rid, self.id);
+        return;
+      }
+    } catch { /* fallback */ }
+
+    // Fallback: BroadcastChannel
+    setCollabMode('local');
+    const ch = new BroadcastChannel(`aurion-collab-${rid}`);
+    collabChannelRef.current = ch;
+    setCollabUsers([self]);
+    ch.postMessage({ type: 'join', user: self });
+    ch.onmessage = (e) => {
+      const msg = e.data;
+      if (msg.type === 'join' || msg.type === 'presence') {
+        setCollabUsers(prev => {
+          if (prev.find(u => u.id === msg.user.id)) return prev;
+          return [...prev, { ...msg.user, active: true }];
+        });
+        if (msg.type === 'join') ch.postMessage({ type: 'presence', user: self });
+      } else if (msg.type === 'file-change' && msg.userId !== collabUserId.current) {
+        setProjectFiles(prev => ({ ...prev, [msg.path]: { content: msg.content, language: msg.language } }));
+      } else if (msg.type === 'cursor-update' && msg.userId !== collabUserId.current) {
+        setCollabUsers(prev => prev.map(u => u.id === msg.userId ? { ...u, cursor: msg.cursor } : u));
+      } else if (msg.type === 'leave') {
+        setCollabUsers(prev => prev.filter(u => u.id !== msg.userId));
+      }
+    };
+  }, [connectCollabSSE]);
+
+  const leaveCollabRoom = useCallback(() => {
+    // Close SSE stream
+    if (collabSSERef.current) {
+      collabSSERef.current.close();
+      collabSSERef.current = null;
+    }
+    // Notify server
+    if (collabMode === 'remote' && collabRoomId) {
+      fetch('/api/collab', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'leave', roomId: collabRoomId, userId: collabUserId.current }),
+      }).catch(() => {});
+    }
+    // BroadcastChannel cleanup
+    if (collabChannelRef.current) {
+      collabChannelRef.current.postMessage({ type: 'leave', userId: collabUserId.current });
+      collabChannelRef.current.close();
+      collabChannelRef.current = null;
+    }
+    setCollabRoomId('');
+    setCollabUsers([]);
+    setCollabMode('local');
+  }, [collabMode, collabRoomId]);
+
+  // Broadcast file changes to collaborators
+  useEffect(() => {
+    if (!collabRoomId) return;
+    const timer = setTimeout(() => {
+      if (selectedFile && projectFiles[selectedFile]) {
+        // Remote mode: send via API
+        if (collabMode === 'remote') {
+          fetch('/api/collab', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'file-change',
+              roomId: collabRoomId,
+              userId: collabUserId.current,
+              path: selectedFile,
+              content: projectFiles[selectedFile].content,
+              language: projectFiles[selectedFile].language,
+            }),
+          }).catch(() => {});
+        }
+        // BroadcastChannel (always send for local tabs)
+        collabChannelRef.current?.postMessage({
+          type: 'file-change',
+          userId: collabUserId.current,
+          path: selectedFile,
+          content: projectFiles[selectedFile].content,
+          language: projectFiles[selectedFile].language,
+        });
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectFiles[selectedFile]?.content, collabRoomId, collabMode]);
+
+  // Cleanup collab on unmount
+  useEffect(() => {
+    return () => {
+      if (collabSSERef.current) collabSSERef.current.close();
+      if (collabChannelRef.current) {
+        collabChannelRef.current.postMessage({ type: 'leave', userId: collabUserId.current });
+        collabChannelRef.current.close();
+      }
+    };
+  }, []);
+
+  // ═══ v23: Feedback & Rating System ═══
+  const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
+  const [feedbackRating, setFeedbackRating] = useState(0);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [feedbackHistory, setFeedbackHistory] = useState<{ rating: number; comment: string; ts: number }[]>([]);
+
+  // ═══ Toolbar dropdown menus ═══
+  const [showInspectMenu, setShowInspectMenu] = useState(false);
+  const [showAnalyzeMenu, setShowAnalyzeMenu] = useState(false);
+  const [showDebugMenu, setShowDebugMenu] = useState(false);
+  const [showCodeToolsMenu, setShowCodeToolsMenu] = useState(false);
+  const [showMoreToolsMenu, setShowMoreToolsMenu] = useState(false);
+
+  // Load feedback history
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('aurion_feedback');
+      if (saved) setFeedbackHistory(JSON.parse(saved));
+    } catch { /* ignore */ }
+  }, []);
+
+  const submitFeedback = useCallback(() => {
+    if (feedbackRating === 0) return;
+    const entry = { rating: feedbackRating, comment: feedbackComment, ts: Date.now() };
+    const updated = [...feedbackHistory, entry];
+    setFeedbackHistory(updated);
+    try { localStorage.setItem('aurion_feedback', JSON.stringify(updated)); } catch { /* ignore */ }
+    setFeedbackSubmitted(true);
+    setFeedbackComment('');
+    setTimeout(() => { setFeedbackSubmitted(false); setFeedbackRating(0); setShowFeedbackPanel(false); }, 2000);
+  }, [feedbackRating, feedbackComment, feedbackHistory]);
+
+  // ═══ v23: Onboarding Tour ═══
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const onboardingSteps = useMemo(() => [
+    { title: 'Welcome to Aurion', desc: 'Build stunning web apps with AI. Type a prompt to get started!', icon: '01' },
+    { title: 'AI Chat Panel', desc: 'Describe what you want to build in natural language. Aurion AI will generate the code.', icon: '02' },
+    { title: 'Live Preview', desc: 'See your app in real-time as code is generated. Toggle between preview and code views.', icon: '03' },
+    { title: 'Code Editor', desc: 'Full Monaco editor with syntax highlighting, autocomplete, and multi-file support.', icon: '04' },
+    { title: 'Terminal', desc: 'Run shell commands, install packages, and manage your project with a real terminal.', icon: '05' },
+    { title: '40+ Audit Tools', desc: 'Accessibility checker, SEO analyzer, performance budget, and more in the command palette (Ctrl+K).', icon: '06' },
+    { title: 'Deploy to Vercel', desc: 'One-click deployment to Vercel. Your app goes live instantly.', icon: '07' },
+    { title: 'Collaboration', desc: 'Share a room code with your team. Edit together in real-time.', icon: '08' },
+  ], []);
+
+  // Show onboarding on first visit
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem('aurion_onboarded')) {
+        setShowOnboarding(true);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const finishOnboarding = useCallback(() => {
+    setShowOnboarding(false);
+    setOnboardingStep(0);
+    try { localStorage.setItem('aurion_onboarded', 'true'); } catch { /* ignore */ }
+  }, []);
+
+  // ═══ v23: Changelog / What's New ═══
+  const [showChangelog, setShowChangelog] = useState(false);
+
+  // ═══ v24: Drag & Drop Visual Builder ═══
+  const [showVisualBuilder, setShowVisualBuilder] = useState(false);
+  const [vbComponents] = useState([
+    { id: 'hero', name: 'Hero Section', icon: '🏠', html: '<section class="py-20 px-6 bg-gradient-to-br from-indigo-600 to-purple-700 text-white text-center"><h1 class="text-5xl font-bold mb-4">Hero Title</h1><p class="text-xl opacity-80 mb-8">Subtitle goes here</p><button class="px-8 py-3 bg-white text-indigo-700 rounded-lg font-semibold hover:bg-gray-100 transition">Get Started</button></section>' },
+    { id: 'navbar', name: 'Navigation Bar', icon: '🧭', html: '<nav class="flex items-center justify-between px-6 py-4 bg-gray-900 text-white"><div class="text-xl font-bold">Brand</div><div class="flex gap-6 text-sm"><a href="#" class="hover:text-indigo-400">Home</a><a href="#" class="hover:text-indigo-400">About</a><a href="#" class="hover:text-indigo-400">Services</a><a href="#" class="hover:text-indigo-400">Contact</a></div></nav>' },
+    { id: 'features', name: 'Features Grid', icon: '✨', html: '<section class="py-16 px-6 bg-gray-950"><h2 class="text-3xl font-bold text-white text-center mb-12">Features</h2><div class="grid grid-cols-3 gap-8 max-w-5xl mx-auto"><div class="p-6 bg-gray-900 rounded-xl border border-gray-800"><div class="text-3xl mb-3">🚀</div><h3 class="text-lg font-semibold text-white mb-2">Fast</h3><p class="text-gray-400 text-sm">Lightning-fast performance</p></div><div class="p-6 bg-gray-900 rounded-xl border border-gray-800"><div class="text-3xl mb-3">🔒</div><h3 class="text-lg font-semibold text-white mb-2">Secure</h3><p class="text-gray-400 text-sm">Enterprise-grade security</p></div><div class="p-6 bg-gray-900 rounded-xl border border-gray-800"><div class="text-3xl mb-3">⚡</div><h3 class="text-lg font-semibold text-white mb-2">Modern</h3><p class="text-gray-400 text-sm">Built with latest tech</p></div></div></section>' },
+    { id: 'pricing', name: 'Pricing Cards', icon: '💰', html: '<section class="py-16 px-6 bg-gray-950"><h2 class="text-3xl font-bold text-white text-center mb-12">Pricing</h2><div class="grid grid-cols-3 gap-8 max-w-5xl mx-auto"><div class="p-8 bg-gray-900 rounded-xl border border-gray-800 text-center"><h3 class="text-lg font-bold text-white mb-2">Free</h3><div class="text-4xl font-black text-white mb-4">$0</div><ul class="space-y-2 text-sm text-gray-400 mb-6"><li>5 Projects</li><li>Basic Support</li></ul><button class="w-full py-2 bg-gray-800 text-white rounded-lg">Start Free</button></div><div class="p-8 bg-indigo-600 rounded-xl border border-indigo-500 text-center ring-2 ring-indigo-400"><h3 class="text-lg font-bold text-white mb-2">Pro</h3><div class="text-4xl font-black text-white mb-4">$19</div><ul class="space-y-2 text-sm text-indigo-200 mb-6"><li>Unlimited Projects</li><li>Priority Support</li></ul><button class="w-full py-2 bg-white text-indigo-700 rounded-lg font-semibold">Upgrade</button></div><div class="p-8 bg-gray-900 rounded-xl border border-gray-800 text-center"><h3 class="text-lg font-bold text-white mb-2">Enterprise</h3><div class="text-4xl font-black text-white mb-4">Custom</div><ul class="space-y-2 text-sm text-gray-400 mb-6"><li>Everything in Pro</li><li>Custom SLA</li></ul><button class="w-full py-2 bg-gray-800 text-white rounded-lg">Contact</button></div></div></section>' },
+    { id: 'testimonials', name: 'Testimonials', icon: '💬', html: '<section class="py-16 px-6 bg-gray-900"><h2 class="text-3xl font-bold text-white text-center mb-12">What People Say</h2><div class="grid grid-cols-3 gap-6 max-w-5xl mx-auto"><div class="p-6 bg-gray-800 rounded-xl"><p class="text-gray-300 text-sm mb-4">"Amazing product, saved us hours."</p><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white text-xs font-bold">JD</div><span class="text-white text-sm font-medium">John Doe</span></div></div><div class="p-6 bg-gray-800 rounded-xl"><p class="text-gray-300 text-sm mb-4">"Best tool we ever used."</p><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white text-xs font-bold">AS</div><span class="text-white text-sm font-medium">Alice Smith</span></div></div><div class="p-6 bg-gray-800 rounded-xl"><p class="text-gray-300 text-sm mb-4">"Incredible experience."</p><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-bold">BJ</div><span class="text-white text-sm font-medium">Bob Jones</span></div></div></div></section>' },
+    { id: 'footer', name: 'Footer', icon: '🔻', html: '<footer class="py-12 px-6 bg-gray-950 border-t border-gray-800"><div class="max-w-5xl mx-auto grid grid-cols-4 gap-8"><div><h4 class="text-white font-bold mb-4">Brand</h4><p class="text-gray-500 text-sm">Building the future.</p></div><div><h4 class="text-white font-bold mb-4">Product</h4><a href="#" class="block text-gray-400 text-sm hover:text-white mb-1">Features</a><a href="#" class="block text-gray-400 text-sm hover:text-white mb-1">Pricing</a></div><div><h4 class="text-white font-bold mb-4">Company</h4><a href="#" class="block text-gray-400 text-sm hover:text-white mb-1">About</a><a href="#" class="block text-gray-400 text-sm hover:text-white mb-1">Blog</a></div><div><h4 class="text-white font-bold mb-4">Legal</h4><a href="#" class="block text-gray-400 text-sm hover:text-white mb-1">Privacy</a><a href="#" class="block text-gray-400 text-sm hover:text-white mb-1">Terms</a></div></div></footer>' },
+    { id: 'cta', name: 'Call to Action', icon: '📢', html: '<section class="py-20 px-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-center"><h2 class="text-4xl font-bold text-white mb-4">Ready to Get Started?</h2><p class="text-lg text-purple-200 mb-8">Join thousands of happy customers today.</p><div class="flex gap-4 justify-center"><button class="px-8 py-3 bg-white text-indigo-700 rounded-lg font-semibold hover:bg-gray-100 transition">Start Free</button><button class="px-8 py-3 border-2 border-white text-white rounded-lg font-semibold hover:bg-white/10 transition">Learn More</button></div></section>' },
+    { id: 'contact', name: 'Contact Form', icon: '📧', html: '<section class="py-16 px-6 bg-gray-950"><div class="max-w-lg mx-auto"><h2 class="text-3xl font-bold text-white text-center mb-8">Contact Us</h2><form class="space-y-4"><input type="text" placeholder="Your Name" class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"><input type="email" placeholder="Email" class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"><textarea placeholder="Message" rows="4" class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none resize-none"></textarea><button type="submit" class="w-full py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition">Send Message</button></form></div></section>' },
+    { id: 'faq', name: 'FAQ Accordion', icon: '❓', html: '<section class="py-16 px-6 bg-gray-950"><h2 class="text-3xl font-bold text-white text-center mb-12">FAQ</h2><div class="max-w-2xl mx-auto space-y-3"><details class="group p-4 bg-gray-900 rounded-xl border border-gray-800"><summary class="text-white font-medium cursor-pointer flex items-center justify-between">What is this product? <span class="text-indigo-400 group-open:rotate-45 transition-transform text-xl">+</span></summary><p class="text-gray-400 text-sm mt-3">A powerful tool for building modern websites with AI.</p></details><details class="group p-4 bg-gray-900 rounded-xl border border-gray-800"><summary class="text-white font-medium cursor-pointer flex items-center justify-between">How does pricing work? <span class="text-indigo-400 group-open:rotate-45 transition-transform text-xl">+</span></summary><p class="text-gray-400 text-sm mt-3">We offer free, pro, and enterprise plans. See pricing above.</p></details><details class="group p-4 bg-gray-900 rounded-xl border border-gray-800"><summary class="text-white font-medium cursor-pointer flex items-center justify-between">Is there a trial? <span class="text-indigo-400 group-open:rotate-45 transition-transform text-xl">+</span></summary><p class="text-gray-400 text-sm mt-3">Yes! Start free and upgrade anytime.</p></details></div></section>' },
+    { id: 'stats', name: 'Stats Counter', icon: '📊', html: '<section class="py-16 px-6 bg-gray-900"><div class="grid grid-cols-4 gap-8 max-w-4xl mx-auto text-center"><div><div class="text-4xl font-black text-white">10K+</div><div class="text-gray-400 text-sm mt-1">Users</div></div><div><div class="text-4xl font-black text-white">50M+</div><div class="text-gray-400 text-sm mt-1">Requests</div></div><div><div class="text-4xl font-black text-white">99.9%</div><div class="text-gray-400 text-sm mt-1">Uptime</div></div><div><div class="text-4xl font-black text-white">4.9★</div><div class="text-gray-400 text-sm mt-1">Rating</div></div></div></section>' },
+    { id: 'gallery', name: 'Image Gallery', icon: '🖼️', html: '<section class="py-16 px-6 bg-gray-950"><h2 class="text-3xl font-bold text-white text-center mb-12">Gallery</h2><div class="grid grid-cols-3 gap-4 max-w-5xl mx-auto"><div class="aspect-video bg-gray-800 rounded-xl flex items-center justify-center text-gray-600 text-sm">Image 1</div><div class="aspect-video bg-gray-800 rounded-xl flex items-center justify-center text-gray-600 text-sm">Image 2</div><div class="aspect-video bg-gray-800 rounded-xl flex items-center justify-center text-gray-600 text-sm">Image 3</div><div class="aspect-video bg-gray-800 rounded-xl flex items-center justify-center text-gray-600 text-sm">Image 4</div><div class="aspect-video bg-gray-800 rounded-xl flex items-center justify-center text-gray-600 text-sm">Image 5</div><div class="aspect-video bg-gray-800 rounded-xl flex items-center justify-center text-gray-600 text-sm">Image 6</div></div></section>' },
+    { id: 'team', name: 'Team Section', icon: '👥', html: '<section class="py-16 px-6 bg-gray-900"><h2 class="text-3xl font-bold text-white text-center mb-12">Our Team</h2><div class="grid grid-cols-4 gap-6 max-w-5xl mx-auto"><div class="text-center"><div class="w-20 h-20 mx-auto rounded-full bg-indigo-500/20 flex items-center justify-center text-2xl mb-3">👩‍💻</div><h4 class="text-white font-semibold">Sarah Chen</h4><p class="text-gray-400 text-xs">CEO</p></div><div class="text-center"><div class="w-20 h-20 mx-auto rounded-full bg-purple-500/20 flex items-center justify-center text-2xl mb-3">👨‍💻</div><h4 class="text-white font-semibold">Alex Rivera</h4><p class="text-gray-400 text-xs">CTO</p></div><div class="text-center"><div class="w-20 h-20 mx-auto rounded-full bg-emerald-500/20 flex items-center justify-center text-2xl mb-3">👩‍🎨</div><h4 class="text-white font-semibold">Maya Patel</h4><p class="text-gray-400 text-xs">Design Lead</p></div><div class="text-center"><div class="w-20 h-20 mx-auto rounded-full bg-amber-500/20 flex items-center justify-center text-2xl mb-3">👨‍🔬</div><h4 class="text-white font-semibold">Tom Baker</h4><p class="text-gray-400 text-xs">Lead Engineer</p></div></div></section>' },
+  ]);
+  const [vbCanvas, setVbCanvas] = useState<string[]>([]);
+  const [vbDragging, setVbDragging] = useState<string | null>(null);
+  const [vbSelectedIdx, setVbSelectedIdx] = useState<number>(-1);
+  const [vbPropertyTab, setVbPropertyTab] = useState<'style' | 'content'>('style');
+
+  const vbAddComponent = useCallback((componentId: string) => {
+    const comp = vbComponents.find(c => c.id === componentId);
+    if (comp) setVbCanvas(prev => [...prev, comp.html]);
+  }, [vbComponents]);
+
+  const vbRemoveComponent = useCallback((idx: number) => {
+    setVbCanvas(prev => prev.filter((_, i) => i !== idx));
+    setVbSelectedIdx(-1);
+  }, []);
+
+  const vbMoveComponent = useCallback((idx: number, dir: 'up' | 'down') => {
+    setVbCanvas(prev => {
+      const next = [...prev];
+      const targetIdx = dir === 'up' ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= next.length) return prev;
+      [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
+      setVbSelectedIdx(targetIdx);
+      return next;
+    });
+  }, []);
+
+  const vbGenerateCode = useCallback(() => {
+    if (vbCanvas.length === 0) return;
+    const fullHtml = `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>My Website</title>\n  <script src="https://cdn.tailwindcss.com"><\/script>\n  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">\n  <style>*{font-family:'Inter',sans-serif;}</style>\n</head>\n<body class="bg-gray-950 text-white">\n${vbCanvas.join('\n')}\n</body>\n</html>`;
+    const newFiles: Record<string, { content: string; language: string }> = { 'index.html': { content: fullHtml, language: 'html' } };
+    setProjectFiles(newFiles);
+    setSelectedFile('index.html');
+    setShowVisualBuilder(false);
+  }, [vbCanvas]);
+
+  // ═══ v24: Animation Timeline Builder ═══
+  const [showAnimBuilder, setShowAnimBuilder] = useState(false);
+  const [animKeyframes, setAnimKeyframes] = useState<{ id: string; name: string; frames: { pct: number; props: Record<string, string> }[]; duration: number; easing: string; iteration: string }[]>([]);
+  const [animSelected, setAnimSelected] = useState<number>(-1);
+  const [animPreviewPlaying, setAnimPreviewPlaying] = useState(false);
+
+  const animAddNew = useCallback(() => {
+    setAnimKeyframes(prev => [...prev, {
+      id: `anim-${Date.now()}`,
+      name: `animation-${prev.length + 1}`,
+      frames: [
+        { pct: 0, props: { opacity: '0', transform: 'translateY(20px)' } },
+        { pct: 100, props: { opacity: '1', transform: 'translateY(0)' } },
+      ],
+      duration: 0.6,
+      easing: 'ease-out',
+      iteration: '1',
+    }]);
+    setAnimSelected(animKeyframes.length);
+  }, [animKeyframes.length]);
+
+  const animUpdateFrame = useCallback((animIdx: number, frameIdx: number, prop: string, value: string) => {
+    setAnimKeyframes(prev => {
+      const next = [...prev];
+      const anim = { ...next[animIdx] };
+      const frames = [...anim.frames];
+      frames[frameIdx] = { ...frames[frameIdx], props: { ...frames[frameIdx].props, [prop]: value } };
+      anim.frames = frames;
+      next[animIdx] = anim;
+      return next;
+    });
+  }, []);
+
+  const animAddFrame = useCallback((animIdx: number) => {
+    setAnimKeyframes(prev => {
+      const next = [...prev];
+      const anim = { ...next[animIdx], frames: [...next[animIdx].frames] };
+      const lastPct = anim.frames[anim.frames.length - 1]?.pct ?? 0;
+      anim.frames.push({ pct: Math.min(lastPct + 25, 100), props: { opacity: '1', transform: 'none' } });
+      next[animIdx] = anim;
+      return next;
+    });
+  }, []);
+
+  const animDeleteAnim = useCallback((idx: number) => {
+    setAnimKeyframes(prev => prev.filter((_, i) => i !== idx));
+    setAnimSelected(-1);
+  }, []);
+
+  const animGenerateCSS = useCallback(() => {
+    if (animKeyframes.length === 0) return '';
+    return animKeyframes.map(anim => {
+      const keyframeStr = anim.frames.map(f => `  ${f.pct}% { ${Object.entries(f.props).map(([k, v]) => `${k}: ${v}`).join('; ')}; }`).join('\n');
+      return `@keyframes ${anim.name} {\n${keyframeStr}\n}\n.${anim.name} {\n  animation: ${anim.name} ${anim.duration}s ${anim.easing} ${anim.iteration === 'infinite' ? 'infinite' : anim.iteration};\n}`;
+    }).join('\n\n');
+  }, [animKeyframes]);
+
+  const animCopyCSS = useCallback(() => {
+    const css = animGenerateCSS();
+    if (css) navigator.clipboard.writeText(css);
+  }, [animGenerateCSS]);
+
+  const animInjectToProject = useCallback(() => {
+    const css = animGenerateCSS();
+    if (!css) return;
+    const file = selectedFile || 'index.html';
+    const content = projectFiles[file]?.content || '';
+    if (content.includes('</style>')) {
+      const updated = content.replace('</style>', `\n/* Aurion Animations */\n${css}\n</style>`);
+      setProjectFiles(prev => ({ ...prev, [file]: { ...prev[file], content: updated } }));
+    } else if (content.includes('</head>')) {
+      const updated = content.replace('</head>', `<style>\n/* Aurion Animations */\n${css}\n</style>\n</head>`);
+      setProjectFiles(prev => ({ ...prev, [file]: { ...prev[file], content: updated } }));
+    }
+    setShowAnimBuilder(false);
+  }, [animGenerateCSS, selectedFile, projectFiles]);
+
+  // ═══ v24: Design System Manager ═══
+  const [showDesignSystem, setShowDesignSystem] = useState(false);
+  const [dsTab, setDsTab] = useState<'colors' | 'typography' | 'spacing' | 'shadows' | 'export'>('colors');
+  const [dsColors, setDsColors] = useState<{ name: string; value: string; variants: string[] }[]>([
+    { name: 'Primary', value: '#6366f1', variants: ['#eef2ff', '#c7d2fe', '#a5b4fc', '#818cf8', '#6366f1', '#4f46e5', '#4338ca', '#3730a3', '#312e81'] },
+    { name: 'Secondary', value: '#ec4899', variants: ['#fdf2f8', '#fce7f3', '#fbcfe8', '#f9a8d4', '#ec4899', '#db2777', '#be185d', '#9d174d', '#831843'] },
+    { name: 'Success', value: '#10b981', variants: ['#ecfdf5', '#d1fae5', '#a7f3d0', '#6ee7b7', '#10b981', '#059669', '#047857', '#065f46', '#064e3b'] },
+    { name: 'Warning', value: '#f59e0b', variants: ['#fffbeb', '#fef3c7', '#fde68a', '#fcd34d', '#f59e0b', '#d97706', '#b45309', '#92400e', '#78350f'] },
+    { name: 'Error', value: '#ef4444', variants: ['#fef2f2', '#fee2e2', '#fecaca', '#fca5a5', '#ef4444', '#dc2626', '#b91c1c', '#991b1b', '#7f1d1d'] },
+    { name: 'Neutral', value: '#6b7280', variants: ['#f9fafb', '#f3f4f6', '#e5e7eb', '#d1d5db', '#6b7280', '#4b5563', '#374151', '#1f2937', '#111827'] },
+  ]);
+  const [dsFontPrimary, setDsFontPrimary] = useState('Inter');
+  const [dsFontSecondary, setDsFontSecondary] = useState('JetBrains Mono');
+  const [dsTypeScale, setDsTypeScale] = useState<{ name: string; size: string; weight: string; lineHeight: string }[]>([
+    { name: 'Display', size: '4rem', weight: '800', lineHeight: '1.1' },
+    { name: 'H1', size: '2.5rem', weight: '700', lineHeight: '1.2' },
+    { name: 'H2', size: '2rem', weight: '700', lineHeight: '1.3' },
+    { name: 'H3', size: '1.5rem', weight: '600', lineHeight: '1.4' },
+    { name: 'H4', size: '1.25rem', weight: '600', lineHeight: '1.4' },
+    { name: 'Body', size: '1rem', weight: '400', lineHeight: '1.6' },
+    { name: 'Small', size: '0.875rem', weight: '400', lineHeight: '1.5' },
+    { name: 'Caption', size: '0.75rem', weight: '500', lineHeight: '1.4' },
+  ]);
+  const [dsSpacing] = useState([4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80, 96, 128]);
+  const [dsShadows] = useState([
+    { name: 'sm', value: '0 1px 2px rgba(0,0,0,0.05)' },
+    { name: 'md', value: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)' },
+    { name: 'lg', value: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)' },
+    { name: 'xl', value: '0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)' },
+    { name: '2xl', value: '0 25px 50px -12px rgba(0,0,0,0.25)' },
+    { name: 'glow', value: '0 0 20px rgba(99,102,241,0.3)' },
+  ]);
+  const [dsBorderRadius] = useState([0, 2, 4, 6, 8, 12, 16, 24, 9999]);
+
+  const dsGenerateCSS = useCallback(() => {
+    let css = ':root {\n';
+    dsColors.forEach(c => {
+      c.variants.forEach((v, i) => { css += `  --${c.name.toLowerCase()}-${(i + 1) * 100}: ${v};\n`; });
+    });
+    css += `\n  --font-primary: '${dsFontPrimary}', sans-serif;\n  --font-mono: '${dsFontSecondary}', monospace;\n`;
+    dsSpacing.forEach(s => { css += `  --space-${s}: ${s}px;\n`; });
+    dsShadows.forEach(s => { css += `  --shadow-${s.name}: ${s.value};\n`; });
+    dsBorderRadius.forEach(r => { css += `  --radius-${r}: ${r}px;\n`; });
+    css += '}\n\n';
+    dsTypeScale.forEach(t => {
+      css += `.text-${t.name.toLowerCase()} { font-size: ${t.size}; font-weight: ${t.weight}; line-height: ${t.lineHeight}; }\n`;
+    });
+    return css;
+  }, [dsColors, dsFontPrimary, dsFontSecondary, dsTypeScale, dsSpacing, dsShadows, dsBorderRadius]);
+
+  const dsGenerateTokensJSON = useCallback(() => {
+    return JSON.stringify({
+      colors: Object.fromEntries(dsColors.map(c => [c.name.toLowerCase(), { base: c.value, scale: Object.fromEntries(c.variants.map((v, i) => [`${(i + 1) * 100}`, v])) }])),
+      typography: { primary: dsFontPrimary, mono: dsFontSecondary, scale: dsTypeScale },
+      spacing: dsSpacing,
+      shadows: Object.fromEntries(dsShadows.map(s => [s.name, s.value])),
+      borderRadius: dsBorderRadius,
+    }, null, 2);
+  }, [dsColors, dsFontPrimary, dsFontSecondary, dsTypeScale, dsSpacing, dsShadows, dsBorderRadius]);
+
+  const dsAddColor = useCallback((name: string, hex: string) => {
+    const h = parseInt(hex.slice(1), 16);
+    const r = (h >> 16) & 255, g = (h >> 8) & 255, b = h & 255;
+    const variants = Array.from({ length: 9 }, (_, i) => {
+      const factor = (i - 4) * 0.15;
+      const nr = Math.min(255, Math.max(0, Math.round(r + (factor > 0 ? (255 - r) * factor * 2 : r * factor * 2))));
+      const ng = Math.min(255, Math.max(0, Math.round(g + (factor > 0 ? (255 - g) * factor * 2 : g * factor * 2))));
+      const nb = Math.min(255, Math.max(0, Math.round(b + (factor > 0 ? (255 - b) * factor * 2 : b * factor * 2))));
+      return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
+    });
+    setDsColors(prev => [...prev, { name, value: hex, variants }]);
+  }, []);
+
+  // ═══ v24: REST API Tester ═══
+  const [showApiTester, setShowApiTester] = useState(false);
+  const [apiMethod, setApiMethod] = useState<'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'>('GET');
+  const [apiUrl, setApiUrl] = useState('');
+  const [apiHeaders, setApiHeaders] = useState<{ key: string; value: string }[]>([{ key: 'Content-Type', value: 'application/json' }]);
+  const [apiBody, setApiBody] = useState('{\n  \n}');
+  const [apiResponse, setApiResponse] = useState<{ status: number; time: number; data: string; headers: Record<string, string> } | null>(null);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiHistory, setApiHistory] = useState<{ method: string; url: string; status: number; time: number; ts: number }[]>([]);
+  const [apiTab, setApiTab] = useState<'body' | 'headers' | 'history'>('body');
+
+  const apiSendRequest = useCallback(async () => {
+    if (!apiUrl.trim()) return;
+    setApiLoading(true);
+    setApiResponse(null);
+    const start = performance.now();
+    try {
+      const headers: Record<string, string> = {};
+      apiHeaders.forEach(h => { if (h.key.trim()) headers[h.key.trim()] = h.value; });
+      const opts: RequestInit = { method: apiMethod, headers };
+      if (apiMethod !== 'GET' && apiMethod !== 'DELETE' && apiBody.trim()) {
+        opts.body = apiBody;
+      }
+      const res = await fetch(apiUrl, opts);
+      const elapsed = Math.round(performance.now() - start);
+      const text = await res.text();
+      const resHeaders: Record<string, string> = {};
+      res.headers.forEach((v, k) => { resHeaders[k] = v; });
+      setApiResponse({ status: res.status, time: elapsed, data: text, headers: resHeaders });
+      setApiHistory(prev => [{ method: apiMethod, url: apiUrl, status: res.status, time: elapsed, ts: Date.now() }, ...prev].slice(0, 50));
+    } catch (err) {
+      const elapsed = Math.round(performance.now() - start);
+      setApiResponse({ status: 0, time: elapsed, data: `Error: ${err instanceof Error ? err.message : String(err)}`, headers: {} });
+    } finally {
+      setApiLoading(false);
+    }
+  }, [apiUrl, apiMethod, apiHeaders, apiBody]);
+
+  const apiAddHeader = useCallback(() => {
+    setApiHeaders(prev => [...prev, { key: '', value: '' }]);
+  }, []);
+
+  const apiRemoveHeader = useCallback((idx: number) => {
+    setApiHeaders(prev => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  // ═══ v24: Git Branch Manager ═══
+  const [showGitPanel, setShowGitPanel] = useState(false);
+  const [gitBranches, setGitBranches] = useState<{ name: string; current: boolean; commits: number; lastCommit: string }[]>([
+    { name: 'main', current: true, commits: 1, lastCommit: new Date().toISOString() },
+  ]);
+  const [gitBranchCommits, setGitBranchCommits] = useState<{ id: string; message: string; branch: string; files: string[]; timestamp: string }[]>([]);
+  const [gitNewBranch, setGitNewBranch] = useState('');
+  const [gitCommitMsg, setGitCommitMsg] = useState('');
+  const [gitTab, setGitTab] = useState<'branches' | 'commits' | 'stash' | 'remote'>('branches');
+  const [gitStash, setGitStash] = useState<{ id: string; message: string; files: Record<string, { content: string; language: string }>; timestamp: string }[]>([]);
+
+  const gitCurrentBranch = useMemo(() => gitBranches.find(b => b.current)?.name || 'main', [gitBranches]);
+
+  const gitCreateBranch = useCallback((name: string) => {
+    if (!name.trim() || gitBranches.some(b => b.name === name.trim())) return;
+    setGitBranches(prev => [
+      ...prev.map(b => ({ ...b, current: false })),
+      { name: name.trim(), current: true, commits: 0, lastCommit: new Date().toISOString() },
+    ]);
+    setGitNewBranch('');
+  }, [gitBranches]);
+
+  const gitSwitchBranch = useCallback((name: string) => {
+    setGitBranches(prev => prev.map(b => ({ ...b, current: b.name === name })));
+  }, []);
+
+  const gitDeleteBranch = useCallback((name: string) => {
+    if (name === 'main') return;
+    setGitBranches(prev => {
+      const next = prev.filter(b => b.name !== name);
+      if (!next.some(b => b.current)) next[0].current = true;
+      return next;
+    });
+    setGitBranchCommits(prev => prev.filter(c => c.branch !== name));
+  }, []);
+
+  const gitCommit = useCallback((message: string) => {
+    if (!message.trim()) return;
+    const changedFiles = Object.keys(projectFiles);
+    const commit = { id: Math.random().toString(36).slice(2, 10), message: message.trim(), branch: gitCurrentBranch, files: changedFiles, timestamp: new Date().toISOString() };
+    setGitBranchCommits(prev => [commit, ...prev]);
+    setGitBranches(prev => prev.map(b => b.name === gitCurrentBranch ? { ...b, commits: b.commits + 1, lastCommit: commit.timestamp } : b));
+    setGitCommitMsg('');
+  }, [gitCurrentBranch, projectFiles]);
+
+  const gitStashSave = useCallback(() => {
+    setGitStash(prev => [{ id: Math.random().toString(36).slice(2, 10), message: `WIP on ${gitCurrentBranch}`, files: { ...projectFiles }, timestamp: new Date().toISOString() }, ...prev]);
+  }, [gitCurrentBranch, projectFiles]);
+
+  const gitStashPop = useCallback((idx: number) => {
+    const stash = gitStash[idx];
+    if (!stash) return;
+    setProjectFiles(stash.files);
+    setGitStash(prev => prev.filter((_, i) => i !== idx));
+  }, [gitStash]);
+
+  // ═══ v24: AI Screenshot Analyzer ═══
+  const [showScreenshotAnalyzer, setShowScreenshotAnalyzer] = useState(false);
+  const [ssImage, setSsImage] = useState<string | null>(null);
+  const [ssAnalyzing, setSsAnalyzing] = useState(false);
+  const [ssResult, setSsResult] = useState<string | null>(null);
+  const [ssDragOver, setSsDragOver] = useState(false);
+
+  // ═══ Figma Import Panel ═══
+  const [showFigmaPanel, setShowFigmaPanel] = useState(false);
+  const [figmaUrl, setFigmaUrl] = useState('');
+  const [figmaToken, setFigmaToken] = useState('');
+  const [figmaLoading, setFigmaLoading] = useState(false);
+  const [figmaData, setFigmaData] = useState<{ fileName: string; frameName: string; frameSize: { width: number; height: number } | null; screenshotUrl: string; colors: string[]; fonts: string[]; components: Array<{ name: string; type: string; count: number }>; designPrompt: string } | null>(null);
+  const [figmaFrames, setFigmaFrames] = useState<{ pages: Array<{ name: string; frames: Array<{ id: string; name: string; width: number; height: number; childCount: number }> }> } | null>(null);
+
+  const figmaImport = useCallback(async (nodeId?: string) => {
+    if (!figmaUrl.trim()) return;
+    setFigmaLoading(true);
+    try {
+      const url = nodeId ? figmaUrl + (figmaUrl.includes('?') ? '&' : '?') + `node-id=${nodeId}` : figmaUrl;
+      const res = await fetch('/api/figma', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, token: figmaToken || undefined }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({ error: 'Failed' })); showToast(e.error || 'Figma import failed', 'error'); return; }
+      const data = await res.json();
+      setFigmaData(data);
+    } catch { showToast('Figma import failed', 'error'); }
+    finally { setFigmaLoading(false); }
+  }, [figmaUrl, figmaToken, showToast]);
+
+  const figmaListFrames = useCallback(async () => {
+    if (!figmaUrl.trim()) return;
+    setFigmaLoading(true);
+    try {
+      const res = await fetch('/api/figma', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: figmaUrl, token: figmaToken || undefined, mode: 'frames' }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({ error: 'Failed' })); showToast(e.error || 'Failed to load frames', 'error'); return; }
+      const data = await res.json();
+      setFigmaFrames(data);
+    } catch { showToast('Failed to load frames', 'error'); }
+    finally { setFigmaLoading(false); }
+  }, [figmaUrl, figmaToken, showToast]);
+
+  const figmaGenCode = useCallback(() => {
+    if (!figmaData?.designPrompt) return;
+    setShowFigmaPanel(false);
+    // Inject into input and trigger send (sendToAI is defined later, use input + button approach)
+    const prompt = figmaData.designPrompt + (figmaData.screenshotUrl ? `\n\n[Screenshot: ${figmaData.screenshotUrl}]` : '');
+    setInput(prompt);
+    // Auto-send after a tick
+    setTimeout(() => {
+      const sendBtn = document.querySelector('[data-send-btn]') as HTMLButtonElement;
+      if (sendBtn) sendBtn.click();
+    }, 100);
+  }, [figmaData]);
+
+  // ═══ Git PR State ═══
+  const [gitPRs, setGitPRs] = useState<Array<{ number: number; title: string; state: string; head: string; base: string; author: string; avatar: string; mergeable: boolean }>>([]);
+  const [gitPRTitle, setGitPRTitle] = useState('');
+  const [gitPRHead, setGitPRHead] = useState('');
+  const [gitPRBase, setGitPRBase] = useState('main');
+  const [gitRemoteCommits, setGitRemoteCommits] = useState<Array<{ sha: string; message: string; author: string; date: string; avatar: string }>>([]);
+  const [gitRemoteLoading, setGitRemoteLoading] = useState(false);
+  const [gitSelectedRepo, setGitSelectedRepo] = useState('');
+  const [gitRepos, setGitRepos] = useState<Array<{ name: string; fullName: string; url: string; language: string; defaultBranch: string }>>([]);
+  const [gitRemoteBranches, setGitRemoteBranches] = useState<Array<{ name: string; sha: string }>>([]);
+
+  const gitFetchRepos = useCallback(async () => {
+    if (!githubToken) return;
+    setGitRemoteLoading(true);
+    try {
+      const res = await fetch(`/api/github?action=repos&token=${encodeURIComponent(githubToken)}`);
+      if (res.ok) { const data = await res.json(); setGitRepos(data); }
+    } catch {} finally { setGitRemoteLoading(false); }
+  }, [githubToken]);
+
+  const gitFetchBranches = useCallback(async (repo: string) => {
+    if (!githubToken || !repo) return;
+    const [owner, name] = repo.split('/');
+    try {
+      const res = await fetch(`/api/github?action=branches&token=${encodeURIComponent(githubToken)}&owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(name)}`);
+      if (res.ok) { const data = await res.json(); setGitRemoteBranches(data); }
+    } catch {}
+  }, [githubToken]);
+
+  const gitFetchCommits = useCallback(async (repo: string, branch?: string) => {
+    if (!githubToken || !repo) return;
+    const [owner, name] = repo.split('/');
+    try {
+      const res = await fetch(`/api/github?action=commits&token=${encodeURIComponent(githubToken)}&owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(name)}${branch ? `&branch=${encodeURIComponent(branch)}` : ''}`);
+      if (res.ok) { const data = await res.json(); setGitRemoteCommits(data); }
+    } catch {}
+  }, [githubToken]);
+
+  const gitCreatePR = useCallback(async () => {
+    if (!githubToken || !gitSelectedRepo || !gitPRHead || !gitPRTitle) return;
+    const [owner, name] = gitSelectedRepo.split('/');
+    try {
+      const res = await fetch(`/api/github?action=create-pr&token=${encodeURIComponent(githubToken)}&owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(name)}&title=${encodeURIComponent(gitPRTitle)}&head=${encodeURIComponent(gitPRHead)}&base=${encodeURIComponent(gitPRBase)}`);
+      if (res.ok) { const data = await res.json(); showToast(`PR #${data.number} created`, 'success'); gitFetchPRs(); }
+      else { const e = await res.json().catch(() => ({})); showToast(e.error || 'Failed to create PR', 'error'); }
+    } catch { showToast('Failed to create PR', 'error'); }
+  }, [githubToken, gitSelectedRepo, gitPRHead, gitPRTitle, gitPRBase, showToast]);
+
+  const gitFetchPRs = useCallback(async () => {
+    if (!githubToken || !gitSelectedRepo) return;
+    const [owner, name] = gitSelectedRepo.split('/');
+    try {
+      const res = await fetch(`/api/github?action=list-prs&token=${encodeURIComponent(githubToken)}&owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(name)}`);
+      if (res.ok) { const data = await res.json(); setGitPRs(data); }
+    } catch {}
+  }, [githubToken, gitSelectedRepo]);
+
+  const gitMergePR = useCallback(async (prNumber: number) => {
+    if (!githubToken || !gitSelectedRepo) return;
+    const [owner, name] = gitSelectedRepo.split('/');
+    try {
+      const res = await fetch(`/api/github?action=merge-pr&token=${encodeURIComponent(githubToken)}&owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(name)}&pr=${prNumber}`);
+      if (res.ok) { showToast(`PR #${prNumber} merged`, 'success'); gitFetchPRs(); }
+      else { const e = await res.json().catch(() => ({})); showToast(e.error || 'Merge failed', 'error'); }
+    } catch { showToast('Merge failed', 'error'); }
+  }, [githubToken, gitSelectedRepo, showToast, gitFetchPRs]);
+
+  const gitMergeBranch = useCallback(async (head: string, base: string) => {
+    if (!githubToken || !gitSelectedRepo) return;
+    const [owner, name] = gitSelectedRepo.split('/');
+    try {
+      const res = await fetch(`/api/github?action=merge-branch&token=${encodeURIComponent(githubToken)}&owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(name)}&head=${encodeURIComponent(head)}&base=${encodeURIComponent(base)}`);
+      if (res.ok) { showToast(`Merged ${head} into ${base}`, 'success'); }
+      else {
+        const e = await res.json().catch(() => ({}));
+        if (e.conflict) { showToast('Merge conflict! Resolve manually on GitHub.', 'error'); }
+        else { showToast(e.error || 'Merge failed', 'error'); }
+      }
+    } catch { showToast('Merge failed', 'error'); }
+  }, [githubToken, gitSelectedRepo, showToast]);
+
+  const ssHandleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setSsDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = () => setSsImage(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  }, []);
+
+  const ssHandlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        const file = items[i].getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = () => setSsImage(reader.result as string);
+          reader.readAsDataURL(file);
+        }
+        break;
+      }
+    }
+  }, []);
+
+  const ssAnalyze = useCallback(async () => {
+    if (!ssImage) return;
+    setSsAnalyzing(true);
+    setSsResult(null);
+    try {
+      const base64 = ssImage.split(',')[1];
+      const mimeType = ssImage.split(';')[0].split(':')[1] || 'image/png';
+      const res = await fetch('/api/anthropic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: 'Analyze this screenshot and generate a pixel-perfect HTML/Tailwind CSS recreation of this design. Include ALL visual details, exact colors, fonts, spacing, and layout. Generate COMPLETE, WORKING HTML with Tailwind CDN. Make it responsive.' }],
+          model: 'claude-sonnet-4-20250514',
+          images: [{ data: base64, type: mimeType }],
+        }),
+      });
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No reader');
+      let fullText = '';
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const parsed = JSON.parse(line.slice(6));
+              if (parsed.text) fullText += parsed.text;
+            } catch { /* skip */ }
+          }
+        }
+      }
+      setSsResult(fullText);
+    } catch (err) {
+      setSsResult(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSsAnalyzing(false);
+    }
+  }, [ssImage]);
+
+  const ssApplyCode = useCallback(() => {
+    if (!ssResult) return;
+    const htmlMatch = ssResult.match(/```html\n([\s\S]*?)```/) || ssResult.match(/(<!DOCTYPE[\s\S]*<\/html>)/i);
+    const code = htmlMatch ? htmlMatch[1] : ssResult;
+    setProjectFiles(prev => ({ ...prev, 'screenshot-clone.html': { content: code, language: 'html' } }));
+    setSelectedFile('screenshot-clone.html');
+    setShowScreenshotAnalyzer(false);
+  }, [ssResult]);
 
   // Version History (VFS snapshots)
   const [vfsHistory, setVfsHistory] = useState<VirtualFS[]>([]);
   const [vfsHistoryIdx, setVfsHistoryIdx] = useState(-1);
   const vfsSnapshotTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // v21: File Change Summary (declared after vfsHistory)
+  const [showChangeSummary, setShowChangeSummary] = useState(false);
+  const changeSummary = useMemo(() => {
+    if (vfsHistoryIdx < 1) return null;
+    const prev = vfsHistory[vfsHistoryIdx - 1];
+    const curr = projectFiles;
+    const added = Object.keys(curr).filter(k => !prev[k]);
+    const removed = Object.keys(prev).filter(k => !curr[k]);
+    const modified = Object.keys(curr).filter(k => prev[k] && prev[k].content !== curr[k].content);
+    const totalLinesAdded = modified.reduce((a, k) => {
+      const oldLines = prev[k].content.split('\n').length;
+      const newLines = curr[k].content.split('\n').length;
+      return a + Math.max(0, newLines - oldLines);
+    }, 0);
+    const totalLinesRemoved = modified.reduce((a, k) => {
+      const oldLines = prev[k].content.split('\n').length;
+      const newLines = curr[k].content.split('\n').length;
+      return a + Math.max(0, oldLines - newLines);
+    }, 0);
+    return { added, removed, modified, totalLinesAdded, totalLinesRemoved };
+  }, [projectFiles, vfsHistory, vfsHistoryIdx]);
 
   // Snapshot VFS on every change (debounced)
   useEffect(() => {
@@ -7940,6 +10805,53 @@ export default function HomePage() {
     }, 800);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectFiles]);
+
+  // Auto-save status indicator
+  useEffect(() => {
+    if (Object.keys(projectFiles).length === 0) return;
+    setAutoSaveStatus('unsaved');
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      setAutoSaveStatus('saving');
+      setTimeout(() => setAutoSaveStatus('saved'), 400);
+    }, 1200);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectFiles]);
+
+  // Sync open tabs when new files appear (AI generates files)
+  useEffect(() => {
+    const fileKeys = Object.keys(projectFiles);
+    if (fileKeys.length > 0) {
+      setOpenTabs(prev => {
+        const valid = prev.filter(f => projectFiles[f]);
+        // Add any new files that aren't in tabs yet (from AI generation)
+        const newFiles = fileKeys.filter(f => !valid.includes(f));
+        const updated = [...valid, ...newFiles];
+        return updated.length > 0 ? updated : ['index.html'];
+      });
+    }
+  }, [projectFiles]);
+
+  // v15: Code Diff Stats (computed after vfsHistory is declared)
+  const diffStats = useMemo(() => {
+    if (vfsHistory.length < 2) return [];
+    const first = vfsHistory[0];
+    const current = projectFiles;
+    const stats: { file: string; added: number; removed: number; status: string }[] = [];
+    const allFiles = new Set([...Object.keys(first), ...Object.keys(current)]);
+    allFiles.forEach(file => {
+      const oldLines = (first[file]?.content || '').split('\n');
+      const newLines = (current[file]?.content || '').split('\n');
+      if (!first[file]) { stats.push({ file, added: newLines.length, removed: 0, status: 'added' }); }
+      else if (!current[file]) { stats.push({ file, added: 0, removed: oldLines.length, status: 'deleted' }); }
+      else {
+        const added = newLines.filter(l => !oldLines.includes(l)).length;
+        const removed = oldLines.filter(l => !newLines.includes(l)).length;
+        if (added > 0 || removed > 0) stats.push({ file, added, removed, status: 'modified' });
+      }
+    });
+    return stats.sort((a, b) => (b.added + b.removed) - (a.added + a.removed));
+  }, [projectFiles, vfsHistory]);
 
   const vfsUndo = useCallback(() => {
     if (vfsHistoryIdx <= 0) return;
@@ -7993,6 +10905,278 @@ export default function HomePage() {
 
   // Drag & drop
   const [isDragOver, setIsDragOver] = useState(false);
+
+  // WebContainer for real code execution
+  const webContainer = useWebContainer();
+  const [wcInstalling, setWcInstalling] = useState(false);
+  const [wcInstallProgress, setWcInstallProgress] = useState('');
+
+  // Auto-boot WebContainer when package.json appears in VFS (real Node.js runtime)
+  const webContainerBootedRef = useRef(false);
+  useEffect(() => {
+    if (webContainerBootedRef.current) return;
+    if (!projectFiles['package.json']) return;
+    if (isStreaming) return; // Wait until streaming is done
+    webContainerBootedRef.current = true;
+    (async () => {
+      try {
+        setWcInstalling(true);
+        setWcInstallProgress('Booting WebContainer...');
+        setTerminalLines(prev => [...prev, '$ WebContainer: booting...']);
+        await webContainer.mountFiles(projectFiles);
+        setWcInstallProgress('Installing dependencies...');
+        setTerminalLines(prev => [...prev, '$ npm install']);
+
+        // Parse package.json to show what's being installed
+        try {
+          const pkg = JSON.parse(projectFiles['package.json'].content);
+          const deps = Object.keys(pkg.dependencies || {});
+          const devDeps = Object.keys(pkg.devDependencies || {});
+          if (deps.length) setTerminalLines(prev => [...prev, `  Dependencies: ${deps.join(', ')}`]);
+          if (devDeps.length) setTerminalLines(prev => [...prev, `  DevDependencies: ${devDeps.join(', ')}`]);
+          setWcInstallProgress(`Installing ${deps.length + devDeps.length} packages...`);
+        } catch {}
+
+        const code = await webContainer.installDeps();
+        if (code === 0) {
+          setWcInstallProgress('Starting dev server...');
+          setTerminalLines(prev => [...prev, '$ npm run dev']);
+          await webContainer.startDevServer();
+          setWcInstallProgress('');
+        } else {
+          setWcInstallProgress('Install failed');
+          setTerminalLines(prev => [...prev, '$ WebContainer: install failed']);
+        }
+      } catch {
+        webContainerBootedRef.current = false;
+        setWcInstallProgress('');
+      } finally {
+        setWcInstalling(false);
+      }
+    })();
+  }, [projectFiles, isStreaming, webContainer]);
+
+  // Real-time terminal streaming from WebContainer → terminalLines
+  useEffect(() => {
+    webContainer.onTerminalLine((line: string) => {
+      setTerminalLines(prev => [...prev, line]);
+    });
+    return () => { webContainer.onTerminalLine(null); };
+  }, [webContainer]);
+
+  // Hot-reload: when user edits a file, write it to WebContainer for live update
+  const prevFilesRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    if (webContainer.state.status !== 'ready') return;
+    for (const [path, file] of Object.entries(projectFiles)) {
+      if (prevFilesRef.current[path] !== file.content) {
+        webContainer.writeFile(path, file.content);
+      }
+    }
+    prevFilesRef.current = Object.fromEntries(Object.entries(projectFiles).map(([k, v]) => [k, v.content]));
+  }, [projectFiles, webContainer]);
+
+  // Framework selector for design-to-code
+  const [outputFramework, setOutputFramework] = useState<'html' | 'react' | 'nextjs' | 'vue'>('html');
+
+  // Framework project scaffolding — generate proper project structures
+  const scaffoldFrameworkProject = useCallback((fw: 'html' | 'react' | 'nextjs' | 'vue') => {
+    const templates: Record<string, Record<string, { content: string; language: string }>> = {
+      react: {
+        'package.json': { content: JSON.stringify({ name: 'aurion-react-app', private: true, version: '0.0.0', type: 'module', scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview' }, dependencies: { react: '^18.2.0', 'react-dom': '^18.2.0' }, devDependencies: { '@types/react': '^18.2.0', '@types/react-dom': '^18.2.0', '@vitejs/plugin-react': '^4.0.0', autoprefixer: '^10.4.0', postcss: '^8.4.0', tailwindcss: '^3.4.0', typescript: '^5.0.0', vite: '^5.0.0' } }, null, 2), language: 'json' },
+        'vite.config.ts': { content: `import { defineConfig } from 'vite'\nimport react from '@vitejs/plugin-react'\n\nexport default defineConfig({\n  plugins: [react()],\n})\n`, language: 'typescript' },
+        'tailwind.config.js': { content: `/** @type {import('tailwindcss').Config} */\nexport default {\n  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],\n  theme: { extend: {} },\n  plugins: [],\n}\n`, language: 'javascript' },
+        'postcss.config.js': { content: `export default {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n}\n`, language: 'javascript' },
+        'tsconfig.json': { content: JSON.stringify({ compilerOptions: { target: 'ES2020', useDefineForClassFields: true, lib: ['ES2020', 'DOM', 'DOM.Iterable'], module: 'ESNext', skipLibCheck: true, moduleResolution: 'bundler', allowImportingTsExtensions: true, resolveJsonModule: true, isolatedModules: true, noEmit: true, jsx: 'react-jsx', strict: true }, include: ['src'] }, null, 2), language: 'json' },
+        'index.html': { content: `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n  <title>Aurion React App</title>\n</head>\n<body>\n  <div id="root"></div>\n  <script type="module" src="/src/main.tsx"></script>\n</body>\n</html>\n`, language: 'html' },
+        'src/main.tsx': { content: `import React from 'react'\nimport ReactDOM from 'react-dom/client'\nimport App from './App'\nimport './index.css'\n\nReactDOM.createRoot(document.getElementById('root')!).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>,\n)\n`, language: 'typescriptreact' },
+        'src/App.tsx': { content: `export default function App() {\n  return (\n    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">\n      <div className="text-center">\n        <h1 className="text-4xl font-bold mb-4">Hello from Aurion</h1>\n        <p className="text-gray-400">Edit src/App.tsx to get started</p>\n      </div>\n    </div>\n  )\n}\n`, language: 'typescriptreact' },
+        'src/index.css': { content: `@tailwind base;\n@tailwind components;\n@tailwind utilities;\n`, language: 'css' },
+      },
+      nextjs: {
+        'package.json': { content: JSON.stringify({ name: 'aurion-nextjs-app', version: '0.1.0', private: true, scripts: { dev: 'next dev', build: 'next build', start: 'next start' }, dependencies: { next: '^14.0.0', react: '^18.2.0', 'react-dom': '^18.2.0' }, devDependencies: { '@types/node': '^20.0.0', '@types/react': '^18.2.0', '@types/react-dom': '^18.2.0', autoprefixer: '^10.4.0', postcss: '^8.4.0', tailwindcss: '^3.4.0', typescript: '^5.0.0' } }, null, 2), language: 'json' },
+        'next.config.js': { content: `/** @type {import('next').NextConfig} */\nconst nextConfig = {}\nmodule.exports = nextConfig\n`, language: 'javascript' },
+        'tailwind.config.ts': { content: `import type { Config } from 'tailwindcss'\n\nconst config: Config = {\n  content: ['./app/**/*.{js,ts,jsx,tsx,mdx}', './components/**/*.{js,ts,jsx,tsx,mdx}'],\n  theme: { extend: {} },\n  plugins: [],\n}\nexport default config\n`, language: 'typescript' },
+        'postcss.config.js': { content: `module.exports = {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n}\n`, language: 'javascript' },
+        'tsconfig.json': { content: JSON.stringify({ compilerOptions: { target: 'es5', lib: ['dom', 'dom.iterable', 'esnext'], allowJs: true, skipLibCheck: true, strict: true, noEmit: true, esModuleInterop: true, module: 'esnext', moduleResolution: 'bundler', resolveJsonModule: true, isolatedModules: true, jsx: 'preserve', incremental: true, plugins: [{ name: 'next' }], paths: { '@/*': ['./*'] } }, include: ['next-env.d.ts', '**/*.ts', '**/*.tsx', '.next/types/**/*.ts'], exclude: ['node_modules'] }, null, 2), language: 'json' },
+        'app/layout.tsx': { content: `import type { Metadata } from 'next'\nimport './globals.css'\n\nexport const metadata: Metadata = {\n  title: 'Aurion Next.js App',\n  description: 'Built with Aurion',\n}\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang="en">\n      <body>{children}</body>\n    </html>\n  )\n}\n`, language: 'typescriptreact' },
+        'app/page.tsx': { content: `export default function Home() {\n  return (\n    <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">\n      <div className="text-center">\n        <h1 className="text-4xl font-bold mb-4">Hello from Aurion</h1>\n        <p className="text-gray-400">Edit app/page.tsx to get started</p>\n      </div>\n    </main>\n  )\n}\n`, language: 'typescriptreact' },
+        'app/globals.css': { content: `@tailwind base;\n@tailwind components;\n@tailwind utilities;\n`, language: 'css' },
+      },
+      vue: {
+        'package.json': { content: JSON.stringify({ name: 'aurion-vue-app', private: true, version: '0.0.0', type: 'module', scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview' }, dependencies: { vue: '^3.3.0' }, devDependencies: { '@vitejs/plugin-vue': '^4.0.0', autoprefixer: '^10.4.0', postcss: '^8.4.0', tailwindcss: '^3.4.0', typescript: '^5.0.0', vite: '^5.0.0', 'vue-tsc': '^1.8.0' } }, null, 2), language: 'json' },
+        'vite.config.ts': { content: `import { defineConfig } from 'vite'\nimport vue from '@vitejs/plugin-vue'\n\nexport default defineConfig({\n  plugins: [vue()],\n})\n`, language: 'typescript' },
+        'tailwind.config.js': { content: `/** @type {import('tailwindcss').Config} */\nexport default {\n  content: ['./index.html', './src/**/*.{vue,js,ts,jsx,tsx}'],\n  theme: { extend: {} },\n  plugins: [],\n}\n`, language: 'javascript' },
+        'postcss.config.js': { content: `export default {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n}\n`, language: 'javascript' },
+        'index.html': { content: `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n  <title>Aurion Vue App</title>\n</head>\n<body>\n  <div id="app"></div>\n  <script type="module" src="/src/main.ts"></script>\n</body>\n</html>\n`, language: 'html' },
+        'src/main.ts': { content: `import { createApp } from 'vue'\nimport App from './App.vue'\nimport './style.css'\n\ncreateApp(App).mount('#app')\n`, language: 'typescript' },
+        'src/App.vue': { content: `<script setup lang="ts">\nimport { ref } from 'vue'\nconst count = ref(0)\n</script>\n\n<template>\n  <div class="min-h-screen bg-gray-950 text-white flex items-center justify-center">\n    <div class="text-center">\n      <h1 class="text-4xl font-bold mb-4">Hello from Aurion</h1>\n      <p class="text-gray-400">Edit src/App.vue to get started</p>\n      <button @click="count++" class="mt-4 px-4 py-2 bg-indigo-600 rounded hover:bg-indigo-500 transition">Count: {{ count }}</button>\n    </div>\n  </div>\n</template>\n`, language: 'vue' },
+        'src/style.css': { content: `@tailwind base;\n@tailwind components;\n@tailwind utilities;\n`, language: 'css' },
+      },
+      html: {
+        'index.html': { content: `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n  <title>Aurion Project</title>\n  <script src="https://cdn.tailwindcss.com"></script>\n</head>\n<body class="min-h-screen bg-gray-950 text-white">\n  <div class="flex items-center justify-center min-h-screen">\n    <div class="text-center">\n      <h1 class="text-4xl font-bold mb-4">Hello from Aurion</h1>\n      <p class="text-gray-400">Edit index.html to get started</p>\n    </div>\n  </div>\n</body>\n</html>\n`, language: 'html' },
+        'style.css': { content: `/* Custom styles */\n`, language: 'css' },
+        'script.js': { content: `// Your JavaScript here\nconsole.log('Aurion project ready');\n`, language: 'javascript' },
+      },
+    };
+    const files = templates[fw];
+    if (files) {
+      setProjectFiles(files);
+      const main = fw === 'react' ? 'src/App.tsx' : fw === 'nextjs' ? 'app/page.tsx' : fw === 'vue' ? 'src/App.vue' : 'index.html';
+      setSelectedFile(main);
+      setOutputFramework(fw);
+      showToast(`Scaffolded ${fw === 'nextjs' ? 'Next.js' : fw === 'vue' ? 'Vue 3' : fw === 'react' ? 'React' : 'HTML'} project (${Object.keys(files).length} files)`, 'success');
+    }
+  }, [showToast]);
+
+  // Test runner state
+  const [showTestRunner, setShowTestRunner] = useState(false);
+  const [testResults, setTestResults] = useState<{ name: string; status: 'pass' | 'fail' | 'skip'; duration?: number; error?: string }[]>([]);
+  const [testRunning, setTestRunning] = useState(false);
+  const [testRawOutput, setTestRawOutput] = useState('');
+  const [testFile, setTestFile] = useState('');
+
+  // Run tests via WebContainer
+  const runTestsInContainer = useCallback(async (file?: string) => {
+    setTestRunning(true);
+    setTestResults([]);
+    setTestRawOutput('');
+    try {
+      if (webContainer.state.status !== 'ready') {
+        // Boot and install first
+        await webContainer.mountFiles(projectFiles);
+        await webContainer.installDeps();
+      }
+      const { results, raw, exitCode } = await webContainer.runTests(file);
+      setTestResults(results);
+      setTestRawOutput(raw);
+      if (exitCode === 0) {
+        showToast(`Tests passed: ${results.filter(r => r.status === 'pass').length}/${results.length}`, 'success');
+      } else {
+        showToast(`Tests failed: ${results.filter(r => r.status === 'fail').length} failures`, 'error');
+      }
+    } catch (err) {
+      showToast('Test runner error: ' + (err instanceof Error ? err.message : 'Unknown'), 'error');
+    } finally {
+      setTestRunning(false);
+    }
+  }, [webContainer, projectFiles, showToast]);
+
+  // Generate + run tests for current file
+  const generateAndRunTests = useCallback(async () => {
+    if (!selectedFile || !projectFiles[selectedFile]) {
+      showToast('No file selected', 'error');
+      return;
+    }
+    setTestRunning(true);
+    try {
+      // Step 1: Generate tests via AI
+      const code = projectFiles[selectedFile].content;
+      const res = await fetch('/api/test-gen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          fileName: selectedFile,
+          framework: 'vitest',
+          language: selectedFile.endsWith('.ts') || selectedFile.endsWith('.tsx') ? 'typescript' : 'javascript',
+        }),
+      });
+      if (!res.ok) throw new Error('Test generation failed');
+
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let testCode = '', buf = '';
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const p = line.slice(6);
+            if (p === '[DONE]') break;
+            try { const d = JSON.parse(p); if (d.text) testCode += d.text; } catch {}
+          }
+        }
+      }
+
+      // Extract code from markdown code block
+      const codeMatch = testCode.match(/```(?:\w+)?\n([\s\S]*?)```/);
+      const finalCode = codeMatch ? codeMatch[1] : testCode;
+
+      const testFileName = selectedFile.replace(/\.(\w+)$/, '.test.$1');
+      setProjectFiles(prev => ({ ...prev, [testFileName]: { content: finalCode, language: detectLanguage(testFileName) } }));
+      setTestFile(testFileName);
+
+      // Step 2: Run tests in WebContainer
+      await runTestsInContainer(testFileName);
+    } catch (err) {
+      showToast('Test generation failed: ' + (err instanceof Error ? err.message : 'Unknown'), 'error');
+    } finally {
+      setTestRunning(false);
+    }
+  }, [selectedFile, projectFiles, runTestsInContainer, showToast]);
+
+  // AI Code Review — sends current file to AI and streams review feedback
+  const [codeReviewResult, setCodeReviewResult] = useState('');
+  const [showCodeReview, setShowCodeReview] = useState(false);
+  const [codeReviewLoading, setCodeReviewLoading] = useState(false);
+
+  const runAICodeReview = useCallback(async () => {
+    if (!selectedFile || !projectFiles[selectedFile]) {
+      showToast('No file selected for review', 'error');
+      return;
+    }
+    setShowCodeReview(true);
+    setCodeReviewLoading(true);
+    setCodeReviewResult('');
+    try {
+      const code = projectFiles[selectedFile].content;
+      const reviewPrompt = `Review this code file "${selectedFile}" and provide:
+1. **Issues** — bugs, security vulnerabilities, potential crashes
+2. **Performance** — slow patterns, unnecessary re-renders, memory leaks
+3. **Best Practices** — naming, structure, readability improvements
+4. **Suggestions** — concrete refactoring proposals with code examples
+
+Be concise and actionable. Use markdown formatting.
+
+\`\`\`
+${code}
+\`\`\``;
+
+      const res = await fetch('/api/huggingface', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role: 'user', content: reviewPrompt }], model: model }),
+      });
+      if (!res.ok) throw new Error('Review request failed');
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let result = '', buf = '';
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const p = line.slice(6);
+            if (p === '[DONE]') break;
+            try { const d = JSON.parse(p); if (d.text) { result += d.text; setCodeReviewResult(result); } } catch {}
+          }
+        }
+      }
+    } catch (err) {
+      setCodeReviewResult('Code review failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      setCodeReviewLoading(false);
+    }
+  }, [selectedFile, projectFiles, model, showToast]);
 
   // Media asset gallery (generated videos/images)
   const [mediaAssets, setMediaAssets] = useState<{ id: string; type: 'video' | 'image'; url: string; prompt: string; timestamp: number }[]>([]);
@@ -8066,6 +11250,29 @@ export default function HomePage() {
       idbSet('projects_index', projects).catch(() => {});
     }
   }, [projects]);
+
+  // Conversation persistence — auto-save messages to IndexedDB
+  useEffect(() => {
+    if (messages.length > 0) {
+      idbSet('aurion_messages', messages).catch(() => {
+        try { localStorage.setItem('aurion_messages', JSON.stringify(messages)); } catch { /* ignore */ }
+      });
+    }
+  }, [messages]);
+
+  // Load saved conversation on mount
+  useEffect(() => {
+    idbGet<Message[]>('aurion_messages').then(saved => {
+      if (saved && Array.isArray(saved) && saved.length > 0) {
+        setMessages(saved);
+      }
+    }).catch(() => {
+      try {
+        const ls = localStorage.getItem('aurion_messages');
+        if (ls) { const parsed = JSON.parse(ls); if (Array.isArray(parsed) && parsed.length > 0) setMessages(parsed); }
+      } catch { /* ignore */ }
+    });
+  }, []);
 
   // Persist VFS per project
   useEffect(() => {
@@ -8250,7 +11457,7 @@ export default function HomePage() {
             [file.name]: { content, language: detectLanguage(file.name) },
           }));
           setTerminalLines(prev => [...prev, `$ ✓ imported file: ${file.name}`]);
-          setSelectedFile(file.name);
+          openFile(file.name);
         };
         reader.readAsText(file);
       }
@@ -8379,6 +11586,38 @@ export default function HomePage() {
         setContentSearchQuery('');
         return;
       }
+      // Cmd+S → save (prevent browser save, refresh preview)
+      if (isCmd && e.key === 's') {
+        e.preventDefault();
+        refreshPreview();
+        setTerminalLines(prev => [...prev, '$ ✓ Saved & refreshed preview']);
+        return;
+      }
+      // Cmd+E → toggle edit mode
+      if (isCmd && e.key === 'e' && !e.shiftKey) {
+        e.preventDefault();
+        setIsEditMode(prev => !prev);
+        return;
+      }
+      // Cmd+` → toggle terminal
+      if (isCmd && e.key === '`') {
+        e.preventDefault();
+        setShowTerminal(prev => !prev);
+        return;
+      }
+      // Cmd+B → toggle sidebar (left panel)
+      if (isCmd && e.key === 'b' && !e.shiftKey) {
+        e.preventDefault();
+        setShowChat(prev => !prev);
+        return;
+      }
+      // Cmd+1/2/3/4 → switch tabs
+      if (isCmd && e.key >= '1' && e.key <= '5') {
+        e.preventDefault();
+        const tabs: ('app' | 'code' | 'database' | 'payments' | 'ide')[] = ['app', 'code', 'database', 'payments', 'ide'];
+        setActiveTab(tabs[parseInt(e.key) - 1] || 'app');
+        return;
+      }
       // Cmd+Z / Cmd+Shift+Z for VFS undo/redo (only when not in Monaco)
       if (isCmd && e.key === 'z' && !(e.target as HTMLElement)?.closest('.monaco-editor')) {
         e.preventDefault();
@@ -8386,11 +11625,101 @@ export default function HomePage() {
         else vfsUndo();
         return;
       }
+      // Cmd+Shift+H → Find & Replace
+      if (isCmd && e.shiftKey && e.key === 'H') {
+        e.preventDefault();
+        setShowFindReplace(prev => !prev);
+        setFindQuery('');
+        setReplaceQuery('');
+        setTimeout(() => findInputRef.current?.focus(), 50);
+        return;
+      }
+      // Cmd+/ → Keyboard shortcuts
+      if (isCmd && e.key === '/') {
+        e.preventDefault();
+        setShowShortcuts(prev => !prev);
+        return;
+      }
+      // Ctrl+G → Goto Line
+      if (isCmd && e.key === 'g') {
+        e.preventDefault();
+        setShowGotoLine(prev => !prev);
+        setGotoLineValue('');
+        setTimeout(() => gotoLineRef.current?.focus(), 50);
+        return;
+      }
 
       if (e.key !== 'Escape') return;
       if (showCommandPalette) setShowCommandPalette(false);
       else if (showFileSearch) setShowFileSearch(false);
       else if (showContentSearch) setShowContentSearch(false);
+      else if (showFindReplace) setShowFindReplace(false);
+      else if (showShortcuts) setShowShortcuts(false);
+      else if (showThemeSelector) setShowThemeSelector(false);
+      else if (showColorPicker) setShowColorPicker(false);
+      else if (showGotoLine) setShowGotoLine(false);
+      else if (tabContextMenu) setTabContextMenu(null);
+      else if (explorerContextMenu) setExplorerContextMenu(null);
+      else if (renameTarget) { setRenameTarget(null); setRenameValue(''); }
+      else if (showA11yPanel) setShowA11yPanel(false);
+      else if (showSeoPanel) setShowSeoPanel(false);
+      else if (showTailwindPanel) setShowTailwindPanel(false);
+      else if (showColorPalettePanel) setShowColorPalettePanel(false);
+      else if (showPerfPanel) setShowPerfPanel(false);
+      else if (showStatsPanel) setShowStatsPanel(false);
+      else if (showCssVarsPanel) setShowCssVarsPanel(false);
+      else if (showConsolePanel) setShowConsolePanel(false);
+      else if (showDepsPanel) setShowDepsPanel(false);
+      else if (showComplexityPanel) setShowComplexityPanel(false);
+      else if (showOutlinePanel) setShowOutlinePanel(false);
+      else if (showImageOptPanel) setShowImageOptPanel(false);
+      else if (showDiffStatsPanel) setShowDiffStatsPanel(false);
+      else if (showNetworkPanel) setShowNetworkPanel(false);
+      else if (showHtmlValidatorPanel) setShowHtmlValidatorPanel(false);
+      else if (showFontPanel) setShowFontPanel(false);
+      else if (showSnippetsPanel) setShowSnippetsPanel(false);
+      else if (showTreemapPanel) setShowTreemapPanel(false);
+      else if (showUnusedCssPanel) setShowUnusedCssPanel(false);
+      else if (showLinkCheckerPanel) setShowLinkCheckerPanel(false);
+      else if (showDomTreePanel) setShowDomTreePanel(false);
+      else if (showMetaEditorPanel) setShowMetaEditorPanel(false);
+      else if (showShortcutsRef) setShowShortcutsRef(false);
+      else if (showContrastPanel) setShowContrastPanel(false);
+      else if (showZIndexPanel) setShowZIndexPanel(false);
+      else if (showTodoScanPanel) setShowTodoScanPanel(false);
+      else if (showRegexPanel) setShowRegexPanel(false);
+      else if (showSpecificityPanel) setShowSpecificityPanel(false);
+      else if (showLazyImgPanel) setShowLazyImgPanel(false);
+      else if (showTextStatsPanel) setShowTextStatsPanel(false);
+      else if (showDuplicatePanel) setShowDuplicatePanel(false);
+      else if (showElementCountPanel) setShowElementCountPanel(false);
+      else if (showConsoleFilter) setShowConsoleFilter(false);
+      else if (showColorEdit) setShowColorEdit(false);
+      else if (showFoldMap) setShowFoldMap(false);
+      else if (showDepGraph) setShowDepGraph(false);
+      else if (showPerfBudget) setShowPerfBudget(false);
+      else if (showResponsiveGrid) setShowResponsiveGrid(false);
+      else if (showAnimPanel) setShowAnimPanel(false);
+      else if (showEventAudit) setShowEventAudit(false);
+      else if (showOgPreview) setShowOgPreview(false);
+      else if (showSemanticPanel) setShowSemanticPanel(false);
+      else if (showChangeSummary) setShowChangeSummary(false);
+      else if (showWhitespacePanel) setShowWhitespacePanel(false);
+      else if (showPwaPanel) setShowPwaPanel(false);
+      else if (showSchemaPanel) setShowSchemaPanel(false);
+      else if (showBundlePanel) setShowBundlePanel(false);
+      else if (showAriaPanel) setShowAriaPanel(false);
+      else if (showSecurityPanel) setShowSecurityPanel(false);
+      else if (showCollabPanel) setShowCollabPanel(false);
+      else if (showFeedbackPanel) setShowFeedbackPanel(false);
+      else if (showOnboarding) finishOnboarding();
+      else if (showChangelog) setShowChangelog(false);
+      else if (showVisualBuilder) setShowVisualBuilder(false);
+      else if (showAnimBuilder) setShowAnimBuilder(false);
+      else if (showDesignSystem) setShowDesignSystem(false);
+      else if (showApiTester) setShowApiTester(false);
+      else if (showGitPanel) setShowGitPanel(false);
+      else if (showScreenshotAnalyzer) setShowScreenshotAnalyzer(false);
       else if (showTemplates) setShowTemplates(false);
       else if (showMediaGallery) setShowMediaGallery(false);
       else if (showEnvPanel) setShowEnvPanel(false);
@@ -8398,11 +11727,12 @@ export default function HomePage() {
       else if (showModelMenu) setShowModelMenu(false);
       else if (showGitHubModal) setShowGitHubModal(false);
       else if (showIntegrations) setShowIntegrations(false);
+      else if (showResearchPanel) setShowResearchPanel(false);
       else if (showProjectMenu) setShowProjectMenu(false);
     };
     document.addEventListener('keydown', handleKeyboard);
     return () => document.removeEventListener('keydown', handleKeyboard);
-  }, [showModelMenu, showGitHubModal, showCloneModal, showIntegrations, showCommandPalette, showFileSearch, showContentSearch, showTemplates, showEnvPanel, showProjectMenu, showMediaGallery, vfsUndo, vfsRedo]);
+  }, [showModelMenu, showGitHubModal, showCloneModal, showIntegrations, showResearchPanel, showCommandPalette, showFileSearch, showContentSearch, showFindReplace, showShortcuts, showThemeSelector, showColorPicker, showGotoLine, tabContextMenu, explorerContextMenu, renameTarget, showA11yPanel, showSeoPanel, showTailwindPanel, showColorPalettePanel, showPerfPanel, showStatsPanel, showCssVarsPanel, showConsolePanel, showDepsPanel, showComplexityPanel, showOutlinePanel, showImageOptPanel, showDiffStatsPanel, showNetworkPanel, showHtmlValidatorPanel, showFontPanel, showSnippetsPanel, showTreemapPanel, showUnusedCssPanel, showLinkCheckerPanel, showDomTreePanel, showMetaEditorPanel, showShortcutsRef, showContrastPanel, showZIndexPanel, showTodoScanPanel, showRegexPanel, showSpecificityPanel, showLazyImgPanel, showTextStatsPanel, showDuplicatePanel, showElementCountPanel, showConsoleFilter, showColorEdit, showFoldMap, showDepGraph, showPerfBudget, showResponsiveGrid, showAnimPanel, showEventAudit, showOgPreview, showSemanticPanel, showChangeSummary, showWhitespacePanel, showPwaPanel, showSchemaPanel, showBundlePanel, showAriaPanel, showSecurityPanel, showCollabPanel, showFeedbackPanel, showOnboarding, showChangelog, finishOnboarding, showTemplates, showEnvPanel, showProjectMenu, showMediaGallery, vfsUndo, vfsRedo]);
 
   // Clipboard paste → auto-attach screenshots (Ctrl+V anywhere)
   useEffect(() => {
@@ -8447,19 +11777,35 @@ export default function HomePage() {
     }
   }, [messages, clonedHtml]);
 
-  // Extract preview HTML — prefer VFS assembled, fall back to legacy
-  const rawPreviewHtml = useMemo(() => {
-    if (Object.keys(projectFiles).length > 0) {
-      return assemblePreview(projectFiles);
+  // Extract preview HTML — debounced during streaming for performance
+  const [rawPreviewHtml, setRawPreviewHtml] = useState<string | null>(null);
+  const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const compute = () => {
+      if (Object.keys(projectFiles).length > 0) {
+        const assembled = assemblePreview(projectFiles);
+        if (assembled) { setRawPreviewHtml(assembled); return; }
+      }
+      setRawPreviewHtml(clonedHtml ?? extractPreviewHtml(messages));
+    };
+    if (isStreaming) {
+      // Debounce during streaming — prevents excessive re-renders while AI is typing
+      if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
+      previewDebounceRef.current = setTimeout(compute, 300);
+    } else {
+      // Immediate update when not streaming (user edits, clone, etc.)
+      if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
+      compute();
     }
-    return clonedHtml ?? extractPreviewHtml(messages);
-  }, [projectFiles, messages, clonedHtml]);
+    return () => { if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current); };
+  }, [projectFiles, messages, clonedHtml, isStreaming]);
 
   // Clear runtime errors when preview changes (fix was applied)
   const prevPreviewRef = useRef<string | null>(null);
   useEffect(() => {
     if (rawPreviewHtml && prevPreviewRef.current && rawPreviewHtml !== prevPreviewRef.current) {
       setRuntimeErrors([]);
+      setPreviewLoading(true);
     }
     prevPreviewRef.current = rawPreviewHtml;
   }, [rawPreviewHtml]);
@@ -8468,17 +11814,63 @@ export default function HomePage() {
   const previewHtml = useMemo(() => {
     if (!rawPreviewHtml) return null;
 
-    // Error capture script — always injected in both edit and non-edit modes
-    const errorCaptureScript = `<script>(function(){var sent={};function fwd(msg,src,ln,col){var k=msg+(src||"")+(ln||"");if(sent[k])return;sent[k]=1;try{parent.postMessage({type:"aurion_error",error:{message:String(msg).slice(0,500),source:src||"",line:ln||0,col:col||0}},"*")}catch(e){}}window.onerror=function(m,s,l,c){fwd(m,s,l,c);};window.addEventListener("unhandledrejection",function(e){fwd("Unhandled Promise: "+(e.reason&&e.reason.message||e.reason||"unknown"))});var _ce=console.error;console.error=function(){var a=Array.prototype.slice.call(arguments).map(function(x){return typeof x==="object"?JSON.stringify(x):String(x)}).join(" ");fwd("console.error: "+a);_ce.apply(console,arguments)};})();</script>`;
+    // Replace unresolved AI-generated placeholders with fallbacks
+    let html = rawPreviewHtml
+      .replace(/__GEMINI_IMAGE_([a-zA-Z0-9_-]+)__/g, (_m: string, id: string) =>
+        `https://placehold.co/800x600/1a1a2e/eaeaea?text=${encodeURIComponent(id)}`)
+      .replace(/__LTX_VIDEO_URL__/g, '');
+
+    // Strip Tailwind CDN script — causes CORS errors in srcdoc iframes
+    html = html.replace(/<script[^>]*src=["']https?:\/\/cdn\.tailwindcss\.com[^"']*["'][^>]*><\/script>/gi, '<!-- tailwind cdn removed -->')
+      .replace(/<script[^>]*src=["']https?:\/\/cdn\.tailwindcss\.com[^"']*["'][^>]*\/>/gi, '<!-- tailwind cdn removed -->');
+
+    // Auto-inject premium fonts if not present
+    if (!html.includes('fonts.googleapis.com') && !html.includes('fonts.gstatic.com')) {
+      const headEnd = html.indexOf('</head>');
+      if (headEnd !== -1) html = html.slice(0, headEnd) + '\n' + PREMIUM_FONTS_CDN + '\n' + html.slice(headEnd);
+    }
+
+    // Auto-inject design system CSS only if HTML lacks its own design system
+    const hasOwnCSS = /<style[^>]*>[\s\S]{300,}<\/style>/i.test(html) && (/:root\s*\{/.test(html) || /--\w+\s*:/.test(html));
+    if (!html.includes('aurion-design-system') && !hasOwnCSS) {
+      const headEnd = html.indexOf('</head>');
+      if (headEnd !== -1) html = html.slice(0, headEnd) + '\n' + SHADCN_BASE_CSS + '\n' + html.slice(headEnd);
+    }
+
+    // Auto-inject GSAP if code references it
+    if (/\bgsap\b|ScrollTrigger/i.test(html) && !html.includes('gsap.min.js')) {
+      const headEnd = html.indexOf('</head>');
+      if (headEnd !== -1) html = html.slice(0, headEnd) + '\n' + GSAP_CDN + '\n' + html.slice(headEnd);
+    }
+
+    // Auto-inject Lenis if code references it
+    if (/\bLenis\b/i.test(html) && !html.includes('lenis.min.js')) {
+      const headEnd = html.indexOf('</head>');
+      if (headEnd !== -1) html = html.slice(0, headEnd) + '\n' + LENIS_CDN + '\n' + html.slice(headEnd);
+    }
+
+    // Auto-inject Font Awesome if code uses fa- classes
+    if (/\bfa-|fas |far |fab /.test(html) && !html.includes('font-awesome')) {
+      const headEnd = html.indexOf('</head>');
+      if (headEnd !== -1) html = html.slice(0, headEnd) + '\n' + FA_CDN + '\n' + html.slice(headEnd);
+    }
+
+    // Error capture + console forwarding script — forwards errors + console.log/warn/info to parent
+    const errorCaptureScript = `<script>(function(){var sent={};var overlay=null;function showOverlay(msg){if(overlay)overlay.remove();overlay=document.createElement('div');overlay.id='__err_overlay';overlay.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:999999;background:rgba(24,24,27,0.97);border-top:2px solid #ef4444;padding:16px 20px;font-family:ui-monospace,monospace;font-size:13px;color:#fca5a5;max-height:40vh;overflow:auto;backdrop-filter:blur(8px)';var h=document.createElement('div');h.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:8px';var t=document.createElement('span');t.style.cssText='color:#ef4444;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px';t.textContent='Runtime Error';var btn=document.createElement('button');btn.textContent='\\u2715';btn.style.cssText='background:none;border:none;color:#666;font-size:16px;cursor:pointer;padding:0 4px';btn.onclick=function(){overlay.remove();overlay=null};h.appendChild(t);h.appendChild(btn);overlay.appendChild(h);var m=document.createElement('pre');m.style.cssText='margin:0;white-space:pre-wrap;word-break:break-all;line-height:1.5;color:#fecaca;font-size:12px';m.textContent=msg;overlay.appendChild(m);document.body.appendChild(overlay)}function fwd(msg,src,ln,col){var k=msg+(src||"")+(ln||"");if(sent[k])return;sent[k]=1;showOverlay(String(msg)+(ln?' (line '+ln+')':''));try{parent.postMessage({type:"aurion_error",error:{message:String(msg).slice(0,500),source:src||"",line:ln||0,col:col||0}},"*")}catch(e){}}window.onerror=function(m,s,l,c){fwd(m,s,l,c)};window.addEventListener("unhandledrejection",function(e){fwd("Unhandled Promise: "+(e.reason&&e.reason.message||e.reason||"unknown"))});var _ce=console.error;console.error=function(){var a=Array.prototype.slice.call(arguments).map(function(x){return typeof x==="object"?JSON.stringify(x):String(x)}).join(" ");fwd("console.error: "+a);_ce.apply(console,arguments)};var _cl=console.log;console.log=function(){var a=Array.prototype.slice.call(arguments).map(function(x){return typeof x==="object"?JSON.stringify(x,null,2):String(x)}).join(" ");try{parent.postMessage({type:"aurion_console",level:"log",text:a},"*")}catch(e){}_cl.apply(console,arguments)};var _cw=console.warn;console.warn=function(){var a=Array.prototype.slice.call(arguments).map(function(x){return typeof x==="object"?JSON.stringify(x):String(x)}).join(" ");try{parent.postMessage({type:"aurion_console",level:"warn",text:a},"*")}catch(e){}_cw.apply(console,arguments)};var _ci=console.info;console.info=function(){var a=Array.prototype.slice.call(arguments).map(function(x){return typeof x==="object"?JSON.stringify(x):String(x)}).join(" ");try{parent.postMessage({type:"aurion_console",level:"info",text:a},"*")}catch(e){}_ci.apply(console,arguments)}})();</script>`;
 
     // When NOT in edit mode: simple link+form blocker
     if (!isEditMode) {
       const interceptScript = `<script>document.addEventListener('click',function(e){var a=e.target.closest('a');if(a){e.preventDefault();e.stopPropagation();}},true);document.addEventListener('submit',function(e){e.preventDefault();},true);</script>`;
-      const combined = errorCaptureScript + interceptScript;
-      if (rawPreviewHtml.includes('</body>')) {
-        return rawPreviewHtml.replace('</body>', combined + '</body>');
+      // v16: Layout debugger + dark/light mode CSS
+      const layoutDebugCss = layoutDebugActive ? `<style>*{outline:1px solid rgba(59,130,246,0.35)!important;}*:hover{outline:2px solid rgba(59,130,246,0.8)!important;}</style>` : '';
+      const darkModeCss = previewDarkMode === 'dark' ? `<style>html{filter:invert(1) hue-rotate(180deg)!important;}img,video,canvas,svg{filter:invert(1) hue-rotate(180deg)!important;}</style>` : previewDarkMode === 'light' ? `<style>html{background:#fff!important;color:#000!important;}</style>` : '';
+      // v18: Grid/Flex visualizer
+      const gridFlexCss = gridFlexDebugActive ? `<style>[style*="display:grid"],[style*="display: grid"]{outline:2px dashed #ec4899!important;position:relative!important;}[style*="display:grid"]::after,[style*="display: grid"]::after{content:"GRID";position:absolute;top:0;right:0;background:#ec4899;color:#fff;font-size:9px;padding:1px 4px;z-index:9999;}[style*="display:flex"],[style*="display: flex"]{outline:2px dashed #a855f7!important;position:relative!important;}[style*="display:flex"]::after,[style*="display: flex"]::after{content:"FLEX";position:absolute;top:0;right:0;background:#a855f7;color:#fff;font-size:9px;padding:1px 4px;z-index:9999;}</style>` : '';
+      const combined = errorCaptureScript + interceptScript + layoutDebugCss + darkModeCss + gridFlexCss;
+      if (html.includes('</body>')) {
+        return html.replace('</body>', combined + '</body>');
       }
-      return rawPreviewHtml + combined;
+      return html + combined;
     }
 
     // ─── EDIT MODE: full visual editor ───
@@ -8637,11 +12029,17 @@ export default function HomePage() {
 
     const editorScript = L.join('\n');
 
-    if (rawPreviewHtml.includes('</body>')) {
-      return rawPreviewHtml.replace('</body>', errorCaptureScript + '\n' + editorScript + '\n</body>');
+    // v16: Layout debugger + dark/light mode CSS for edit mode too
+    const layoutDebugCss = layoutDebugActive ? `<style>*{outline:1px solid rgba(59,130,246,0.35)!important;}*:hover{outline:2px solid rgba(59,130,246,0.8)!important;}</style>` : '';
+    const darkModeCss = previewDarkMode === 'dark' ? `<style>html{filter:invert(1) hue-rotate(180deg)!important;}img,video,canvas,svg{filter:invert(1) hue-rotate(180deg)!important;}</style>` : previewDarkMode === 'light' ? `<style>html{background:#fff!important;color:#000!important;}</style>` : '';
+    // v18: Grid/Flex visualizer
+    const gridFlexCss = gridFlexDebugActive ? `<style>[style*="display:grid"],[style*="display: grid"]{outline:2px dashed #ec4899!important;position:relative!important;}[style*="display:flex"],[style*="display: flex"]{outline:2px dashed #a855f7!important;position:relative!important;}</style>` : '';
+
+    if (html.includes('</body>')) {
+      return html.replace('</body>', errorCaptureScript + '\n' + editorScript + '\n' + layoutDebugCss + darkModeCss + gridFlexCss + '\n</body>');
     }
-    return rawPreviewHtml + '\n' + editorScript;
-  }, [rawPreviewHtml, isEditMode]);
+    return html + '\n' + editorScript + layoutDebugCss + darkModeCss + gridFlexCss;
+  }, [rawPreviewHtml, isEditMode, layoutDebugActive, previewDarkMode, gridFlexDebugActive]);
   const codeBlocks = useMemo(() => extractAllCodeBlocks(messages), [messages]);
 
   // Build workspace context string for AI
@@ -8681,13 +12079,42 @@ export default function HomePage() {
       parts.push(`Code blocks generated: ${codeBlocks.length}`);
     }
     parts.push(`Model: ${selectedModel.name}`);
+    parts.push(`Target framework: ${outputFramework}${outputFramework === 'react' ? ' (React + Tailwind + shadcn/ui components)' : outputFramework === 'nextjs' ? ' (Next.js App Router + React + Tailwind + shadcn/ui)' : outputFramework === 'vue' ? ' (Vue 3 + Composition API + Tailwind)' : ' (Vanilla HTML/CSS/JS + Tailwind)'}`);
     parts.push(`Device preview: ${deviceMode}`);
+    if (runtimeErrors.length > 0) {
+      parts.push(`Runtime errors (${runtimeErrors.length}):`);
+      runtimeErrors.slice(-5).forEach(e => parts.push(`  ✗ ${e.message}${e.line ? ` (line ${e.line})` : ''}`));
+    }
     parts.push('');
     parts.push('Use <<FILE:path>>content<</FILE>> to create/update files (FULL content, not diffs).');
     parts.push('For incremental edits, only emit changed files. Other files are preserved.');
+    parts.push('');
+    parts.push('[VISUAL QUALITY — MANDATORY]');
+    parts.push('Every page MUST achieve Awwwards/FWA visual quality. Dark theme #0a0a0a. Syne headings + DM Sans body. clamp() typography.');
+    parts.push('Aurora/particle hero bg. Glass navbar. GSAP ScrollTrigger + Lenis smooth scroll. Noise grain. Shimmer text. Glow buttons.');
+    parts.push('80-120px section padding. Scroll progress bar. Mobile hamburger 768px. 4-col footer. Accent color consistency.');
+    parts.push('.reveal + IntersectionObserver on all sections. ALL CSS self-contained (define .glass, .card, .btn-primary, .container).');
+    parts.push('');
+    parts.push(buildReactBitsContextSection());
+    parts.push('[/VISUAL QUALITY]');
+    // Inject research context if available
+    if (researchMode && researchContext) {
+      parts.push('');
+      parts.push('[NOTEBOOKLM RESEARCH CONTEXT]');
+      parts.push(researchContext.slice(0, 4000));
+      parts.push('[/NOTEBOOKLM RESEARCH CONTEXT]');
+    }
+    // Inject Claude Code mode
+    if (claudeCodeMode) {
+      parts.push('');
+      parts.push('[CLAUDE CODE MODE: ACTIVE]');
+      parts.push('Apply iterative development: error-first thinking, parallel awareness, context management.');
+      parts.push('Use smart retry patterns, quality gates, and output recovery for production-grade code.');
+      parts.push('[/CLAUDE CODE MODE]');
+    }
     parts.push('[/WORKSPACE STATE]');
     return parts.join('\n');
-  }, [activeTab, previewHtml, clonedHtml, cloneUrl, codeBlocks, selectedModel, showTerminal, terminalLines, integrationKeys, projectFiles, selectedFile, deviceMode]);
+  }, [activeTab, previewHtml, clonedHtml, cloneUrl, codeBlocks, selectedModel, showTerminal, terminalLines, integrationKeys, projectFiles, selectedFile, deviceMode, runtimeErrors, outputFramework, researchMode, researchContext, claudeCodeMode]);
 
   /* ── Send message & stream response ── */
   const streamToAssistant = useCallback(async (
@@ -8698,14 +12125,34 @@ export default function HomePage() {
     images?: { data: string; type: string }[],
   ) => {
     const selectedModel = MODELS.find(m => m.id === useModel);
-    const endpoint = getApiEndpoint(selectedModel?.provider || 'ollama');
+    const isAnthropicModel = selectedModel?.provider === 'anthropic' || useModel.startsWith('claude-');
+
+    // Route through Claude Code engine when claudeCodeMode is active or using Anthropic models
+    const useClaudeCode = (claudeCodeMode || isAnthropicModel) && allMessages.length > 0;
+    const endpoint = useClaudeCode ? '/api/claude-code' : getApiEndpoint(selectedModel?.provider || 'google');
+
+    const bodyPayload = useClaudeCode
+      ? {
+          action: 'enhanced-generate',
+          prompt: allMessages[allMessages.length - 1]?.content || '',
+          messages: allMessages.slice(0, -1),
+          model: useModel,
+          researchContext: researchContext || undefined,
+        }
+      : {
+          messages: allMessages,
+          model: useModel,
+          ...(images?.length ? { images } : {}),
+          ...(researchContext ? { researchContext } : {}),
+        };
+
     const res = await fetchWithRetry(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: allMessages, model: useModel, ...(images?.length ? { images } : {}) }),
+      body: JSON.stringify(bodyPayload),
       signal,
-      timeout: 120000, // 2 min for AI streaming
-    }, 2);
+      timeout: 0,
+    }, 0);
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({ error: 'Request failed' }));
@@ -8734,13 +12181,14 @@ export default function HomePage() {
           throw new Error(clean);
         }
         if (data.text) {
+          setStreamingChars(prev => prev + data.text.length);
           setMessages((prev) =>
             prev.map((m) => (m.id === assistantMsgId ? { ...m, content: m.content + data.text } : m))
           );
         }
       }
     }
-  }, []);
+  }, [claudeCodeMode, researchContext]);
 
   const sendToAI = useCallback(async (text: string, imgs?: { data: string; type: string }[]) => {
     if (!text.trim() || isStreaming) return;
@@ -8754,17 +12202,34 @@ export default function HomePage() {
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
     setIsStreaming(true);
+    setStreamingChars(0);
+    streamStartTime.current = Date.now();
 
     const controller = new AbortController();
     abortRef.current = controller;
 
     // Build context & messages once
     const ctx = buildWorkspaceContext();
+    // Auto-enhance with research if research mode is active and no research yet
+    if (researchMode && !researchContext && text.length > 10) {
+      // Fire-and-forget research enhancement (non-blocking)
+      enhanceWithResearch('generate', text).then(enhancement => {
+        if (enhancement) setResearchContext(enhancement);
+      }).catch(() => {});
+    }
+    // Framework-specific generation instructions
+    const fwInstructions = outputFramework === 'react'
+      ? '\n[FRAMEWORK: React]\nGenerate React components with TypeScript. Use shadcn/ui patterns: Button, Card, Input, Dialog, Sheet, Tabs, Badge, Avatar, etc. Use Tailwind CSS utility classes. Use Lucide React icons. Export default function components. Use useState, useEffect, useCallback hooks. Structure: component per file, use <<FILE:ComponentName.tsx>> format.\n'
+      : outputFramework === 'nextjs'
+      ? '\n[FRAMEWORK: Next.js App Router]\nGenerate Next.js 14+ App Router code. Use TypeScript. Server/Client components (mark "use client" when needed). Use shadcn/ui components. Use Tailwind CSS. File structure: app/page.tsx, app/layout.tsx, components/*.tsx. Use Next.js Image, Link, metadata. Generate package.json with next, react, react-dom, tailwindcss dependencies.\n'
+      : outputFramework === 'vue'
+      ? '\n[FRAMEWORK: Vue 3]\nGenerate Vue 3 SFC with <script setup lang="ts">. Use Composition API (ref, computed, onMounted). Use Tailwind CSS. Structure: components/*.vue, App.vue, main.ts. Generate package.json with vue, vite, tailwindcss dependencies.\n'
+      : '';
     const allMessages = [...messages, userMsg].map(({ role, content }) => ({ role, content }));
     if (allMessages.length > 0) {
       allMessages[allMessages.length - 1] = {
         ...allMessages[allMessages.length - 1],
-        content: allMessages[allMessages.length - 1].content + '\n\n' + ctx,
+        content: allMessages[allMessages.length - 1].content + '\n\n' + ctx + fwInstructions,
       };
     }
 
@@ -8833,7 +12298,7 @@ export default function HomePage() {
       abortRef.current = null;
       autoFixInFlightRef.current = false;
     }
-  }, [isStreaming, messages, model, streamToAssistant, buildWorkspaceContext, abMode, abModelB]);
+  }, [isStreaming, messages, model, streamToAssistant, buildWorkspaceContext, abMode, abModelB, outputFramework]);
 
   const sendMessage = useCallback(() => {
     const text = input.trim();
@@ -8871,6 +12336,245 @@ export default function HomePage() {
   const stopStream = () => { abortRef.current?.abort(); setIsStreaming(false); };
   const clearChat = () => { if (isStreaming) stopStream(); setMessages([]); setError(null); setClonedHtml(null); setCloneError(null); };
 
+  // ── Conversation History Management ──
+  // Load conversation list from IndexedDB on mount
+  useEffect(() => {
+    idbGet<ConversationEntry[]>('aurion_conversations').then(saved => {
+      if (saved && Array.isArray(saved)) setConversations(saved);
+    }).catch(() => {});
+  }, []);
+
+  const saveCurrentConversation = useCallback(() => {
+    if (messages.length === 0) return;
+    const title = messages[0]?.content?.slice(0, 60) || 'Untitled';
+    setConversations(prev => {
+      const existing = prev.findIndex(c => c.id === activeConversationId);
+      const entry: ConversationEntry = { id: activeConversationId, title, messages: [...messages], timestamp: Date.now() };
+      const updated = existing >= 0 ? prev.map(c => c.id === activeConversationId ? entry : c) : [entry, ...prev];
+      idbSet('aurion_conversations', updated).catch(() => {});
+      return updated;
+    });
+  }, [messages, activeConversationId]);
+
+  const loadConversation = useCallback((conv: ConversationEntry) => {
+    // Save current first
+    saveCurrentConversation();
+    setMessages(conv.messages);
+    setActiveConversationId(conv.id);
+    setShowConversationHistory(false);
+  }, [saveCurrentConversation]);
+
+  const deleteConversation = useCallback((id: string) => {
+    setConversations(prev => {
+      const updated = prev.filter(c => c.id !== id);
+      idbSet('aurion_conversations', updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  const newConversation = useCallback(() => {
+    saveCurrentConversation();
+    const newId = 'conv_' + Date.now().toString(36);
+    setActiveConversationId(newId);
+    clearChat();
+  }, [saveCurrentConversation, clearChat]);
+
+  // Auto-save conversation periodically
+  useEffect(() => {
+    if (messages.length > 0) {
+      const timer = setTimeout(() => saveCurrentConversation(), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [messages, saveCurrentConversation]);
+
+  // ── Code Snippet Bookmarks ──
+  useEffect(() => {
+    idbGet<Bookmark[]>('aurion_bookmarks').then(saved => {
+      if (saved && Array.isArray(saved)) setBookmarks(saved);
+    }).catch(() => {});
+  }, []);
+
+  const addBookmark = useCallback((label: string, code: string) => {
+    const bm: Bookmark = { id: 'bm_' + Date.now().toString(36), label, code, language: projectFiles[selectedFile]?.language || 'html', file: selectedFile, timestamp: Date.now() };
+    setBookmarks(prev => {
+      const updated = [bm, ...prev].slice(0, 50);
+      idbSet('aurion_bookmarks', updated).catch(() => {});
+      return updated;
+    });
+  }, [selectedFile, projectFiles]);
+
+  const deleteBookmark = useCallback((id: string) => {
+    setBookmarks(prev => {
+      const updated = prev.filter(b => b.id !== id);
+      idbSet('aurion_bookmarks', updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  const insertBookmark = useCallback((code: string) => {
+    if (!selectedFile || !projectFiles[selectedFile]) return;
+    setProjectFiles(prev => ({
+      ...prev,
+      [selectedFile]: { ...prev[selectedFile], content: prev[selectedFile].content + '\n' + code },
+    }));
+    setShowBookmarks(false);
+  }, [selectedFile, projectFiles]);
+
+  // ── AI Prompt Templates ──
+  const PROMPT_TEMPLATES = useMemo(() => [
+    { icon: '🏠', title: 'Landing Page', prompt: 'Build a modern landing page with hero section, features grid, testimonials, pricing cards, and footer. Use gradients, animations, and professional typography.', cat: 'Page' },
+    { icon: '📊', title: 'Dashboard', prompt: 'Create an admin dashboard with sidebar navigation, stats cards, line/bar charts, recent activity table, and a clean dark theme.', cat: 'Page' },
+    { icon: '🛒', title: 'E-commerce', prompt: 'Build an e-commerce product listing page with product cards, filters sidebar, search bar, cart icon with badge, and responsive grid layout.', cat: 'Page' },
+    { icon: '📝', title: 'Blog', prompt: 'Create a modern blog with featured post hero, post cards grid, categories sidebar, newsletter signup, and dark/light theme toggle.', cat: 'Page' },
+    { icon: '🎨', title: 'Portfolio', prompt: 'Build a creative portfolio website with animated hero, project gallery with hover effects, about section, skills bars, and contact form.', cat: 'Page' },
+    { icon: '📱', title: 'Mobile App UI', prompt: 'Design a mobile app interface with bottom navigation, profile screen, settings list, notification badges, and swipeable cards.', cat: 'Page' },
+    { icon: '✨', title: 'Add Animations', prompt: 'Add smooth entrance animations, hover effects, scroll-triggered reveals, and micro-interactions to the current page using CSS animations and transitions.', cat: 'Enhance' },
+    { icon: '🌙', title: 'Dark Mode', prompt: 'Add a dark/light theme toggle with smooth transition. Use CSS variables for theming. Dark: #0f0f0f bg, light: #ffffff bg.', cat: 'Enhance' },
+    { icon: '📐', title: 'Make Responsive', prompt: 'Make the current page fully responsive with mobile-first breakpoints, hamburger menu for mobile nav, and proper spacing/sizing for all screen sizes.', cat: 'Enhance' },
+    { icon: '♿', title: 'Accessibility', prompt: 'Improve accessibility: add ARIA labels, keyboard navigation, focus styles, semantic HTML, proper heading hierarchy, alt texts, and color contrast fixes.', cat: 'Enhance' },
+    { icon: '⚡', title: 'Optimize Performance', prompt: 'Optimize the code: lazy load images, minimize DOM, use CSS containment, add loading states, optimize animations with will-change and transform.', cat: 'Enhance' },
+    { icon: '🧩', title: 'Add Form', prompt: 'Add a professional contact form with name, email, message fields, validation feedback, submit button with loading state, and success/error toast notifications.', cat: 'Component' },
+    { icon: '📊', title: 'Add Charts', prompt: 'Add interactive data visualization charts using Recharts: line chart, bar chart, and pie chart with sample data, tooltips, and legends.', cat: 'Component' },
+    { icon: '🗺️', title: 'Add Navigation', prompt: 'Add a professional navbar with logo, links, dropdown menus, mobile hamburger menu, and smooth scroll to sections. Sticky on scroll.', cat: 'Component' },
+  ], []);
+
+  // ── Find & Replace results ──
+  const findResults = useMemo(() => {
+    if (!findQuery) return [];
+    const results: { file: string; line: number; col: number; text: string; matchIdx: number }[] = [];
+    let matchCount = 0;
+    for (const [file, data] of Object.entries(projectFiles)) {
+      const lines = data.content.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        try {
+          const regex = findRegex ? new RegExp(findQuery, findCaseSensitive ? 'g' : 'gi') : new RegExp(findQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), findCaseSensitive ? 'g' : 'gi');
+          let match;
+          while ((match = regex.exec(lines[i])) !== null) {
+            results.push({ file, line: i + 1, col: match.index, text: lines[i], matchIdx: matchCount++ });
+            if (results.length > 200) return results;
+          }
+        } catch { break; }
+      }
+    }
+    return results;
+  }, [findQuery, projectFiles, findRegex, findCaseSensitive]);
+
+  const replaceInFiles = useCallback((replaceAll: boolean) => {
+    if (!findQuery || !replaceQuery) return;
+    setProjectFiles(prev => {
+      const updated = { ...prev };
+      for (const [file, data] of Object.entries(updated)) {
+        try {
+          const regex = findRegex ? new RegExp(findQuery, findCaseSensitive ? (replaceAll ? 'g' : '') : (replaceAll ? 'gi' : 'i')) : new RegExp(findQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), findCaseSensitive ? (replaceAll ? 'g' : '') : (replaceAll ? 'gi' : 'i'));
+          const newContent = data.content.replace(regex, replaceQuery);
+          if (newContent !== data.content) {
+            updated[file] = { ...data, content: newContent };
+            if (!replaceAll) return updated;
+          }
+        } catch { /* skip */ }
+      }
+      return updated;
+    });
+  }, [findQuery, replaceQuery, findRegex, findCaseSensitive]);
+
+  // ── AI Code Explainer ──
+  const explainCurrentCode = useCallback(async () => {
+    if (!selectedFile || !projectFiles[selectedFile] || isStreaming) return;
+    setIsExplaining(true);
+    const code = projectFiles[selectedFile].content.slice(0, 3000);
+    const explainPrompt = `Explain this code concisely. What does it do, key patterns used, and any potential issues:\n\n\`\`\`${projectFiles[selectedFile].language || 'html'}\n${code}\n\`\`\``;
+    sendPrompt(explainPrompt);
+    setIsExplaining(false);
+  }, [selectedFile, projectFiles, isStreaming, sendPrompt]);
+
+  // ── Editor Themes ──
+  const EDITOR_THEMES = useMemo(() => [
+    { id: 'vs-dark', name: 'Dark+ (Default)', desc: 'VS Code dark theme' },
+    { id: 'vs', name: 'Light', desc: 'VS Code light theme' },
+    { id: 'hc-black', name: 'High Contrast Dark', desc: 'Accessibility focused' },
+    { id: 'hc-light', name: 'High Contrast Light', desc: 'Light accessibility' },
+  ], []);
+
+  // ── Keyboard Shortcuts Reference ──
+  const SHORTCUTS = useMemo(() => [
+    { keys: '⌘K', desc: 'Command Palette', cat: 'General' },
+    { keys: '⌘P', desc: 'Go to File', cat: 'General' },
+    { keys: '⌘⇧F', desc: 'Search in Files', cat: 'General' },
+    { keys: '⌘S', desc: 'Save & Refresh Preview', cat: 'General' },
+    { keys: 'Esc', desc: 'Close Modals/Panels', cat: 'General' },
+    { keys: '⌘B', desc: 'Toggle Chat Panel', cat: 'View' },
+    { keys: '⌘`', desc: 'Toggle Terminal', cat: 'View' },
+    { keys: '⌘E', desc: 'Toggle Visual Editor', cat: 'View' },
+    { keys: '⌘1-4', desc: 'Switch Tabs (App/Code/DB/Pay)', cat: 'View' },
+    { keys: '⌘H', desc: 'Conversation History', cat: 'Chat' },
+    { keys: '⌘Z', desc: 'Undo (VFS)', cat: 'Edit' },
+    { keys: '⌘⇧Z', desc: 'Redo (VFS)', cat: 'Edit' },
+    { keys: '⌘D', desc: 'Download ZIP', cat: 'Project' },
+    { keys: '⌘⇧H', desc: 'Find & Replace', cat: 'Edit' },
+    { keys: '⌘/', desc: 'Keyboard Shortcuts', cat: 'General' },
+    { keys: '⌘G', desc: 'Go to Line', cat: 'Edit' },
+  ], []);
+
+  // ── Quick File Creator ──
+  const createNewFile = useCallback((name: string) => {
+    if (!name.trim()) return;
+    const trimmed = name.trim();
+    setProjectFiles(prev => ({
+      ...prev,
+      [trimmed]: { content: '', language: detectLanguage(trimmed) },
+    }));
+    openFile(trimmed);
+    setActiveTab('code');
+    setShowNewFileInput(false);
+    setNewFileName('');
+  }, [openFile]);
+
+  // ── Preview Screenshot ──
+  const capturePreviewScreenshot = useCallback(async () => {
+    if (!iframeRef.current) return;
+    try {
+      const iframe = iframeRef.current;
+      const canvas = document.createElement('canvas');
+      const rect = iframe.getBoundingClientRect();
+      canvas.width = rect.width * 2;
+      canvas.height = rect.height * 2;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.scale(2, 2);
+      // Use the iframe's srcdoc to render
+      const svgData = `<svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml">${iframe.srcdoc || '<p>No preview</p>'}</div></foreignObject></svg>`;
+      const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(b => {
+          if (!b) return;
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(b);
+          a.download = `aurion-preview-${Date.now()}.png`;
+          a.click();
+          URL.revokeObjectURL(a.href);
+        }, 'image/png');
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        // Fallback: download HTML directly
+        const htmlBlob = new Blob([iframe.srcdoc || ''], { type: 'text/html' });
+        const htmlUrl = URL.createObjectURL(htmlBlob);
+        window.open(htmlUrl, '_blank');
+      };
+      img.src = url;
+    } catch {
+      // Fallback: open in new tab
+      if (iframeRef.current?.srcdoc) {
+        const htmlBlob = new Blob([iframeRef.current.srcdoc], { type: 'text/html' });
+        window.open(URL.createObjectURL(htmlBlob), '_blank');
+      }
+    }
+  }, []);
+
   /* ── Auto-deploy to Vercel (server token) ── */
   const deployToVercel = useCallback(async (projectName?: string) => {
     const html = clonedHtml ?? extractPreviewHtml(messages);
@@ -8903,7 +12607,7 @@ export default function HomePage() {
   }, [clonedHtml, messages]);
 
   /* ── Clone website functions ── */
-  const streamClone = async (url: string, html: string, tokens: { colors: string[]; fonts: string[]; cssVariables?: Record<string, string>; gradients?: string[]; shadows?: string[]; borderRadii?: string[]; mediaQueries?: string[]; keyframes?: string[] }, screenshot: string | null, signal: AbortSignal, pageName?: string, rawHtml?: string, branding?: unknown, navigation?: unknown[], images?: unknown[], videos?: unknown[], styleBlocks?: string, linkedResources?: unknown, screenshots?: string[], currentHtml?: string, feedback?: string, extraData?: { cssFramework?: string; iconLibraries?: string[]; animationLibraries?: string[]; colorFrequency?: Record<string, number> }): Promise<string> => {
+  const streamClone = async (url: string, html: string, tokens: { colors: string[]; fonts: string[]; cssVariables?: Record<string, string>; gradients?: string[]; shadows?: string[]; borderRadii?: string[]; mediaQueries?: string[]; keyframes?: string[] }, screenshot: string | null, signal: AbortSignal, pageName?: string, rawHtml?: string, branding?: unknown, navigation?: unknown[], images?: unknown[], videos?: unknown[], styleBlocks?: string, linkedResources?: unknown, screenshots?: string[], currentHtml?: string, feedback?: string, extraData?: { cssFramework?: string; iconLibraries?: string[]; animationLibraries?: string[]; colorFrequency?: Record<string, number>; interactionModels?: unknown[]; layeredAssets?: unknown[]; multiStateContent?: unknown[]; scrollBehaviors?: unknown[]; computedPatterns?: Record<string, Record<string, string>>; zIndexLayers?: unknown[]; pageTopology?: unknown[]; fontStack?: unknown[]; hoverTransitions?: unknown[]; responsiveBreakpoints?: unknown[] }): Promise<string> => {
     const res = await fetch('/api/clone', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -9052,7 +12756,7 @@ export default function HomePage() {
           scrapeData.screenshots, // multi-screenshot scroll captures
           undefined, // currentHtml
           undefined, // feedback
-          { cssFramework: scrapeData.cssFramework, iconLibraries: scrapeData.iconLibraries, animationLibraries: scrapeData.animationLibraries, colorFrequency: scrapeData.colorFrequency },
+          { cssFramework: scrapeData.cssFramework, iconLibraries: scrapeData.iconLibraries, animationLibraries: scrapeData.animationLibraries, colorFrequency: scrapeData.colorFrequency, interactionModels: scrapeData.interactionModels, layeredAssets: scrapeData.layeredAssets, multiStateContent: scrapeData.multiStateContent, scrollBehaviors: scrapeData.scrollBehaviors, computedPatterns: scrapeData.computedPatterns, zIndexLayers: scrapeData.zIndexLayers, pageTopology: scrapeData.pageTopology, fontStack: scrapeData.fontStack, hoverTransitions: scrapeData.hoverTransitions, responsiveBreakpoints: scrapeData.responsiveBreakpoints },
         );
         console.log('[clone] AI returned', mainHtml.length, 'chars. Starts with:', mainHtml.slice(0, 100));
       } catch (cloneErr) {
@@ -9094,7 +12798,7 @@ export default function HomePage() {
             scrapeData.screenshots,
             mainHtml,       // currentHtml
             autoFeedback,   // feedback
-            { cssFramework: scrapeData.cssFramework, iconLibraries: scrapeData.iconLibraries, animationLibraries: scrapeData.animationLibraries, colorFrequency: scrapeData.colorFrequency },
+            { cssFramework: scrapeData.cssFramework, iconLibraries: scrapeData.iconLibraries, animationLibraries: scrapeData.animationLibraries, colorFrequency: scrapeData.colorFrequency, interactionModels: scrapeData.interactionModels, layeredAssets: scrapeData.layeredAssets, multiStateContent: scrapeData.multiStateContent, scrollBehaviors: scrapeData.scrollBehaviors, computedPatterns: scrapeData.computedPatterns, zIndexLayers: scrapeData.zIndexLayers, pageTopology: scrapeData.pageTopology, fontStack: scrapeData.fontStack, hoverTransitions: scrapeData.hoverTransitions, responsiveBreakpoints: scrapeData.responsiveBreakpoints },
           );
           const refinedWorked = refined.length > 200 && (/<body/i.test(refined) || /<!DOCTYPE/i.test(refined));
           if (refinedWorked) {
@@ -9158,7 +12862,7 @@ export default function HomePage() {
         scrapeData.screenshots,
         clonedHtml,    // currentHtml
         feedbackText,  // feedback
-        { cssFramework: scrapeData.cssFramework, iconLibraries: scrapeData.iconLibraries, animationLibraries: scrapeData.animationLibraries, colorFrequency: scrapeData.colorFrequency },
+        { cssFramework: scrapeData.cssFramework, iconLibraries: scrapeData.iconLibraries, animationLibraries: scrapeData.animationLibraries, colorFrequency: scrapeData.colorFrequency, interactionModels: scrapeData.interactionModels, layeredAssets: scrapeData.layeredAssets, multiStateContent: scrapeData.multiStateContent, scrollBehaviors: scrapeData.scrollBehaviors, computedPatterns: scrapeData.computedPatterns, zIndexLayers: scrapeData.zIndexLayers, pageTopology: scrapeData.pageTopology, fontStack: scrapeData.fontStack, hoverTransitions: scrapeData.hoverTransitions, responsiveBreakpoints: scrapeData.responsiveBreakpoints },
       );
 
       const aiWorked = refined.length > 200 && (/<body/i.test(refined) || /<!DOCTYPE/i.test(refined));
@@ -9191,9 +12895,22 @@ export default function HomePage() {
     }
   }, [isEditMode]);
 
-  // Listen for runtime errors from the iframe preview
+  // Listen for runtime errors + console output from the iframe preview
   useEffect(() => {
-    function handleIframeError(e: MessageEvent) {
+    function handleIframeMessage(e: MessageEvent) {
+      // Console log/warn/info forwarding
+      if (e.data?.type === 'aurion_console') {
+        const { level, text } = e.data as { level: string; text: string };
+        const prefix = level === 'warn' ? '⚠ ' : level === 'info' ? 'ℹ ' : '';
+        const color = level === 'warn' ? 'text-yellow-400' : level === 'info' ? 'text-blue-400' : 'text-[#888]';
+        // We store as plain string with a prefix for coloring in the render
+        setTerminalLines(prev => [...prev.slice(-200), `${prefix}${text}`]);
+        return;
+      }
+      if (e.data?.type === 'aurion_console' && e.data.text) {
+        setConsoleLogs(prev => [...prev.slice(-99), { type: e.data.level || 'log', message: String(e.data.text).slice(0, 500), ts: Date.now() }]);
+        return;
+      }
       if (e.data?.type !== 'aurion_error' || !e.data.error) return;
       const err = e.data.error as { message: string; source?: string; line?: number; col?: number };
       // Ignore noise: ResizeObserver, extensions, browser internals
@@ -9208,8 +12925,8 @@ export default function HomePage() {
       setTerminalLines(prev => [...prev, `✗ Runtime Error: ${err.message}${err.line ? ` (line ${err.line})` : ''}`]);
       setShowTerminal(true);
     }
-    window.addEventListener('message', handleIframeError);
-    return () => window.removeEventListener('message', handleIframeError);
+    window.addEventListener('message', handleIframeMessage);
+    return () => window.removeEventListener('message', handleIframeMessage);
   }, []);
 
   // Auto-fix: when enabled and new errors appear, automatically send fix request to AI
@@ -9411,10 +13128,27 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
   const refreshPreview = () => {
     if (iframeRef.current) {
       const iframe = iframeRef.current;
-      // Force re-render by toggling srcdoc
       const src = iframe.srcdoc;
       iframe.srcdoc = '';
       requestAnimationFrame(() => { iframe.srcdoc = src; });
+    }
+  };
+
+  const copyPreviewHtml = () => {
+    if (previewHtml) {
+      navigator.clipboard.writeText(previewHtml).then(() => {
+        setTerminalLines(prev => [...prev, 'ℹ Preview HTML copied to clipboard']);
+        showToast('HTML copied to clipboard', 'success');
+      });
+    }
+  };
+
+  const openPreviewNewTab = () => {
+    if (previewHtml) {
+      const blob = new Blob([previewHtml], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
     }
   };
 
@@ -9459,6 +13193,38 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
 
     return suggestions.slice(0, 3);
   }, [projectFiles]);
+
+  // Follow-up suggestion chips after AI response
+  const followUpSuggestions = useMemo(() => {
+    if (isStreaming || messages.length < 2) return [];
+    const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
+    if (!lastAssistant?.content) return [];
+    const content = lastAssistant.content.toLowerCase();
+    const chips: string[] = [];
+
+    // Context-aware suggestions based on what AI just generated
+    if (content.includes('```html') || content.includes('```jsx') || content.includes('```tsx')) {
+      if (!content.includes('dark')) chips.push('Add dark mode toggle');
+      if (!content.includes('animation') && !content.includes('motion')) chips.push('Add animations');
+      if (!content.includes('responsive') && !content.includes('@media')) chips.push('Make it responsive');
+      if (!content.includes('loading') && !content.includes('skeleton')) chips.push('Add loading states');
+      chips.push('Improve the design');
+      chips.push('Add more sections');
+    } else if (content.includes('```css')) {
+      chips.push('Add hover effects');
+      chips.push('Add transitions');
+      chips.push('Make it responsive');
+    } else if (content.includes('```')) {
+      chips.push('Explain this code');
+      chips.push('Add error handling');
+      chips.push('Optimize performance');
+    } else {
+      chips.push('Show me the code');
+      chips.push('Give me more details');
+      chips.push('Create a prototype');
+    }
+    return chips.slice(0, 4);
+  }, [messages, isStreaming]);
 
   // Panel visibility & sizing
   const [showChat, setShowChat] = useState(true);
@@ -9508,10 +13274,33 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
     setTerminalInput('');
     setTerminalLines(prev => [...prev, '$ ' + cmd]);
 
+    // Route npm/node commands through WebContainer when available
+    if (webContainer.state.status === 'ready') {
+      const parts = cmd.trim().split(/\s+/);
+      const binary = parts[0];
+      if (['npm', 'node', 'npx', 'yarn', 'pnpm', 'vitest', 'jest', 'tsc', 'eslint'].includes(binary)) {
+        (async () => {
+          try {
+            const code = await webContainer.runCommand(binary, parts.slice(1));
+            // Terminal output is handled by the hook's terminalOutput state
+            for (const line of webContainer.terminalOutput.slice(-20)) {
+              setTerminalLines(prev => [...prev, line.content]);
+            }
+            if (code !== 0) {
+              setTerminalLines(prev => [...prev, `Process exited with code ${code}`]);
+            }
+          } catch (err) {
+            setTerminalLines(prev => [...prev, `Error: ${err instanceof Error ? err.message : 'Unknown'}`]);
+          }
+        })();
+        return;
+      }
+    }
+
     const c = cmd.trim().toLowerCase();
     const raw = cmd.trim();
     if (c === 'clear') { setTerminalLines([]); return; }
-    if (c === 'help') { setTerminalLines(prev => [...prev, 'Commands: clear, help, ls [dir], cat <file>, touch <file>, rm <file>, mkdir <dir>, tree, pwd, whoami, date, echo <msg>', '  npm install <pkg>, npm run dev|build, node -e "...", git status|add|commit|log, env, grep <pattern> <file>, cp <src> <dest>, mv <src> <dest>, head/tail <file>, wc <file>, find <pattern>']); return; }
+    if (c === 'help') { setTerminalLines(prev => [...prev, 'Commands: clear, help, ls [dir], cat <file>, touch <file>, rm <file>, mkdir <dir>, tree, pwd, whoami, date, echo <msg>', '  npm install <pkg>, npm run dev|build, node -e "...", git status|add|commit|log, env, grep <pattern> <file>', '  cp <src> <dest>, mv <src> <dest>, head/tail <file>, wc <file>, find <pattern>, stat <file>', '  diff <file1> <file2>, history, du, sort <file>, uniq <file>, which <cmd>, uptime, hostname']); return; }
     if (c === 'ls' || c === 'ls .') {
       setProjectFiles(prev => {
         const names = Object.keys(prev);
@@ -9689,6 +13478,24 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
     if (c === 'date') { setTerminalLines(prev => [...prev, new Date().toString()]); return; }
     if (c.startsWith('echo ')) { setTerminalLines(prev => [...prev, cmd.slice(5)]); return; }
 
+    // Scaffold command
+    if (c.startsWith('scaffold ')) {
+      const fw = raw.slice(9).trim().toLowerCase() as 'html' | 'react' | 'nextjs' | 'vue';
+      if (['html', 'react', 'nextjs', 'vue'].includes(fw)) {
+        scaffoldFrameworkProject(fw);
+        setTerminalLines(prev => [...prev, `✓ Scaffolded ${fw} project`]);
+      } else {
+        setTerminalLines(prev => [...prev, 'Usage: scaffold <html|react|nextjs|vue>']);
+      }
+      return;
+    }
+    // AI code review shortcut
+    if (c === 'review' || c === 'code-review') {
+      runAICodeReview();
+      setTerminalLines(prev => [...prev, `Running AI code review on ${selectedFile || 'current file'}...`]);
+      return;
+    }
+
     // npm commands
     if (c.startsWith('npm install ') || c.startsWith('npm i ')) {
       const pkg = raw.replace(/^npm\s+(install|i)\s+/, '').trim();
@@ -9826,8 +13633,87 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
     if (c === 'uptime') { setTerminalLines(prev => [...prev, `up ${Math.floor(Math.random() * 30 + 1)} days, load average: 0.${Math.floor(Math.random() * 99)}`]); return; }
     if (c === 'hostname') { setTerminalLines(prev => [...prev, 'aurion-cloud']); return; }
 
+    // history command
+    if (c === 'history') {
+      setTerminalLines(prev => [...prev, ...terminalHistory.map((h, i) => `  ${i + 1}  ${h}`)]);
+      return;
+    }
+
+    // stat command — show file details
+    if (c.startsWith('stat ')) {
+      const file = raw.slice(5).trim();
+      setProjectFiles(prev => {
+        const f = prev[file];
+        if (f) {
+          const lines = f.content.split('\n').length;
+          const words = f.content.split(/\s+/).filter(Boolean).length;
+          setTerminalLines(p => [...p, `  File: ${file}`, `  Size: ${f.content.length} bytes`, `  Lines: ${lines}`, `  Words: ${words}`, `  Language: ${f.language || 'unknown'}`, `  Modified: ${new Date().toISOString()}`]);
+        } else setTerminalLines(p => [...p, `stat: ${file}: No such file`]);
+        return prev;
+      });
+      return;
+    }
+
+    // diff command — compare two files
+    if (c.startsWith('diff ')) {
+      const parts = raw.slice(5).trim().split(/\s+/);
+      if (parts.length < 2) { setTerminalLines(p => [...p, 'Usage: diff <file1> <file2>']); return; }
+      setProjectFiles(prev => {
+        const a = prev[parts[0]], b = prev[parts[1]];
+        if (!a) { setTerminalLines(p => [...p, `diff: ${parts[0]}: No such file`]); return prev; }
+        if (!b) { setTerminalLines(p => [...p, `diff: ${parts[1]}: No such file`]); return prev; }
+        const la = a.content.split('\n'), lb = b.content.split('\n');
+        const maxL = Math.max(la.length, lb.length);
+        const diffs: string[] = [];
+        for (let i = 0; i < maxL && diffs.length < 30; i++) {
+          if (la[i] !== lb[i]) {
+            if (la[i] !== undefined) diffs.push(`- ${i + 1}: ${la[i].slice(0, 80)}`);
+            if (lb[i] !== undefined) diffs.push(`+ ${i + 1}: ${lb[i].slice(0, 80)}`);
+          }
+        }
+        if (diffs.length === 0) setTerminalLines(p => [...p, 'Files are identical']);
+        else setTerminalLines(p => [...p, `--- ${parts[0]}`, `+++ ${parts[1]}`, ...diffs]);
+        return prev;
+      });
+      return;
+    }
+
+    // du command — disk usage
+    if (c === 'du' || c === 'du .') {
+      setProjectFiles(prev => {
+        const total = Object.values(prev).reduce((s, f) => s + f.content.length, 0);
+        setTerminalLines(p => [...p, `${(total / 1024).toFixed(1)}K\t.`, `${Object.keys(prev).length} file(s), ${total} bytes total`]);
+        return prev;
+      });
+      return;
+    }
+
+    // sort command
+    if (c.startsWith('sort ')) {
+      const file = raw.slice(5).trim();
+      setProjectFiles(prev => {
+        const f = prev[file];
+        if (f) setTerminalLines(p => [...p, ...f.content.split('\n').sort().slice(0, 50)]);
+        else setTerminalLines(p => [...p, `sort: ${file}: No such file`]);
+        return prev;
+      });
+      return;
+    }
+
+    // uniq command
+    if (c.startsWith('uniq ')) {
+      const file = raw.slice(5).trim();
+      setProjectFiles(prev => {
+        const f = prev[file];
+        if (f) setTerminalLines(p => [...p, ...[...new Set(f.content.split('\n'))].slice(0, 50)]);
+        else setTerminalLines(p => [...p, `uniq: ${file}: No such file`]);
+        return prev;
+      });
+      return;
+    }
+
     setTerminalLines(prev => [...prev, `${cmd.split(' ')[0]}: command not found. Type 'help' for available commands.`]);
-  }, [installedPackages, gitStaged, gitCommits, integrationKeys, projectFiles]);
+  }, [installedPackages, gitStaged, gitCommits, integrationKeys, projectFiles, webContainer]);
 
   const saveIntegrationKey = useCallback((name: string, key: string) => {
     setIntegrationKeys(prev => ({ ...prev, [name]: key }));
@@ -9991,6 +13877,103 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
     }
   }, [githubToken, repoName, projectFiles]);
 
+  // ── Share Project via URL ──
+  const shareProjectUrl = useCallback(async () => {
+    const files = projectFiles;
+    if (Object.keys(files).length === 0) return;
+    try {
+      const json = JSON.stringify(files);
+      const encoder = new TextEncoder();
+      const data = encoder.encode(json);
+      // Compress with CompressionStream
+      const cs = new CompressionStream('gzip');
+      const writer = cs.writable.getWriter();
+      writer.write(data);
+      writer.close();
+      const reader = cs.readable.getReader();
+      const chunks: Uint8Array[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) chunks.push(value);
+      }
+      const compressed = new Uint8Array(chunks.reduce((a, c) => a + c.length, 0));
+      let offset = 0;
+      for (const c of chunks) { compressed.set(c, offset); offset += c.length; }
+      // Convert to base64url
+      let b64 = '';
+      for (let i = 0; i < compressed.length; i++) b64 += String.fromCharCode(compressed[i]);
+      const hash = btoa(b64).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      const shareUrl = `${window.location.origin}${window.location.pathname}#project=${hash}`;
+      await navigator.clipboard.writeText(shareUrl);
+      setTerminalLines(prev => [...prev, '$ ✓ Share URL copied to clipboard']);
+      showToast('Share URL copied to clipboard', 'success');
+    } catch {
+      // Fallback: copy uncompressed base64
+      try {
+        const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(files))));
+        const shareUrl = `${window.location.origin}${window.location.pathname}#project=${b64}`;
+        await navigator.clipboard.writeText(shareUrl);
+        setTerminalLines(prev => [...prev, '$ ✓ Share URL copied (uncompressed)']);
+      } catch {
+        setTerminalLines(prev => [...prev, '$ ✗ Failed to generate share URL']);
+      }
+    }
+  }, [projectFiles]);
+
+  // Import project from URL hash on mount
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash.startsWith('#project=')) return;
+    const encoded = hash.slice(9);
+    try {
+      // Try decompressing first
+      const b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const ds = new DecompressionStream('gzip');
+      const writer = ds.writable.getWriter();
+      writer.write(bytes);
+      writer.close();
+      const reader = ds.readable.getReader();
+      const chunks: Uint8Array[] = [];
+      (async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) chunks.push(value);
+        }
+        const result = new Uint8Array(chunks.reduce((a, c) => a + c.length, 0));
+        let off = 0;
+        for (const c of chunks) { result.set(c, off); off += c.length; }
+        const json = new TextDecoder().decode(result);
+        const files = JSON.parse(json) as VirtualFS;
+        if (files && typeof files === 'object' && Object.keys(files).length > 0) {
+          setProjectFiles(files);
+          setSelectedFile(Object.keys(files)[0]);
+          setView('workspace');
+          setTerminalLines(prev => [...prev, `$ ✓ Imported shared project (${Object.keys(files).length} files)`]);
+          window.location.hash = '';
+        }
+      })();
+    } catch {
+      // Fallback: try uncompressed base64
+      try {
+        const json = decodeURIComponent(escape(atob(encoded)));
+        const files = JSON.parse(json) as VirtualFS;
+        if (files && typeof files === 'object' && Object.keys(files).length > 0) {
+          setProjectFiles(files);
+          setSelectedFile(Object.keys(files)[0]);
+          setView('workspace');
+          setTerminalLines(prev => [...prev, `$ ✓ Imported shared project (${Object.keys(files).length} files)`]);
+          window.location.hash = '';
+        }
+      } catch { /* invalid hash, ignore */ }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Download ZIP ──
   const downloadProjectZip = useCallback(() => {
     const files = projectFiles;
@@ -10073,6 +14056,7 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
     a.click();
     URL.revokeObjectURL(url);
     setTerminalLines(prev => [...prev, `$ ✓ Downloaded ${fileEntries.length} files as aurion-project.zip`]);
+    showToast(`Downloaded ${fileEntries.length} files as ZIP`, 'success');
   }, [projectFiles]);
 
   // ── Real Supabase Query ──
@@ -10140,6 +14124,62 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
     }
   }, [integrationKeys]);
 
+  // Quick Component Palette — insertable UI snippets
+  const COMPONENTS = useMemo(() => [
+    { name: 'Button', cat: 'Basic', code: '<button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">Click me</button>' },
+    { name: 'Card', cat: 'Layout', code: '<div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">\n  <h3 className="text-lg font-semibold mb-2">Card Title</h3>\n  <p className="text-gray-600">Card description goes here.</p>\n</div>' },
+    { name: 'Input', cat: 'Form', code: '<input type="text" placeholder="Enter text..." className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />' },
+    { name: 'Badge', cat: 'Basic', code: '<span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Badge</span>' },
+    { name: 'Avatar', cat: 'Basic', code: '<div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm">A</div>' },
+    { name: 'Alert', cat: 'Feedback', code: '<div className="flex items-center gap-3 p-4 rounded-lg bg-blue-50 border border-blue-200">\n  <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd"/></svg>\n  <p className="text-sm text-blue-800">This is an info alert message.</p>\n</div>' },
+    { name: 'Modal', cat: 'Overlay', code: '<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">\n  <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">\n    <h2 className="text-xl font-bold mb-2">Modal Title</h2>\n    <p className="text-gray-600 mb-4">Modal description text goes here.</p>\n    <div className="flex justify-end gap-2">\n      <button className="px-4 py-2 rounded-lg border hover:bg-gray-50">Cancel</button>\n      <button className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">Confirm</button>\n    </div>\n  </div>\n</div>' },
+    { name: 'Navbar', cat: 'Navigation', code: '<nav className="flex items-center justify-between px-6 py-4 bg-white border-b">\n  <div className="text-xl font-bold">Logo</div>\n  <div className="flex items-center gap-6">\n    <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">Home</a>\n    <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">About</a>\n    <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">Contact</a>\n    <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Sign Up</button>\n  </div>\n</nav>' },
+    { name: 'Hero', cat: 'Section', code: '<section className="py-20 px-6 text-center bg-gradient-to-br from-blue-50 to-indigo-100">\n  <h1 className="text-5xl font-bold text-gray-900 mb-4">Build Something Amazing</h1>\n  <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-8">A brief description of your product or service that explains the value.</p>\n  <div className="flex justify-center gap-4">\n    <button className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">Get Started</button>\n    <button className="px-6 py-3 border-2 border-gray-300 rounded-lg hover:border-gray-400 font-medium">Learn More</button>\n  </div>\n</section>' },
+    { name: 'Footer', cat: 'Section', code: '<footer className="bg-gray-900 text-gray-400 py-12 px-6">\n  <div className="max-w-6xl mx-auto grid grid-cols-4 gap-8">\n    <div>\n      <h3 className="text-white font-semibold mb-4">Company</h3>\n      <ul className="space-y-2 text-sm"><li><a href="#" className="hover:text-white">About</a></li><li><a href="#" className="hover:text-white">Careers</a></li></ul>\n    </div>\n    <div>\n      <h3 className="text-white font-semibold mb-4">Product</h3>\n      <ul className="space-y-2 text-sm"><li><a href="#" className="hover:text-white">Features</a></li><li><a href="#" className="hover:text-white">Pricing</a></li></ul>\n    </div>\n    <div>\n      <h3 className="text-white font-semibold mb-4">Resources</h3>\n      <ul className="space-y-2 text-sm"><li><a href="#" className="hover:text-white">Docs</a></li><li><a href="#" className="hover:text-white">Blog</a></li></ul>\n    </div>\n    <div>\n      <h3 className="text-white font-semibold mb-4">Legal</h3>\n      <ul className="space-y-2 text-sm"><li><a href="#" className="hover:text-white">Privacy</a></li><li><a href="#" className="hover:text-white">Terms</a></li></ul>\n    </div>\n  </div>\n</footer>' },
+    { name: 'Pricing Card', cat: 'Section', code: '<div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 max-w-sm">\n  <h3 className="text-lg font-medium text-gray-500">Pro Plan</h3>\n  <div className="mt-4 flex items-baseline gap-1"><span className="text-5xl font-bold">$29</span><span className="text-gray-500">/month</span></div>\n  <ul className="mt-6 space-y-3">\n    <li className="flex items-center gap-2 text-sm"><svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg> Unlimited projects</li>\n    <li className="flex items-center gap-2 text-sm"><svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg> Priority support</li>\n  </ul>\n  <button className="mt-8 w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors">Get Started</button>\n</div>' },
+    { name: 'Table', cat: 'Data', code: '<div className="overflow-hidden rounded-lg border border-gray-200">\n  <table className="min-w-full divide-y divide-gray-200">\n    <thead className="bg-gray-50"><tr><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th></tr></thead>\n    <tbody className="bg-white divide-y divide-gray-200">\n      <tr><td className="px-6 py-4 text-sm font-medium text-gray-900">John Doe</td><td className="px-6 py-4"><span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">Active</span></td><td className="px-6 py-4 text-sm text-gray-500">Admin</td></tr>\n      <tr><td className="px-6 py-4 text-sm font-medium text-gray-900">Jane Smith</td><td className="px-6 py-4"><span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">Pending</span></td><td className="px-6 py-4 text-sm text-gray-500">User</td></tr>\n    </tbody>\n  </table>\n</div>' },
+    { name: 'Toggle', cat: 'Form', code: '<label className="relative inline-flex items-center cursor-pointer">\n  <input type="checkbox" className="sr-only peer" />\n  <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-blue-600 peer-checked:after:translate-x-full after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>\n  <span className="ml-3 text-sm font-medium text-gray-700">Toggle</span>\n</label>' },
+    { name: 'Loading Spinner', cat: 'Feedback', code: '<div className="flex items-center justify-center">\n  <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>\n</div>' },
+  ], []);
+
+  // Format code — simple indent fix
+  const formatCurrentFile = useCallback(() => {
+    if (!selectedFile || !projectFiles[selectedFile]) return;
+    const content = projectFiles[selectedFile].content;
+    const lang = projectFiles[selectedFile].language;
+    let formatted = content;
+    if (lang === 'html' || lang === 'xml') {
+      // Simple HTML formatter — fix indentation
+      let indent = 0;
+      formatted = content.split('\n').map(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return '';
+        if (trimmed.startsWith('</')) indent = Math.max(0, indent - 1);
+        const result = '  '.repeat(indent) + trimmed;
+        if (trimmed.startsWith('<') && !trimmed.startsWith('</') && !trimmed.startsWith('<!') && !trimmed.endsWith('/>') && !trimmed.includes('</')) indent++;
+        return result;
+      }).join('\n');
+    } else if (lang === 'json' || lang === 'jsonc') {
+      try { formatted = JSON.stringify(JSON.parse(content), null, 2); } catch { /* keep as-is */ }
+    }
+    if (formatted !== content) {
+      setProjectFiles(prev => ({ ...prev, [selectedFile]: { ...prev[selectedFile], content: formatted } }));
+      setTerminalLines(prev => [...prev, `$ \u2713 Formatted ${selectedFile}`]);
+    }
+  }, [selectedFile, projectFiles]);
+
+  const insertComponent = useCallback((code: string) => {
+    if (!selectedFile || !projectFiles[selectedFile]) return;
+    const content = projectFiles[selectedFile].content;
+    // Insert before closing </body> or </div> or at the end
+    const bodyClose = content.lastIndexOf('</body>');
+    const insertPos = bodyClose > 0 ? bodyClose : content.length;
+    const newContent = content.slice(0, insertPos) + '\n' + code + '\n' + content.slice(insertPos);
+    setProjectFiles(prev => ({ ...prev, [selectedFile]: { ...prev[selectedFile], content: newContent } }));
+    setShowComponentPalette(false);
+    setTerminalLines(prev => [...prev, `$ \u2713 Component inserted into ${selectedFile}`]);
+  }, [selectedFile, projectFiles]);
+
   // Command palette commands
   const commands = useMemo(() => {
     const list = [
@@ -10153,18 +14193,19 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
       // Project
       { id: 'new-project', label: 'New Project', shortcut: '', category: 'Project', action: () => createProject('Project ' + (projects.length + 1)) },
       { id: 'templates', label: 'Start from Template', shortcut: '', category: 'Project', action: () => setShowTemplates(true) },
-      { id: 'download', label: 'Download as ZIP', shortcut: '', category: 'Project', action: () => downloadProjectZip() },
+      { id: 'download', label: 'Download as ZIP', shortcut: '⌘D', category: 'Project', action: () => downloadProjectZip() },
       // View
       { id: 'toggle-terminal', label: showTerminal ? 'Hide Terminal' : 'Show Terminal', shortcut: '⌘`', category: 'View', action: () => setShowTerminal(prev => !prev) },
       { id: 'toggle-chat', label: showChat ? 'Hide Chat' : 'Show Chat', shortcut: '⌘B', category: 'View', action: () => setShowChat(prev => !prev) },
-      { id: 'toggle-edit', label: isEditMode ? 'Exit Visual Editor' : 'Visual Editor Mode', shortcut: '', category: 'View', action: () => setIsEditMode(prev => !prev) },
+      { id: 'toggle-edit', label: isEditMode ? 'Exit Visual Editor' : 'Visual Editor Mode', shortcut: '⌘E', category: 'View', action: () => setIsEditMode(prev => !prev) },
       { id: 'diff-view', label: showDiffView ? 'Exit Diff View' : 'Show Diff View', shortcut: '', category: 'View', action: () => setShowDiffView(prev => !prev) },
       { id: 'env-panel', label: 'Manage Environment Variables', shortcut: '', category: 'View', action: () => setShowEnvPanel(true) },
       { id: 'integrations', label: 'Toggle Integrations', shortcut: '', category: 'View', action: () => setShowIntegrations(prev => !prev) },
-      { id: 'tab-app', label: 'Switch to App Tab', shortcut: '', category: 'View', action: () => setActiveTab('app') },
-      { id: 'tab-code', label: 'Switch to Code Tab', shortcut: '', category: 'View', action: () => setActiveTab('code') },
-      { id: 'tab-db', label: 'Switch to Database Tab', shortcut: '', category: 'View', action: () => setActiveTab('database') },
-      { id: 'tab-pay', label: 'Switch to Payments Tab', shortcut: '', category: 'View', action: () => setActiveTab('payments') },
+      { id: 'tab-app', label: 'Switch to App Tab', shortcut: '⌘1', category: 'View', action: () => setActiveTab('app') },
+      { id: 'tab-code', label: 'Switch to Code Tab', shortcut: '⌘2', category: 'View', action: () => setActiveTab('code') },
+      { id: 'tab-db', label: 'Switch to Database Tab', shortcut: '⌘3', category: 'View', action: () => setActiveTab('database') },
+      { id: 'tab-pay', label: 'Switch to Payments Tab', shortcut: '⌘4', category: 'View', action: () => setActiveTab('payments') },
+      { id: 'tab-ide', label: 'Switch to IDE Tab', shortcut: '⌘5', category: 'View', action: () => setActiveTab('ide') },
       { id: 'device-desktop', label: 'Desktop Preview', shortcut: '', category: 'View', action: () => setDeviceMode('desktop') },
       { id: 'device-tablet', label: 'Tablet Preview', shortcut: '', category: 'View', action: () => setDeviceMode('tablet') },
       { id: 'device-mobile', label: 'Mobile Preview', shortcut: '', category: 'View', action: () => setDeviceMode('mobile') },
@@ -10177,8 +14218,154 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
       { id: 'redo', label: 'Redo (VFS)', shortcut: '⌘⇧Z', category: 'Edit', action: () => vfsRedo() },
       { id: 'clear-chat', label: 'Clear Chat', shortcut: '', category: 'Edit', action: () => clearChat() },
       { id: 'media-gallery', label: 'Media Gallery', shortcut: '', category: 'View', action: () => setShowMediaGallery(true) },
+      // Format & Components
+      { id: 'format', label: 'Format Document', shortcut: '⌘⇧P', category: 'Edit', action: () => formatCurrentFile() },
+      { id: 'components', label: 'Insert Component', shortcut: '', category: 'Edit', action: () => setShowComponentPalette(true) },
+      { id: 'split-view', label: splitFile ? 'Close Split View' : 'Split Editor', shortcut: '', category: 'View', action: () => { if (splitFile) { setSplitFile(null); } else { const files = Object.keys(projectFiles).filter(f => f !== selectedFile); if (files.length > 0) setSplitFile(files[0]); } } },
+      { id: 'open-new-tab', label: 'Open Preview in New Tab', shortcut: '', category: 'View', action: () => openPreviewNewTab() },
+      { id: 'copy-html', label: 'Copy Preview HTML', shortcut: '', category: 'Edit', action: () => copyPreviewHtml() },
+      { id: 'zoom-reset', label: 'Reset Preview Zoom', shortcut: '', category: 'View', action: () => setPreviewZoom(100) },
+      { id: 'landscape', label: isLandscape ? 'Portrait Mode' : 'Landscape Mode', shortcut: '', category: 'View', action: () => setIsLandscape(prev => !prev) },
+      // History & Bookmarks
+      { id: 'conversation-history', label: 'Conversation History', shortcut: '⌘H', category: 'Chat', action: () => setShowConversationHistory(true) },
+      { id: 'new-conversation', label: 'New Conversation', shortcut: '', category: 'Chat', action: () => newConversation() },
+      { id: 'save-conversation', label: 'Save Conversation', shortcut: '', category: 'Chat', action: () => saveCurrentConversation() },
+      { id: 'bookmarks', label: 'Code Bookmarks', shortcut: '', category: 'Edit', action: () => setShowBookmarks(true) },
+      { id: 'add-bookmark', label: 'Bookmark Selection', shortcut: '', category: 'Edit', action: () => { if (selectedFile && projectFiles[selectedFile]) addBookmark(selectedFile, projectFiles[selectedFile].content.slice(0, 500)); } },
+      { id: 'prompt-templates', label: 'Prompt Templates', shortcut: '', category: 'Chat', action: () => setShowPromptTemplates(true) },
+      { id: 'version-timeline', label: 'Version Timeline', shortcut: '', category: 'View', action: () => setShowVersionTimeline(true) },
+      // Find & Replace, Shortcuts, Themes
+      { id: 'find-replace', label: 'Find & Replace in Files', shortcut: '⌘⇧H', category: 'Edit', action: () => { setShowFindReplace(true); setTimeout(() => findInputRef.current?.focus(), 50); } },
+      { id: 'shortcuts', label: 'Keyboard Shortcuts', shortcut: '⌘/', category: 'Help', action: () => setShowShortcuts(true) },
+      { id: 'theme', label: 'Change Editor Theme', shortcut: '', category: 'View', action: () => setShowThemeSelector(true) },
+      { id: 'explain-code', label: 'AI Explain Current File', shortcut: '', category: 'Chat', action: () => explainCurrentCode() },
+      { id: 'screenshot', label: 'Screenshot Preview', shortcut: '', category: 'View', action: () => capturePreviewScreenshot() },
+      { id: 'new-file-quick', label: 'Quick New File', shortcut: '', category: 'File', action: () => { setShowNewFileInput(true); setNewFileName(''); setTimeout(() => newFileInputRef.current?.focus(), 50); } },
+      { id: 'share-url', label: 'Share Project via URL', shortcut: '', category: 'Project', action: () => shareProjectUrl() },
+      { id: 'toggle-minimap', label: minimapEnabled ? 'Hide Minimap' : 'Show Minimap', shortcut: '', category: 'View', action: () => setMinimapEnabled(p => !p) },
+      { id: 'toggle-wordwrap', label: wordWrapEnabled ? 'Disable Word Wrap' : 'Enable Word Wrap', shortcut: '', category: 'View', action: () => setWordWrapEnabled(p => !p) },
+      { id: 'color-picker', label: 'Color Picker', shortcut: '', category: 'Edit', action: () => setShowColorPicker(true) },
+      { id: 'goto-line', label: 'Go to Line', shortcut: '⌘G', category: 'Edit', action: () => { setShowGotoLine(true); setGotoLineValue(''); setTimeout(() => gotoLineRef.current?.focus(), 50); } },
+      // Emmet Snippets
+      { id: 'emmet-html5', label: 'Emmet: HTML5 Boilerplate', shortcut: '', category: 'Snippets', action: () => { if (selectedFile) setProjectFiles(prev => ({ ...prev, [selectedFile]: { ...prev[selectedFile], content: '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>Document</title>\n</head>\n<body>\n  \n</body>\n</html>' } })); showToast('Inserted HTML5 boilerplate', 'success'); } },
+      { id: 'emmet-flexbox', label: 'Emmet: Flexbox Container', shortcut: '', category: 'Snippets', action: () => { if (selectedFile && projectFiles[selectedFile]) { const snippet = '<div class="flex items-center justify-center gap-4">\n  <div>Item 1</div>\n  <div>Item 2</div>\n  <div>Item 3</div>\n</div>'; setProjectFiles(prev => ({ ...prev, [selectedFile]: { ...prev[selectedFile], content: prev[selectedFile].content + '\n' + snippet } })); showToast('Inserted flexbox container', 'success'); } } },
+      { id: 'emmet-grid', label: 'Emmet: CSS Grid', shortcut: '', category: 'Snippets', action: () => { if (selectedFile && projectFiles[selectedFile]) { const snippet = '<div class="grid grid-cols-3 gap-4">\n  <div>Cell 1</div>\n  <div>Cell 2</div>\n  <div>Cell 3</div>\n  <div>Cell 4</div>\n  <div>Cell 5</div>\n  <div>Cell 6</div>\n</div>'; setProjectFiles(prev => ({ ...prev, [selectedFile]: { ...prev[selectedFile], content: prev[selectedFile].content + '\n' + snippet } })); showToast('Inserted CSS grid', 'success'); } } },
+      { id: 'emmet-form', label: 'Emmet: Form with Inputs', shortcut: '', category: 'Snippets', action: () => { if (selectedFile && projectFiles[selectedFile]) { const snippet = '<form class="space-y-4 max-w-md mx-auto">\n  <div>\n    <label class="block text-sm font-medium mb-1">Name</label>\n    <input type="text" class="w-full px-3 py-2 border rounded-lg" placeholder="Your name" />\n  </div>\n  <div>\n    <label class="block text-sm font-medium mb-1">Email</label>\n    <input type="email" class="w-full px-3 py-2 border rounded-lg" placeholder="your@email.com" />\n  </div>\n  <button type="submit" class="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Submit</button>\n</form>'; setProjectFiles(prev => ({ ...prev, [selectedFile]: { ...prev[selectedFile], content: prev[selectedFile].content + '\n' + snippet } })); showToast('Inserted form', 'success'); } } },
+      { id: 'emmet-nav', label: 'Emmet: Navigation Bar', shortcut: '', category: 'Snippets', action: () => { if (selectedFile && projectFiles[selectedFile]) { const snippet = '<nav class="flex items-center justify-between px-6 py-4 bg-white shadow-sm">\n  <a href="#" class="text-xl font-bold">Logo</a>\n  <div class="flex items-center gap-6">\n    <a href="#" class="text-gray-600 hover:text-black">Home</a>\n    <a href="#" class="text-gray-600 hover:text-black">About</a>\n    <a href="#" class="text-gray-600 hover:text-black">Contact</a>\n    <button class="px-4 py-2 bg-black text-white rounded-lg">Sign up</button>\n  </div>\n</nav>'; setProjectFiles(prev => ({ ...prev, [selectedFile]: { ...prev[selectedFile], content: prev[selectedFile].content + '\n' + snippet } })); showToast('Inserted navbar', 'success'); } } },
+      { id: 'emmet-card', label: 'Emmet: Card Component', shortcut: '', category: 'Snippets', action: () => { if (selectedFile && projectFiles[selectedFile]) { const snippet = '<div class="bg-white rounded-xl shadow-lg overflow-hidden max-w-sm">\n  <div class="h-48 bg-gray-200"></div>\n  <div class="p-6">\n    <h3 class="text-lg font-semibold mb-2">Card Title</h3>\n    <p class="text-gray-600 text-sm">Card description goes here with some sample text.</p>\n    <button class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Learn More</button>\n  </div>\n</div>'; setProjectFiles(prev => ({ ...prev, [selectedFile]: { ...prev[selectedFile], content: prev[selectedFile].content + '\n' + snippet } })); showToast('Inserted card', 'success'); } } },
+      { id: 'emmet-hero', label: 'Emmet: Hero Section', shortcut: '', category: 'Snippets', action: () => { if (selectedFile && projectFiles[selectedFile]) { const snippet = '<section class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-purple-700 text-white">\n  <div class="text-center max-w-2xl px-4">\n    <h1 class="text-5xl font-bold mb-6">Welcome to Our Site</h1>\n    <p class="text-xl opacity-90 mb-8">Build something amazing with modern web technologies.</p>\n    <div class="flex gap-4 justify-center">\n      <button class="px-8 py-3 bg-white text-blue-600 rounded-full font-medium hover:shadow-lg">Get Started</button>\n      <button class="px-8 py-3 border-2 border-white rounded-full font-medium hover:bg-white/10">Learn More</button>\n    </div>\n  </div>\n</section>'; setProjectFiles(prev => ({ ...prev, [selectedFile]: { ...prev[selectedFile], content: prev[selectedFile].content + '\n' + snippet } })); showToast('Inserted hero section', 'success'); } } },
+      { id: 'emmet-footer', label: 'Emmet: Footer', shortcut: '', category: 'Snippets', action: () => { if (selectedFile && projectFiles[selectedFile]) { const snippet = '<footer class="bg-gray-900 text-gray-400 py-12 px-6">\n  <div class="max-w-6xl mx-auto grid grid-cols-4 gap-8">\n    <div><h3 class="text-white font-semibold mb-4">Company</h3><p class="text-sm">Making the web better, one pixel at a time.</p></div>\n    <div><h3 class="text-white font-semibold mb-4">Links</h3><ul class="space-y-2 text-sm"><li><a href="#" class="hover:text-white">Home</a></li><li><a href="#" class="hover:text-white">About</a></li><li><a href="#" class="hover:text-white">Blog</a></li></ul></div>\n    <div><h3 class="text-white font-semibold mb-4">Support</h3><ul class="space-y-2 text-sm"><li><a href="#" class="hover:text-white">FAQ</a></li><li><a href="#" class="hover:text-white">Contact</a></li></ul></div>\n    <div><h3 class="text-white font-semibold mb-4">Social</h3><ul class="space-y-2 text-sm"><li><a href="#" class="hover:text-white">Twitter</a></li><li><a href="#" class="hover:text-white">GitHub</a></li></ul></div>\n  </div>\n  <div class="max-w-6xl mx-auto mt-8 pt-8 border-t border-gray-800 text-sm text-center">© 2026 Company. All rights reserved.</div>\n</footer>'; setProjectFiles(prev => ({ ...prev, [selectedFile]: { ...prev[selectedFile], content: prev[selectedFile].content + '\n' + snippet } })); showToast('Inserted footer', 'success'); } } },
+      { id: 'breakpoint-ruler', label: 'Toggle Breakpoint Ruler', shortcut: '', category: 'View', action: () => setShowBreakpointRuler(p => !p) },
+      { id: 'a11y-audit', label: 'Run Accessibility Audit', shortcut: '', category: 'Tools', action: () => runA11yAudit() },
+      { id: 'seo-editor', label: 'Open SEO Meta Editor', shortcut: '', category: 'Tools', action: () => { const html = projectFiles['index.html']?.content || ''; const tMatch = html.match(/<title>([^<]*)<\/title>/i); const dMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i); const oMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*)["']/i); setSeoTitle(tMatch?.[1] || ''); setSeoDescription(dMatch?.[1] || ''); setSeoOgImage(oMatch?.[1] || ''); setShowSeoPanel(true); } },
+      { id: 'tailwind-browser', label: 'Open Tailwind Classes Browser', shortcut: '', category: 'Tools', action: () => setShowTailwindPanel(true) },
+      { id: 'color-palette', label: 'Extract Color Palette', shortcut: '', category: 'Tools', action: () => setShowColorPalettePanel(true) },
+      { id: 'perf-audit', label: 'Run Performance Audit', shortcut: '', category: 'Tools', action: () => runPerfAudit() },
+      { id: 'project-stats', label: 'Show Project Statistics', shortcut: '', category: 'Tools', action: () => setShowStatsPanel(true) },
+      { id: 'css-vars', label: 'CSS Variables Manager', shortcut: '', category: 'Tools', action: () => setShowCssVarsPanel(true) },
+      { id: 'console-panel', label: 'Toggle Console Output', shortcut: '', category: 'View', action: () => setShowConsolePanel(p => !p) },
+      { id: 'insert-region', label: 'Insert Code Region', shortcut: '', category: 'Editor', action: () => { const ed = monacoEditorRef.current as any; if (ed) { const pos = ed.getPosition(); if (pos) { const model = ed.getModel(); if (model) { const indent = '  '; model.pushEditOperations([], [{ range: { startLineNumber: pos.lineNumber, startColumn: 1, endLineNumber: pos.lineNumber, endColumn: 1 }, text: `${indent}// #region MyRegion\n${indent}\n${indent}// #endregion\n` }], () => null); } } showToast('Region markers inserted', 'success'); } } },
+      { id: 'dep-inspector', label: 'Dependency Inspector', shortcut: '', category: 'Tools', action: () => setShowDepsPanel(true) },
+      { id: 'code-complexity', label: 'Code Complexity Analyzer', shortcut: '', category: 'Tools', action: () => setShowComplexityPanel(true) },
+      { id: 'minify-project', label: 'Minify All Files', shortcut: '', category: 'Tools', action: () => minifyProject() },
+      { id: 'split-preview', label: 'Toggle Split Preview (Desktop + Mobile)', shortcut: '', category: 'View', action: () => setShowSplitPreview(p => !p) },
+      { id: 'wrap-div', label: 'Wrap Selection in <div>', shortcut: '', category: 'Editor', action: () => { const ed = monacoEditorRef.current as any; if (ed) { const sel = ed.getSelection(); const model = ed.getModel(); if (sel && model) { const text = model.getValueInRange(sel); model.pushEditOperations([], [{ range: sel, text: `<div>\n  ${text}\n</div>` }], () => null); showToast('Wrapped in <div>', 'success'); } } } },
+      { id: 'toggle-comments', label: 'Toggle HTML Comment', shortcut: '', category: 'Editor', action: () => { const ed = monacoEditorRef.current as any; if (ed) { const sel = ed.getSelection(); const model = ed.getModel(); if (sel && model) { const text = model.getValueInRange(sel); const newText = text.startsWith('<!--') ? text.replace(/^<!--\s*/, '').replace(/\s*-->$/, '') : `<!-- ${text} -->`; model.pushEditOperations([], [{ range: sel, text: newText }], () => null); showToast('Comment toggled', 'success'); } } } },
+      { id: 'code-outline', label: 'Code Outline / Symbols', shortcut: '', category: 'Tools', action: () => setShowOutlinePanel(true) },
+      { id: 'image-optimizer', label: 'Image Size Analyzer', shortcut: '', category: 'Tools', action: () => setShowImageOptPanel(true) },
+      { id: 'export-single-html', label: 'Export as Single HTML', shortcut: '', category: 'Project', action: () => exportSingleHtml() },
+      { id: 'diff-stats', label: 'Code Diff Statistics', shortcut: '', category: 'Tools', action: () => setShowDiffStatsPanel(true) },
+      { id: 'breakpoint-test', label: 'Responsive Breakpoint Tester', shortcut: '', category: 'View', action: () => setBreakpointTestActive(p => !p) },
+      { id: 'network-panel', label: 'Network / API Calls', shortcut: '', category: 'Tools', action: () => setShowNetworkPanel(true) },
+      { id: 'html-validator', label: 'HTML Validator', shortcut: '', category: 'Tools', action: () => setShowHtmlValidatorPanel(true) },
+      { id: 'font-inspector', label: 'Font Inspector', shortcut: '', category: 'Tools', action: () => setShowFontPanel(true) },
+      { id: 'snippets-manager', label: 'Code Snippets Manager', shortcut: '', category: 'Edit', action: () => setShowSnippetsPanel(true) },
+      { id: 'save-snippet', label: 'Save Selection as Snippet', shortcut: '', category: 'Edit', action: () => { const ed = monacoEditorRef.current as any; if (ed) { const sel = ed.getSelection(); const model = ed.getModel(); if (sel && model) { const text = model.getValueInRange(sel); if (text) { const name = prompt('Snippet name:'); if (name) saveSnippet(name, text); } } } } },
+      { id: 'layout-debug', label: 'Toggle Layout Debugger', shortcut: '', category: 'View', action: () => setLayoutDebugActive(p => !p) },
+      { id: 'preview-dark', label: 'Preview: Force Dark Mode', shortcut: '', category: 'View', action: () => setPreviewDarkMode(p => p === 'dark' ? 'auto' : 'dark') },
+      { id: 'preview-light', label: 'Preview: Force Light Mode', shortcut: '', category: 'View', action: () => setPreviewDarkMode(p => p === 'light' ? 'auto' : 'light') },
+      { id: 'file-treemap', label: 'File Size Treemap', shortcut: '', category: 'Tools', action: () => setShowTreemapPanel(true) },
+      { id: 'unused-css', label: 'Unused CSS Detector', shortcut: '', category: 'Tools', action: () => setShowUnusedCssPanel(true) },
+      { id: 'link-checker', label: 'Link Checker', shortcut: '', category: 'Tools', action: () => setShowLinkCheckerPanel(true) },
+      { id: 'dom-tree', label: 'DOM Tree Viewer', shortcut: '', category: 'Tools', action: () => setShowDomTreePanel(true) },
+      { id: 'meta-editor', label: 'Meta Tag Editor', shortcut: '', category: 'Tools', action: () => setShowMetaEditorPanel(true) },
+      { id: 'format-code', label: 'Format / Prettify Code', shortcut: '⇧⌥F', category: 'Edit', action: () => formatCode() },
+      { id: 'shortcuts-ref', label: 'Keyboard Shortcuts', shortcut: '', category: 'Help', action: () => setShowShortcutsRef(true) },
+      { id: 'grid-flex-debug', label: 'Toggle Grid/Flex Visualizer', shortcut: '', category: 'View', action: () => setGridFlexDebugActive(p => !p) },
+      { id: 'toggle-bookmark', label: 'Toggle Line Bookmark', shortcut: '⌘F2', category: 'Edit', action: () => toggleBookmark() },
+      { id: 'contrast-checker', label: 'Color Contrast Checker (WCAG)', shortcut: '', category: 'Tools', action: () => setShowContrastPanel(true) },
+      { id: 'z-index-map', label: 'Z-Index Map', shortcut: '', category: 'Tools', action: () => setShowZIndexPanel(true) },
+      { id: 'todo-scanner', label: 'TODO/FIXME Scanner', shortcut: '', category: 'Tools', action: () => setShowTodoScanPanel(true) },
+      { id: 'copy-preview-image', label: 'Copy Preview as Image', shortcut: '', category: 'Project', action: () => copyPreviewAsImage() },
+      { id: 'regex-tester', label: 'Regex Tester', shortcut: '', category: 'Tools', action: () => setShowRegexPanel(true) },
+      { id: 'css-specificity', label: 'CSS Specificity Calculator', shortcut: '', category: 'Tools', action: () => setShowSpecificityPanel(true) },
+      { id: 'lazy-images', label: 'Image Lazy Loading Checker', shortcut: '', category: 'Tools', action: () => setShowLazyImgPanel(true) },
+      { id: 'text-stats', label: 'Text Statistics', shortcut: '', category: 'Tools', action: () => setShowTextStatsPanel(true) },
+      { id: 'duplicate-code', label: 'Duplicate Code Detector', shortcut: '', category: 'Tools', action: () => setShowDuplicatePanel(true) },
+      { id: 'element-counter', label: 'Element Counter', shortcut: '', category: 'Tools', action: () => setShowElementCountPanel(true) },
+      { id: 'console-filter', label: 'Console Filter & Export', shortcut: '', category: 'Tools', action: () => setShowConsoleFilter(true) },
+      { id: 'color-edit', label: 'Inline Color Picker', shortcut: '', category: 'Tools', action: () => setShowColorEdit(true) },
+      { id: 'fold-map', label: 'Code Folding Map', shortcut: '', category: 'Tools', action: () => setShowFoldMap(true) },
+      { id: 'dep-graph', label: 'Dependency Graph', shortcut: '', category: 'Tools', action: () => setShowDepGraph(true) },
+      { id: 'perf-budget', label: 'Performance Budget', shortcut: '', category: 'Tools', action: () => setShowPerfBudget(true) },
+      { id: 'responsive-grid', label: 'Responsive Preview Grid', shortcut: '', category: 'Tools', action: () => setShowResponsiveGrid(true) },
+      { id: 'css-animations', label: 'CSS Animation Inspector', shortcut: '', category: 'Tools', action: () => setShowAnimPanel(true) },
+      { id: 'event-audit', label: 'Event Listener Audit', shortcut: '', category: 'Tools', action: () => setShowEventAudit(true) },
+      { id: 'og-preview', label: 'Open Graph Preview', shortcut: '', category: 'Tools', action: () => setShowOgPreview(true) },
+      { id: 'semantic-html', label: 'Semantic HTML Checker', shortcut: '', category: 'Tools', action: () => setShowSemanticPanel(true) },
+      { id: 'change-summary', label: 'File Change Summary', shortcut: '', category: 'Tools', action: () => setShowChangeSummary(true) },
+      { id: 'whitespace-check', label: 'Whitespace/Indent Checker', shortcut: '', category: 'Tools', action: () => setShowWhitespacePanel(true) },
+      { id: 'pwa-checker', label: 'PWA Checker', shortcut: '', category: 'Tools', action: () => setShowPwaPanel(true) },
+      { id: 'schema-validator', label: 'Schema.org Validator', shortcut: '', category: 'Tools', action: () => setShowSchemaPanel(true) },
+      { id: 'bundle-size', label: 'Bundle Size Estimator', shortcut: '', category: 'Tools', action: () => setShowBundlePanel(true) },
+      { id: 'aria-inspector', label: 'ARIA Roles Inspector', shortcut: '', category: 'Tools', action: () => setShowAriaPanel(true) },
+      { id: 'security-headers', label: 'Security Headers Check', shortcut: '', category: 'Tools', action: () => setShowSecurityPanel(true) },
+      { id: 'export-zip', label: 'Export Project as ZIP', shortcut: '', category: 'Project', action: () => exportProjectZip() },
+      // v23: Collaboration & Feedback
+      { id: 'collab', label: 'Collaboration Room', shortcut: '', category: 'Collaborate', action: () => setShowCollabPanel(true) },
+      { id: 'share-room', label: 'Create & Share Room', shortcut: '', category: 'Collaborate', action: () => { startCollabRoom(); setShowCollabPanel(true); } },
+      { id: 'feedback', label: 'Send Feedback', shortcut: '', category: 'Help', action: () => setShowFeedbackPanel(true) },
+      { id: 'changelog', label: "What's New (Changelog)", shortcut: '', category: 'Help', action: () => setShowChangelog(true) },
+      { id: 'onboarding', label: 'Product Tour', shortcut: '', category: 'Help', action: () => { setOnboardingStep(0); setShowOnboarding(true); } },
+      // v24: Advanced Builder Tools
+      { id: 'visual-builder', label: 'Visual Drag & Drop Builder', shortcut: '', category: 'Builder', action: () => setShowVisualBuilder(true) },
+      { id: 'anim-builder', label: 'Animation Timeline Builder', shortcut: '', category: 'Builder', action: () => setShowAnimBuilder(true) },
+      { id: 'design-system', label: 'Design System Manager', shortcut: '', category: 'Design', action: () => setShowDesignSystem(true) },
+      { id: 'api-tester', label: 'REST API Tester', shortcut: '', category: 'Developer', action: () => setShowApiTester(true) },
+      { id: 'git-panel', label: 'Git Branch Manager', shortcut: '', category: 'Git', action: () => setShowGitPanel(true) },
+      { id: 'git-commit', label: 'Git Commit Changes', shortcut: '', category: 'Git', action: () => { setShowGitPanel(true); setGitTab('commits'); } },
+      { id: 'git-stash', label: 'Git Stash Changes', shortcut: '', category: 'Git', action: () => gitStashSave() },
+      { id: 'screenshot-analyzer', label: 'AI Screenshot to Code', shortcut: '', category: 'AI', action: () => setShowScreenshotAnalyzer(true) },
+      // Figma Import
+      { id: 'figma-import', label: 'Import from Figma', shortcut: '', category: 'AI', action: () => setShowFigmaPanel(true) },
+      // Test Generation & Runner
+      { id: 'test-gen', label: 'Generate & Run Tests', shortcut: '', category: 'Testing', action: () => { setShowTestRunner(true); generateAndRunTests(); } },
+      { id: 'test-runner', label: 'Open Test Runner', shortcut: '', category: 'Testing', action: () => setShowTestRunner(true) },
+      { id: 'run-tests', label: 'Run All Tests in WebContainer', shortcut: '', category: 'Testing', action: () => { setShowTestRunner(true); runTestsInContainer(); } },
+      // Framework
+      { id: 'framework-html', label: 'Set Output: HTML (Vanilla)', shortcut: '', category: 'Framework', action: () => { setOutputFramework('html'); showToast('Framework: HTML', 'info'); } },
+      { id: 'framework-react', label: 'Set Output: React + shadcn/ui', shortcut: '', category: 'Framework', action: () => { setOutputFramework('react'); showToast('Framework: React', 'info'); } },
+      { id: 'framework-nextjs', label: 'Set Output: Next.js App Router', shortcut: '', category: 'Framework', action: () => { setOutputFramework('nextjs'); showToast('Framework: Next.js', 'info'); } },
+      { id: 'framework-vue', label: 'Set Output: Vue 3', shortcut: '', category: 'Framework', action: () => { setOutputFramework('vue'); showToast('Framework: Vue', 'info'); } },
+      // Scaffold full projects
+      { id: 'scaffold-react', label: 'Scaffold React + Vite + Tailwind Project', shortcut: '', category: 'Framework', action: () => scaffoldFrameworkProject('react') },
+      { id: 'scaffold-nextjs', label: 'Scaffold Next.js App Router Project', shortcut: '', category: 'Framework', action: () => scaffoldFrameworkProject('nextjs') },
+      { id: 'scaffold-vue', label: 'Scaffold Vue 3 + Vite Project', shortcut: '', category: 'Framework', action: () => scaffoldFrameworkProject('vue') },
+      { id: 'scaffold-html', label: 'Scaffold HTML + Tailwind Project', shortcut: '', category: 'Framework', action: () => scaffoldFrameworkProject('html') },
+      // AI Code Review
+      { id: 'code-review', label: 'AI Code Review (Current File)', shortcut: '', category: 'AI', action: () => runAICodeReview() },
+      // Backend / WebContainer
+      { id: 'wc-boot', label: 'Boot WebContainer Runtime', shortcut: '', category: 'Runtime', action: async () => { await webContainer.boot(); showToast('WebContainer booted', 'success'); } },
+      { id: 'wc-install', label: 'npm install (WebContainer)', shortcut: '', category: 'Runtime', action: async () => { showToast('Installing...', 'info'); await webContainer.installDeps(); showToast('Dependencies installed', 'success'); } },
+      { id: 'wc-dev', label: 'npm run dev (WebContainer)', shortcut: '', category: 'Runtime', action: () => { webContainer.startDevServer(); showToast('Dev server starting...', 'info'); } },
+      { id: 'wc-start-backend', label: 'Start Backend Server (node)', shortcut: '', category: 'Runtime', action: () => { webContainer.startBackendServer(); showToast('Backend server starting...', 'info'); } },
+      // Git History
+      { id: 'git-history', label: 'View Git Commit History', shortcut: '', category: 'Git', action: () => { setShowGitPanel(true); setGitTab('commits'); } },
+      { id: 'git-branches', label: 'Browse Git Branches', shortcut: '', category: 'Git', action: () => { setShowGitPanel(true); setGitTab('branches'); } },
+      { id: 'git-remote', label: 'Git Remote: Repos, PRs & Merge', shortcut: '', category: 'Git', action: () => { setShowGitPanel(true); setGitTab('remote'); } },
+      { id: 'git-create-pr', label: 'Create Pull Request', shortcut: '', category: 'Git', action: () => { setShowGitPanel(true); setGitTab('remote'); } },
       // Models
-      ...MODELS.map(m => ({ id: `model-${m.id}`, label: `Switch to ${m.name}`, shortcut: '', category: 'Model', action: () => setModel(m.id) })),
+      ...MODELS.map(m => ({ id: `model-${m.id}`, label: `Switch to ${m.name} (${PROVIDER_LABELS[m.provider] || m.provider})`, shortcut: '', category: 'Model', action: () => setModel(m.id) })),
     ];
     if (!commandQuery) return list;
     const q = commandQuery.toLowerCase();
@@ -10186,9 +14373,16 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commandQuery, showTerminal, showChat, showDiffView, isEditMode, projects.length, selectedFile]);
 
-  // ── LTX Video Generation ──
+  // ── LTX Video Generation (rate-limited) ──
+  const pendingVideoRef = useRef(0);
   const generateLTXVideo = useCallback(async (videoId: string, prompt: string) => {
-    setTerminalLines(prev => [...prev, `$ 🎬 Generating LTX video "${videoId}"...`]);
+    // Flood protection: only 1 video at a time
+    if (pendingVideoRef.current >= 1) {
+      setTerminalLines(prev => [...prev, `$ ⏳ Video "${videoId}" skipped (limit reached)`]);
+      return;
+    }
+    pendingVideoRef.current++;
+    setTerminalLines(prev => [...prev, `$ 🎬 Generating video "${videoId}"...`]);
     try {
       const res = await fetchWithRetry('/api/ltx', {
         method: 'POST',
@@ -10202,9 +14396,9 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
           generate_audio: false,
         }),
         timeout: 300000, // 5 min for video
-      }, 1);
+      }, 0); // No retries — placeholder is returned on failure
 
-      // Check if response is binary video (new streaming format) or legacy JSON
+      // Check if response is binary video (new streaming format) or JSON (placeholder/legacy)
       const contentType = res.headers.get('content-type') || '';
       let videoUrl: string;
       if (contentType.includes('video/')) {
@@ -10212,7 +14406,7 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
         const blob = await res.blob();
         videoUrl = URL.createObjectURL(blob);
       } else {
-        // Legacy JSON format fallback
+        // JSON format (placeholder or legacy)
         const data = await res.json();
         if (!data.success || !data.video_url) {
           setTerminalLines(prev => [...prev, `$ ✗ Video "${videoId}" failed: ${data.error || 'Unknown error'}`]);
@@ -10240,19 +14434,29 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
       setMediaAssets(prev => [...prev, { id: videoId, type: 'video', url: videoUrl, prompt, timestamp: Date.now() }]);
     } catch (err) {
       setTerminalLines(prev => [...prev, `$ ✗ Video "${videoId}" error: ${err instanceof Error ? err.message : 'Unknown'}`]);
+    } finally {
+      pendingVideoRef.current--;
     }
   }, []);
 
-  // ── Gemini Image Generation ──
+  // ── Image Generation (rate-limited) ──
+  const pendingImageRef = useRef(0);
+  const MAX_CONCURRENT_IMAGES = 2;
   const generateGeminiImage = useCallback(async (imageId: string, prompt: string) => {
-    setTerminalLines(prev => [...prev, `$ 🎨 Generating Gemini image "${imageId}"...`]);
+    // Flood protection: skip if too many concurrent requests
+    if (pendingImageRef.current >= MAX_CONCURRENT_IMAGES) {
+      setTerminalLines(prev => [...prev, `$ ⏳ Image "${imageId}" queued (limit reached)`]);
+      return;
+    }
+    pendingImageRef.current++;
+    setTerminalLines(prev => [...prev, `$ 🎨 Generating image "${imageId}"...`]);
     try {
       const res = await fetchWithRetry('/api/deepai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt }),
-        timeout: 90000, // 90s for image
-      }, 1);
+        timeout: 120000,
+      }, 0); // No retries — placeholder is returned on failure
       const data = await res.json();
       if (data.success && data.image_url) {
         const placeholder = `__GEMINI_IMAGE_${imageId}__`;
@@ -10268,13 +14472,15 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
           }
           return updated;
         });
-        setTerminalLines(prev => [...prev, `$ ✓ Image "${imageId}" generated successfully`]);
+        setTerminalLines(prev => [...prev, `$ ✓ Image "${imageId}" generated${data.note ? ' (placeholder)' : ''}`]);
         setMediaAssets(prev => [...prev, { id: imageId, type: 'image', url: data.image_url, prompt, timestamp: Date.now() }]);
       } else {
         setTerminalLines(prev => [...prev, `$ ✗ Image "${imageId}" failed: ${data.error || 'Unknown error'}`]);
       }
     } catch (err) {
       setTerminalLines(prev => [...prev, `$ ✗ Image "${imageId}" error: ${err instanceof Error ? err.message : 'Unknown'}`]);
+    } finally {
+      pendingImageRef.current--;
     }
   }, []);
 
@@ -10283,23 +14489,90 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
   const executedActionsRef = useRef<Set<string>>(new Set());
 
   const parseAndExecuteActions = useCallback((content: string) => {
-    // Parse <<FILE:path>>content<</FILE>> tags
-    const fileRegex = /<<FILE:([^>]+)>>([\s\S]*?)<<\/FILE>>/g;
-    let fileMatch;
-    while ((fileMatch = fileRegex.exec(content)) !== null) {
-      const fileId = 'file_' + fileMatch.index;
-      if (executedActionsRef.current.has(fileId)) continue;
-      executedActionsRef.current.add(fileId);
-      const filePath = fileMatch[1].trim();
-      const fileContent = fileMatch[2].trim();
-      if (filePath && fileContent) {
-        setProjectFiles(prev => ({
-          ...prev,
-          [filePath]: { content: fileContent, language: detectLanguage(filePath) },
-        }));
-        setTerminalLines(prev => [...prev, `$ \u2713 ${prev.some?.(l => l.includes(filePath)) ? 'updated' : 'created'} ${filePath}`]);
-        setActiveTab('code');
-        setSelectedFile(filePath);
+    // Phase 1: Parse closed file tags — <<FILE:path>>...<</FILE>> AND <FILE:path>...</FILE>
+    const closedFilePatterns = [
+      /<<FILE:([^>]+)>>([\s\S]*?)<<\/FILE>>/g,
+      /<FILE:([^>]+)>([\s\S]*?)<\/FILE>/g,
+    ];
+    for (const fileRegex of closedFilePatterns) {
+      let fileMatch;
+      while ((fileMatch = fileRegex.exec(content)) !== null) {
+        const fileId = 'file_' + fileMatch[0].slice(0, 30) + '_' + fileMatch.index;
+        if (executedActionsRef.current.has(fileId)) continue;
+        executedActionsRef.current.add(fileId);
+        const filePath = fileMatch[1].trim();
+        const fileContent = fileMatch[2].trim();
+        if (filePath && fileContent) {
+          setProjectFiles(prev => ({
+            ...prev,
+            [filePath]: { content: fileContent, language: detectLanguage(filePath) },
+          }));
+          setTerminalLines(prev => [...prev, `$ \u2713 ${prev.some?.(l => l.includes(filePath)) ? 'updated' : 'created'} ${filePath}`]);
+          if (filePath === 'index.html' || filePath.endsWith('.html')) {
+            setActiveTab('app');
+          }
+          setSelectedFile(filePath);
+        }
+      }
+    }
+
+    // Phase 2: Handle unclosed FILE tags — use content hash to allow updates during streaming
+    const unclosedFilePatterns = [
+      /<<FILE:([^>]+)>>([\s\S]+?)(?=<<FILE:|$)/g,
+      /<FILE:([^>]+)>([\s\S]+?)(?=<FILE:|$)/g,
+    ];
+    for (const fileRegex of unclosedFilePatterns) {
+      let fileMatch;
+      while ((fileMatch = fileRegex.exec(content)) !== null) {
+        const filePath = fileMatch[1].trim();
+        let fileContent = fileMatch[2].trim();
+        fileContent = fileContent.replace(/<\/?FILE>/gi, '').replace(/<<\/FILE>>/g, '');
+        if (filePath.endsWith('.html')) {
+          const htmlEnd = fileContent.search(/<\/html>/i);
+          if (htmlEnd !== -1) fileContent = fileContent.slice(0, htmlEnd + 7);
+        }
+        if (filePath && fileContent && fileContent.length > 50) {
+          const fileId = 'unclosed_' + filePath + '_' + fileContent.length;
+          if (executedActionsRef.current.has(fileId)) continue;
+          executedActionsRef.current.add(fileId);
+          setProjectFiles(prev => ({
+            ...prev,
+            [filePath]: { content: fileContent, language: detectLanguage(filePath) },
+          }));
+          if (filePath === 'index.html' || filePath.endsWith('.html') || filePath.endsWith('.jsx') || filePath.endsWith('.tsx')) {
+            setActiveTab('app');
+          }
+          setSelectedFile(filePath);
+        }
+      }
+    }
+
+    // Phase 3: Parse ```lang code blocks — detect filenames from comments or context
+    const codeBlockRegex = /```(html|jsx|tsx|css|js|javascript|typescript)\s*\n([\s\S]*?)```/g;
+    let cbMatch;
+    while ((cbMatch = codeBlockRegex.exec(content)) !== null) {
+      const lang = cbMatch[1];
+      const code = cbMatch[2].trim();
+      if (code.length < 50) continue;
+      const cbId = 'codeblock_' + lang + '_' + cbMatch.index;
+      if (executedActionsRef.current.has(cbId)) continue;
+      executedActionsRef.current.add(cbId);
+
+      // Determine filename from language
+      let fileName: string;
+      if (lang === 'html') fileName = 'index.html';
+      else if (lang === 'jsx' || lang === 'tsx') fileName = 'App.' + lang;
+      else if (lang === 'css') fileName = 'styles.css';
+      else if (lang === 'js' || lang === 'javascript') fileName = 'script.js';
+      else if (lang === 'typescript') fileName = 'script.ts';
+      else fileName = `file.${lang}`;
+
+      setProjectFiles(prev => ({
+        ...prev,
+        [fileName]: { content: code, language: detectLanguage(fileName) },
+      }));
+      if (fileName.endsWith('.html') || fileName.endsWith('.jsx') || fileName.endsWith('.tsx')) {
+        setActiveTab('app');
       }
     }
 
@@ -10333,8 +14606,8 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
           break;
         }
         case 'TAB': {
-          const tab = payload.trim().toLowerCase() as 'app' | 'code' | 'database' | 'payments';
-          if (['app', 'code', 'database', 'payments'].includes(tab)) {
+          const tab = payload.trim().toLowerCase() as 'app' | 'code' | 'database' | 'payments' | 'ide';
+          if (['app', 'code', 'database', 'payments', 'ide'].includes(tab)) {
             setActiveTab(tab);
           }
           break;
@@ -10399,14 +14672,9 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
       <div className="h-screen bg-[#0c0c0c] flex flex-col items-center justify-center relative">
 
         <div className="w-full max-w-[680px] mx-auto px-6 text-center">
-          <h1 className="text-[32px] sm:text-[42px] md:text-[52px] font-bold text-white leading-[1.1] mb-4" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+          <h1 className="text-[32px] sm:text-[42px] md:text-[52px] font-bold text-white leading-[1.1] mb-10" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
             Build any app
           </h1>
-          <p className="text-[#888] text-[15px] mb-10 leading-relaxed">
-            Use Ollama Cloud AI and Firecrawl to<br />
-            build websites, clones, and full apps{' '}
-            <span className="text-amber-400 cursor-pointer hover:text-amber-300">for free &rarr;</span>
-          </p>
 
           {/* Prompt input — Orchids style */}
           <div className="bg-[#161616] rounded-2xl border border-[#252525] relative">
@@ -10457,8 +14725,19 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                     )}
                   </AnimatePresence>
                 </div>
+                {/* Framework selector */}
+                <select value={outputFramework} onChange={e => setOutputFramework(e.target.value as 'html' | 'react' | 'nextjs' | 'vue')} className="px-2 py-1.5 rounded-lg bg-[#222] hover:bg-[#2a2a2a] text-[11px] text-[#888] hover:text-white transition-colors border-none outline-none cursor-pointer appearance-none" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'8\' height=\'8\' viewBox=\'0 0 20 20\' fill=\'%23666\'%3E%3Cpath d=\'M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center', paddingRight: '18px' }}>
+                  <option value="html">HTML</option>
+                  <option value="react">React</option>
+                  <option value="nextjs">Next.js</option>
+                  <option value="vue">Vue</option>
+                </select>
                 <button onClick={() => setShowCloneModal(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#222] hover:bg-[#2a2a2a] text-[11px] text-[#888] hover:text-white transition-colors">
                   <GlobeIcon /> Clone
+                </button>
+                <button onClick={() => setLandingInput('Create a CINEMATIC 3D scroll landing page. MANDATORY: preloader animation, aurora gradient hero with split text reveal, horizontal scroll gallery pinned with GSAP ScrollTrigger, 3D parallax image reveals, glassmorphic cards with hover tilt (perspective 1000px rotateX/Y), infinite marquee logos, scroll word-color-reveal section, staggered stats counters, gradient glow CTA, glass footer. Use Lenis smooth scroll, GSAP ScrollTrigger for 5+ animations. Dark theme with glass morphism. 1500+ lines minimum. Topic: ')} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-500/20 hover:border-cyan-500/40 text-[11px] text-cyan-400 hover:text-cyan-300 transition-all group" title="Mode 3D Cinématique — Génère des sites avec scroll 3D, parallax et animations immersives">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-12 transition-transform"><path d="M12 3L2 9l10 6 10-6-10-6z"/><path d="M2 17l10 6 10-6"/><path d="M2 13l10 6 10-6"/></svg>
+                  3D
                 </button>
               </div>
               <div className="flex items-center gap-2">
@@ -10496,7 +14775,7 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
           </div>
           <div className="mt-3">
             <button onClick={() => { setView('workspace'); setShowTemplates(true); }} className="px-4 py-2 rounded-full bg-[#1a1a1a] border border-purple-500/20 text-[13px] text-purple-400 hover:text-purple-300 hover:border-purple-500/40 transition-colors">
-              📦 Start from Template
+              Start from Template
             </button>
           </div>
         </div>
@@ -10549,11 +14828,13 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
             <div style={{ width: chatWidth }} className="h-full flex flex-col">
               {/* Chat header */}
               <div className="h-[44px] border-b border-[#1e1e1e] px-3 flex items-center justify-between shrink-0">
-                <span className="text-[13px] font-medium text-white truncate max-w-[70%]">
-                  {messages.length > 0 ? (messages[0]?.content?.slice(0, 50) + (messages[0]?.content?.length > 50 ? '...' : '')) : 'New Chat'}
+                <span className="text-[13px] font-medium text-white truncate max-w-[50%]">
+                  {messages.length > 0 ? (messages[0]?.content?.slice(0, 40) + (messages[0]?.content?.length > 40 ? '...' : '')) : 'New Chat'}
                 </span>
                 <div className="flex items-center gap-1">
-                  <button onClick={clearChat} className="w-7 h-7 flex items-center justify-center rounded-md text-[#555] hover:text-white hover:bg-[#1a1a1a] transition-colors" title="New chat"><PlusIcon /></button>
+                  <button onClick={() => setShowConversationHistory(true)} className="w-7 h-7 flex items-center justify-center rounded-md text-[#555] hover:text-white hover:bg-[#1a1a1a] transition-colors" title="History"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg></button>
+                  <button onClick={() => setShowPromptTemplates(true)} className="w-7 h-7 flex items-center justify-center rounded-md text-[#555] hover:text-white hover:bg-[#1a1a1a] transition-colors" title="Templates"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button>
+                  <button onClick={newConversation} className="w-7 h-7 flex items-center justify-center rounded-md text-[#555] hover:text-white hover:bg-[#1a1a1a] transition-colors" title="New chat"><PlusIcon /></button>
                 </div>
               </div>
 
@@ -10581,14 +14862,28 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                   <div className="py-3 px-3 space-y-3">
                     <AnimatePresence initial={false}>
                       {messages.map((msg) => (
-                        <motion.div key={msg.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }} className={msg.role === 'user' ? 'flex justify-end' : ''}>
+                        <motion.div key={msg.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }} className={msg.role === 'user' ? 'flex justify-end' : 'group/msg'}>
                           {msg.role === 'user' ? (
                             <div className="max-w-[90%] px-3 py-2 rounded-2xl bg-[#1a1a1a] border border-[#2a2a2a] text-white">
                               <p className="whitespace-pre-wrap text-[13px]">{msg.content}</p>
                             </div>
                           ) : (
-                            <div className="prose prose-invert prose-sm max-w-none text-[13px] text-gray-300">
-                              {msg.content ? <MarkdownContent content={msg.content} /> : isStreaming ? <TypingIndicator /> : null}
+                            <div className="relative">
+                              <div className="prose prose-invert prose-sm max-w-none text-[13px] text-gray-300">
+                                {msg.content ? <MarkdownContent content={msg.content} /> : isStreaming ? <TypingIndicator /> : null}
+                              </div>
+                              {msg.content && !isStreaming && (
+                                <div className="flex items-center gap-1 mt-1 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+                                  <button onClick={() => { navigator.clipboard.writeText(msg.content); showToast('Response copied', 'success'); }} className="px-1.5 py-0.5 rounded text-[9px] text-[#555] hover:text-white hover:bg-[#1a1a1a] transition-colors" title="Copy response">
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                  </button>
+                                  {(() => { const codeMatch = msg.content.match(/```\w*\n([\s\S]*?)```/); return codeMatch ? (
+                                    <button onClick={() => { const code = codeMatch[1].trim(); if (selectedFile && projectFiles[selectedFile]) { setProjectFiles(prev => ({ ...prev, [selectedFile]: { ...prev[selectedFile], content: prev[selectedFile].content + '\n' + code } })); showToast('Code inserted', 'success'); } }} className="px-1.5 py-0.5 rounded text-[9px] text-[#555] hover:text-white hover:bg-[#1a1a1a] transition-colors" title="Insert code into current file">
+                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+                                    </button>
+                                  ) : null; })()}
+                                </div>
+                              )}
                             </div>
                           )}
                         </motion.div>
@@ -10622,6 +14917,20 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                       </div>
                     )}
                     {error && <div className="p-2.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-red-400 text-[11px] flex items-start gap-2"><span className="flex-1">{error}</span><button onClick={() => { setError(null); if (messages.length >= 2) { const lastUserMsg = [...messages].reverse().find(m => m.role === 'user'); if (lastUserMsg) sendToAI(lastUserMsg.content); } }} className="shrink-0 text-[10px] underline hover:text-red-300 cursor-pointer">Try again</button></div>}
+                    {/* Follow-up suggestion chips */}
+                    {followUpSuggestions.length > 0 && !isStreaming && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {followUpSuggestions.map((chip) => (
+                          <button
+                            key={chip}
+                            onClick={() => sendPrompt(chip)}
+                            className="px-2.5 py-1 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] text-[11px] text-[#888] hover:text-white hover:border-[#444] hover:bg-[#222] transition-all"
+                          >
+                            {chip}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <div ref={chatEndRef} />
                   </div>
                 )}
@@ -10629,6 +14938,17 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
 
               {/* Prompt input — Orchids style */}
               <div className="p-3 shrink-0 relative">
+                {/* Streaming stats bar */}
+                {isStreaming && streamingChars > 0 && (
+                  <div className="flex items-center justify-between px-3 py-1 mb-1 rounded-lg bg-[#111] border border-[#1e1e1e] text-[10px] text-[#555]">
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-center gap-1"><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-2.5 h-2.5 border border-white/30 border-t-white rounded-full" /> Streaming</span>
+                      <span>{streamingChars.toLocaleString()} chars</span>
+                      <span>{((Date.now() - streamStartTime.current) / 1000).toFixed(1)}s</span>
+                    </div>
+                    <span className="text-[#444]">{MODELS.find(m => m.id === model)?.name}</span>
+                  </div>
+                )}
                 <div className="bg-[#161616] rounded-xl border border-[#222] focus-within:border-[#444] transition-colors relative">
                   <textarea
                     ref={textareaRef}
@@ -10681,6 +15001,31 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                           {MODELS.filter(m => m.id !== model).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                         </select>
                       )}
+                      {/* Framework selector */}
+                      <select value={outputFramework} onChange={e => setOutputFramework(e.target.value as 'html' | 'react' | 'nextjs' | 'vue')} className="bg-[#222] border border-[#333] rounded-md px-1.5 py-0.5 text-[9px] text-[#888] outline-none cursor-pointer" title="Output framework">
+                        <option value="html">HTML</option>
+                        <option value="react">React</option>
+                        <option value="nextjs">Next.js</option>
+                        <option value="vue">Vue</option>
+                      </select>
+                      {/* 3D Cinematic mode button */}
+                      <button onClick={() => setInput('Create a CINEMATIC 3D scroll landing page. MANDATORY: preloader animation, aurora gradient hero with split text reveal, horizontal scroll gallery pinned with GSAP ScrollTrigger, 3D parallax image reveals, glassmorphic cards with hover tilt (perspective 1000px rotateX/Y), infinite marquee logos, scroll word-color-reveal section, staggered stats counters, gradient glow CTA, glass footer. Use Lenis smooth scroll, GSAP ScrollTrigger for 5+ animations. Dark theme with glass morphism. 1500+ lines minimum. Topic: ')} className="flex items-center gap-1 px-2 py-1 rounded-md bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-500/20 hover:border-cyan-500/40 text-[10px] text-cyan-400 hover:text-cyan-300 transition-all group" title="Mode 3D Cinématique">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-12 transition-transform"><path d="M12 3L2 9l10 6 10-6-10-6z"/><path d="M2 17l10 6 10-6"/><path d="M2 13l10 6 10-6"/></svg>
+                        3D
+                      </button>
+                      {/* Research & Claude Code mode indicators */}
+                      {researchMode && (
+                        <button onClick={() => setShowResearchPanel(true)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-violet-500/10 border border-violet-500/20 text-[10px] text-violet-400 hover:bg-violet-500/20 transition-all" title="NotebookLM Research Active">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                          <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+                        </button>
+                      )}
+                      {claudeCodeMode && (
+                        <button onClick={() => setShowResearchPanel(true)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-orange-500/10 border border-orange-500/20 text-[10px] text-orange-400 hover:bg-orange-500/20 transition-all" title="Claude Code Engine Active">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                          <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+                        </button>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5">
                       <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
@@ -10688,7 +15033,7 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                       {isStreaming ? (
                         <button onClick={stopStream} className="w-7 h-7 rounded-full bg-white text-black flex items-center justify-center transition-colors" title="Stop"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
                       ) : (
-                        <button onClick={sendMessage} disabled={!input.trim() && attachedImages.length === 0} className="w-7 h-7 rounded-full bg-white text-black flex items-center justify-center transition-all disabled:opacity-20 hover:bg-gray-200" title="Send"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
+                        <button data-send-btn onClick={sendMessage} disabled={!input.trim() && attachedImages.length === 0} className="w-7 h-7 rounded-full bg-white text-black flex items-center justify-center transition-all disabled:opacity-20 hover:bg-gray-200" title="Send"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
                       )}
                     </div>
                   </div>
@@ -10793,6 +15138,7 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
               { id: 'code' as const, label: 'Code', icon: <CodeIcon /> },
               { id: 'database' as const, label: 'Database', icon: <DatabaseIcon /> },
               { id: 'payments' as const, label: 'Payments', icon: <PaymentsIcon /> },
+              { id: 'ide' as const, label: 'IDE', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> },
             ]).map((tab) => (
               <button
                 key={tab.id}
@@ -10807,9 +15153,17 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
             {activeTab === 'app' && hasPreviewContent && (
               <div className="flex items-center gap-0.5 ml-2 pl-2 border-l border-[#222]">
                 <button className="w-6 h-6 flex items-center justify-center text-[#555] hover:text-white rounded-md hover:bg-[#1a1a1a] transition-colors" onClick={refreshPreview} title="Refresh"><RefreshIcon /></button>
-                <button className={`w-6 h-6 flex items-center justify-center rounded-md transition-colors ${deviceMode === 'desktop' ? 'text-white bg-[#1a1a1a]' : 'text-[#555] hover:text-white'}`} onClick={() => setDeviceMode('desktop')}><DesktopIcon /></button>
+                <button className="w-6 h-6 flex items-center justify-center text-[#555] hover:text-white rounded-md hover:bg-[#1a1a1a] transition-colors" onClick={openPreviewNewTab} title="Open in new tab"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>
+                <button className="w-6 h-6 flex items-center justify-center text-[#555] hover:text-white rounded-md hover:bg-[#1a1a1a] transition-colors" onClick={copyPreviewHtml} title="Copy HTML"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+                <button className="w-6 h-6 flex items-center justify-center text-[#555] hover:text-white rounded-md hover:bg-[#1a1a1a] transition-colors" onClick={capturePreviewScreenshot} title="Screenshot"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+                <button className={`w-6 h-6 flex items-center justify-center rounded-md transition-colors ${deviceMode === 'desktop' ? 'text-white bg-[#1a1a1a]' : 'text-[#555] hover:text-white'}`} onClick={() => { setDeviceMode('desktop'); setIsLandscape(false); }}><DesktopIcon /></button>
                 <button className={`w-6 h-6 flex items-center justify-center rounded-md transition-colors ${deviceMode === 'tablet' ? 'text-white bg-[#1a1a1a]' : 'text-[#555] hover:text-white'}`} onClick={() => setDeviceMode('tablet')} title="Tablet (810×1080)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg></button>
                 <button className={`w-6 h-6 flex items-center justify-center rounded-md transition-colors ${deviceMode === 'mobile' ? 'text-white bg-[#1a1a1a]' : 'text-[#555] hover:text-white'}`} onClick={() => setDeviceMode('mobile')}><MobileIcon /></button>
+                {deviceMode !== 'desktop' && (
+                  <button className={`w-6 h-6 flex items-center justify-center rounded-md transition-colors ${isLandscape ? 'text-white bg-[#1a1a1a]' : 'text-[#555] hover:text-white'}`} onClick={() => setIsLandscape(!isLandscape)} title={isLandscape ? 'Portrait' : 'Landscape'}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.5 21H2V9h21v12h-5.5M7.5 21l3-3m-3 3l3 3"/></svg>
+                  </button>
+                )}
                 <button className={`w-6 h-6 flex items-center justify-center rounded-md transition-colors ${isEditMode ? 'text-blue-400 bg-blue-500/10' : 'text-[#555] hover:text-white hover:bg-[#1a1a1a]'}`} onClick={() => setIsEditMode(!isEditMode)} title={isEditMode ? 'Save & Exit Edit Mode' : 'Visual Editor'}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 </button>
@@ -10821,6 +15175,204 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                   21st
                 </button>
+                {/* Zoom control */}
+                <div className="flex items-center gap-1 ml-1 pl-1 border-l border-[#222]">
+                  <button onClick={() => setPreviewZoom(Math.max(25, previewZoom - 25))} className="w-5 h-5 flex items-center justify-center text-[#555] hover:text-white rounded transition-colors text-[10px] font-bold">−</button>
+                  <button onClick={() => setPreviewZoom(100)} className="text-[9px] text-[#666] hover:text-white min-w-[32px] text-center transition-colors">{previewZoom}%</button>
+                  <button onClick={() => setPreviewZoom(Math.min(200, previewZoom + 25))} className="w-5 h-5 flex items-center justify-center text-[#555] hover:text-white rounded transition-colors text-[10px] font-bold">+</button>
+                  <button onClick={() => setShowBreakpointRuler(p => !p)} className={`w-5 h-5 flex items-center justify-center rounded transition-colors text-[10px] ${showBreakpointRuler ? 'text-white bg-[#1a1a1a]' : 'text-[#555] hover:text-white'}`} title="Breakpoint Ruler">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18"/><path d="M7 17V9"/><path d="M11 17V5"/><path d="M15 17v-4"/><path d="M19 17V9"/></svg>
+                  </button>
+                  {/* ═══ Inspect dropdown ═══ */}
+                  <div className="relative">
+                    <button onClick={() => { setShowInspectMenu(p => !p); setShowAnalyzeMenu(false); setShowDebugMenu(false); }} className={`flex items-center gap-1 px-1.5 h-6 rounded transition-colors text-[9px] font-medium ${showInspectMenu || showA11yPanel || showSeoPanel || showPerfPanel || showHtmlValidatorPanel || showSecurityPanel || showContrastPanel || showSemanticPanel || showWhitespacePanel || showPwaPanel ? 'text-emerald-400 bg-emerald-500/10' : 'text-[#555] hover:text-white hover:bg-[#1a1a1a]'}`} title="Quality & Audit tools">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                      Inspect
+                    </button>
+                    {showInspectMenu && (<>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowInspectMenu(false)} />
+                      <div className="absolute left-0 top-7 z-50 bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] py-1 min-w-[180px] shadow-2xl shadow-black/60">
+                        <div className="px-3 py-1 text-[8px] font-medium text-[#444] uppercase tracking-wider">Quality & Audit</div>
+                        <button onClick={() => { runA11yAudit(); setShowInspectMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showA11yPanel ? 'text-emerald-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="4" r="2"/><path d="M12 6v6"/><path d="M8 22l4-10 4 10"/><path d="M6 14h12"/></svg>
+                          Accessibility {showA11yPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+                        </button>
+                        <button onClick={() => { const html = projectFiles['index.html']?.content || ''; const tMatch = html.match(/<title>([^<]*)<\/title>/i); const dMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i); const oMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*)["']/i); setSeoTitle(tMatch?.[1] || ''); setSeoDescription(dMatch?.[1] || ''); setSeoOgImage(oMatch?.[1] || ''); setShowSeoPanel(true); setShowInspectMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showSeoPanel ? 'text-blue-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                          SEO Editor {showSeoPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                        </button>
+                        <button onClick={() => { runPerfAudit(); setShowInspectMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showPerfPanel ? 'text-amber-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                          Performance {showPerfPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400" />}
+                        </button>
+                        <button onClick={() => { setShowHtmlValidatorPanel(true); setShowInspectMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showHtmlValidatorPanel ? 'text-red-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                          HTML Validator {showHtmlValidatorPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-red-400" />}
+                        </button>
+                        <button onClick={() => { setShowSecurityPanel(p => !p); setShowInspectMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showSecurityPanel ? 'text-red-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                          Security {showSecurityPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-red-400" />}
+                        </button>
+                        <button onClick={() => { setShowContrastPanel(p => !p); setShowInspectMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showContrastPanel ? 'text-violet-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v20"/><path d="M12 2a10 10 0 0 1 0 20"/></svg>
+                          Contrast {showContrastPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-400" />}
+                        </button>
+                        <button onClick={() => { setShowSemanticPanel(p => !p); setShowInspectMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showSemanticPanel ? 'text-amber-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
+                          Semantic HTML {showSemanticPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400" />}
+                        </button>
+                        <button onClick={() => { setShowWhitespacePanel(p => !p); setShowInspectMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showWhitespacePanel ? 'text-gray-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10H3"/><path d="M21 6H3"/><path d="M21 14H3"/><path d="M21 18H3"/></svg>
+                          Whitespace {showWhitespacePanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-gray-400" />}
+                        </button>
+                        <button onClick={() => { setShowPwaPanel(p => !p); setShowInspectMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showPwaPanel ? 'text-blue-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                          PWA Check {showPwaPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                        </button>
+                      </div>
+                    </>)}
+                  </div>
+
+                  {/* ═══ Analyze dropdown ═══ */}
+                  <div className="relative">
+                    <button onClick={() => { setShowAnalyzeMenu(p => !p); setShowInspectMenu(false); setShowDebugMenu(false); }} className={`flex items-center gap-1 px-1.5 h-6 rounded transition-colors text-[9px] font-medium ${showAnalyzeMenu || showStatsPanel || showDepsPanel || showColorPalettePanel || showDepGraph || showPerfBudget || showBundlePanel || showUnusedCssPanel || showElementCountPanel || showTextStatsPanel || showTodoScanPanel ? 'text-cyan-400 bg-cyan-500/10' : 'text-[#555] hover:text-white hover:bg-[#1a1a1a]'}`} title="Analysis & Stats tools">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+                      Analyze
+                    </button>
+                    {showAnalyzeMenu && (<>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowAnalyzeMenu(false)} />
+                      <div className="absolute left-0 top-7 z-50 bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] py-1 min-w-[180px] shadow-2xl shadow-black/60">
+                        <div className="px-3 py-1 text-[8px] font-medium text-[#444] uppercase tracking-wider">Analysis & Stats</div>
+                        <button onClick={() => { setShowStatsPanel(true); setShowAnalyzeMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showStatsPanel ? 'text-cyan-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+                          Project Stats {showStatsPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                        </button>
+                        <button onClick={() => { setShowDepsPanel(true); setShowAnalyzeMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showDepsPanel ? 'text-violet-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                          Dependencies {showDepsPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-400" />}
+                        </button>
+                        <button onClick={() => { setShowColorPalettePanel(true); setShowAnalyzeMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showColorPalettePanel ? 'text-pink-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12" r="2.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.1-.7-.4-1-.3-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-5.5-4.5-9-10-9z"/></svg>
+                          Color Palette {showColorPalettePanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-pink-400" />}
+                        </button>
+                        <button onClick={() => { setShowDepGraph(p => !p); setShowAnalyzeMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showDepGraph ? 'text-cyan-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                          Dep Graph {showDepGraph && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                        </button>
+                        <button onClick={() => { setShowPerfBudget(p => !p); setShowAnalyzeMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showPerfBudget ? 'text-lime-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-6"/></svg>
+                          Perf Budget {showPerfBudget && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-lime-400" />}
+                        </button>
+                        <button onClick={() => { setShowBundlePanel(p => !p); setShowAnalyzeMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showBundlePanel ? 'text-green-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                          Bundle Size {showBundlePanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-green-400" />}
+                        </button>
+                        <button onClick={() => { setShowUnusedCssPanel(p => !p); setShowAnalyzeMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showUnusedCssPanel ? 'text-amber-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3l18 18"/><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94"/></svg>
+                          Unused CSS {showUnusedCssPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400" />}
+                        </button>
+                        <button onClick={() => { setShowElementCountPanel(p => !p); setShowAnalyzeMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showElementCountPanel ? 'text-teal-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 9h16"/><path d="M4 15h16"/><path d="M10 3L8 21"/><path d="M16 3l-2 18"/></svg>
+                          Element Count {showElementCountPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-teal-400" />}
+                        </button>
+                        <button onClick={() => { setShowTextStatsPanel(p => !p); setShowAnalyzeMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showTextStatsPanel ? 'text-indigo-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+                          Text Stats {showTextStatsPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400" />}
+                        </button>
+                        <button onClick={() => { setShowTodoScanPanel(p => !p); setShowAnalyzeMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showTodoScanPanel ? 'text-lime-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                          TODO Scanner {showTodoScanPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-lime-400" />}
+                        </button>
+                      </div>
+                    </>)}
+                  </div>
+
+                  {/* ═══ Debug dropdown ═══ */}
+                  <div className="relative">
+                    <button onClick={() => { setShowDebugMenu(p => !p); setShowInspectMenu(false); setShowAnalyzeMenu(false); }} className={`flex items-center gap-1 px-1.5 h-6 rounded transition-colors text-[9px] font-medium ${showDebugMenu || layoutDebugActive || gridFlexDebugActive || breakpointTestActive || showResponsiveGrid || showDomTreePanel || showLinkCheckerPanel || showAnimPanel || showOgPreview || showConsoleFilter || showColorEdit || showRegexPanel || showSplitPreview || showOutlinePanel || showNetworkPanel ? 'text-sky-400 bg-sky-500/10' : 'text-[#555] hover:text-white hover:bg-[#1a1a1a]'}`} title="Debug & Visual tools">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                      Debug
+                    </button>
+                    {showDebugMenu && (<>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowDebugMenu(false)} />
+                      <div className="absolute left-0 top-7 z-50 bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] py-1 min-w-[180px] shadow-2xl shadow-black/60 max-h-[320px] overflow-y-auto">
+                        <div className="px-3 py-1 text-[8px] font-medium text-[#444] uppercase tracking-wider">Debug & Visual</div>
+                        <button onClick={() => { setLayoutDebugActive(p => !p); setShowDebugMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${layoutDebugActive ? 'text-sky-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                          Layout Debug {layoutDebugActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-sky-400" />}
+                        </button>
+                        <button onClick={() => { setGridFlexDebugActive(p => !p); setShowDebugMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${gridFlexDebugActive ? 'text-pink-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                          Grid/Flex Visual {gridFlexDebugActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-pink-400" />}
+                        </button>
+                        <button onClick={() => { setBreakpointTestActive(p => !p); setShowDebugMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${breakpointTestActive ? 'text-orange-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                          Breakpoint Test {breakpointTestActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-orange-400" />}
+                        </button>
+                        <button onClick={() => { setShowResponsiveGrid(p => !p); setShowDebugMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showResponsiveGrid ? 'text-violet-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                          Responsive Grid {showResponsiveGrid && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-400" />}
+                        </button>
+                        <button onClick={() => { setShowDomTreePanel(p => !p); setShowDebugMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showDomTreePanel ? 'text-emerald-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="14"/><circle cx="6" cy="19" r="3"/><circle cx="18" cy="19" r="3"/><line x1="12" y1="14" x2="6" y2="16"/><line x1="12" y1="14" x2="18" y2="16"/></svg>
+                          DOM Tree {showDomTreePanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+                        </button>
+                        <button onClick={() => { setShowLinkCheckerPanel(p => !p); setShowDebugMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showLinkCheckerPanel ? 'text-cyan-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                          Link Checker {showLinkCheckerPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                        </button>
+                        <button onClick={() => { setShowAnimPanel(p => !p); setShowDebugMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showAnimPanel ? 'text-fuchsia-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 3v18"/><path d="M12 3v18"/><path d="M19 3v18"/><path d="M5 12c2-4 5-4 7 0s5 4 7 0"/></svg>
+                          CSS Animations {showAnimPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-fuchsia-400" />}
+                        </button>
+                        <button onClick={() => { setShowOgPreview(p => !p); setShowDebugMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showOgPreview ? 'text-sky-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+                          OG Preview {showOgPreview && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-sky-400" />}
+                        </button>
+                        <button onClick={() => { setShowConsoleFilter(p => !p); setShowDebugMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showConsoleFilter ? 'text-emerald-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                          Console Filter {showConsoleFilter && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+                        </button>
+                        <button onClick={() => { setShowColorEdit(p => !p); setShowDebugMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showColorEdit ? 'text-pink-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="13.5" cy="6.5" r="2.5"/><path d="M17.2 9.8l-4.7 4.7L8 18l-.5 3.5L11 21l3.5-4.5 4.7-4.7"/></svg>
+                          Color Picker {showColorEdit && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-pink-400" />}
+                        </button>
+                        <button onClick={() => { setShowRegexPanel(p => !p); setShowDebugMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showRegexPanel ? 'text-rose-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3l4 4-4 4"/><path d="M3 7h18"/><path d="M7 21l-4-4 4-4"/><path d="M21 17H3"/></svg>
+                          Regex Tester {showRegexPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-rose-400" />}
+                        </button>
+                        <div className="border-t border-[#2a2a2a] my-1" />
+                        <div className="px-3 py-1 text-[8px] font-medium text-[#444] uppercase tracking-wider">Panels</div>
+                        <button onClick={() => { setShowSplitPreview(p => !p); setShowDebugMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showSplitPreview ? 'text-lime-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+                          Split Preview {showSplitPreview && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-lime-400" />}
+                        </button>
+                        <button onClick={() => { setShowOutlinePanel(true); setShowDebugMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showOutlinePanel ? 'text-teal-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h10M4 18h14"/></svg>
+                          Code Outline {showOutlinePanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-teal-400" />}
+                        </button>
+                        <button onClick={() => { setShowNetworkPanel(true); setShowDebugMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showNetworkPanel ? 'text-rose-400' : 'text-[#999]'}`}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                          Network / API {showNetworkPanel && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-rose-400" />}
+                        </button>
+                      </div>
+                    </>)}
+                  </div>
+
+                  {/* ═══ Standalone actions ═══ */}
+                  <button onClick={() => formatCode()} className="w-5 h-5 flex items-center justify-center rounded transition-colors text-[10px] text-[#555] hover:text-white" title="Format Code">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="21" y1="10" x2="7" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="7" y2="18"/></svg>
+                  </button>
+                  <button onClick={() => copyPreviewAsImage()} className="w-5 h-5 flex items-center justify-center rounded transition-colors text-[10px] text-[#555] hover:text-white" title="Copy as Image">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                  </button>
+                  <button onClick={exportProjectZip} className="w-5 h-5 flex items-center justify-center rounded transition-colors text-[10px] text-[#555] hover:text-white" title="Export ZIP">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </button>
+                  <button onClick={() => setPreviewDarkMode(p => p === 'dark' ? 'auto' : p === 'light' ? 'dark' : 'dark')} className={`w-5 h-5 flex items-center justify-center rounded transition-colors text-[10px] ${previewDarkMode !== 'auto' ? 'text-yellow-400 bg-yellow-500/10' : 'text-[#555] hover:text-white'}`} title={`Preview: ${previewDarkMode}`}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">{previewDarkMode === 'dark' ? <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/> : <><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></>}</svg>
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -10834,6 +15386,66 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v18M3 12h18"/></svg>
                 </button>
                 <button onClick={downloadProjectZip} className="w-7 h-7 flex items-center justify-center rounded-md text-[#555] hover:text-white hover:bg-[#1a1a1a] transition-colors" title="Download ZIP"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+                <button onClick={formatCurrentFile} className="w-7 h-7 flex items-center justify-center rounded-md text-[#555] hover:text-white hover:bg-[#1a1a1a] transition-colors" title="Format Document"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="21" y1="10" x2="7" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="7" y2="18"/></svg></button>
+                {/* ═══ Editor Tools dropdown ═══ */}
+                <div className="relative">
+                  <button onClick={() => { setShowCodeToolsMenu(p => !p); setShowMoreToolsMenu(false); }} className={`flex items-center gap-1 px-1.5 h-6 rounded-md transition-colors text-[9px] font-medium ${showCodeToolsMenu || splitFile || minimapEnabled || wordWrapEnabled || showColorPicker ? 'text-violet-400 bg-violet-500/10' : 'text-[#555] hover:text-white hover:bg-[#1a1a1a]'}`} title="Editor tools">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    Editor
+                  </button>
+                  {showCodeToolsMenu && (<>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowCodeToolsMenu(false)} />
+                    <div className="absolute right-0 top-7 z-50 bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] py-1 min-w-[190px] shadow-2xl shadow-black/60 max-h-[340px] overflow-y-auto">
+                      <div className="px-3 py-1 text-[8px] font-medium text-[#444] uppercase tracking-wider">Editor Tools</div>
+                      <button onClick={() => { if (splitFile) { setSplitFile(null); } else { const files = Object.keys(projectFiles).filter(f => f !== selectedFile); if (files.length > 0) setSplitFile(files[0]); } setShowCodeToolsMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${splitFile ? 'text-white' : 'text-[#999]'}`}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+                        {splitFile ? 'Close Split' : 'Split Editor'} {splitFile && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white" />}
+                      </button>
+                      <button onClick={() => { setShowComponentPalette(true); setShowCodeToolsMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors text-[#999]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 17.5h7M17.5 14v7"/></svg>
+                        Insert Component
+                      </button>
+                      <button onClick={() => { setShowVersionTimeline(true); setShowCodeToolsMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors text-[#999]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        Version Timeline
+                      </button>
+                      <button onClick={() => { setShowBookmarks(true); setShowCodeToolsMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors text-[#999]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                        Code Bookmarks
+                      </button>
+                      <button onClick={() => { setShowFindReplace(true); setTimeout(() => findInputRef.current?.focus(), 50); setShowCodeToolsMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors text-[#999]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        Find & Replace <span className="ml-auto text-[8px] text-[#444]">⌘⇧H</span>
+                      </button>
+                      <button onClick={() => { explainCurrentCode(); setShowCodeToolsMenu(false); }} disabled={isStreaming || isExplaining} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors text-[#999] disabled:opacity-30">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        AI Explain Code
+                      </button>
+                      <div className="border-t border-[#2a2a2a] my-1" />
+                      <div className="px-3 py-1 text-[8px] font-medium text-[#444] uppercase tracking-wider">Preferences</div>
+                      <button onClick={() => { setShowThemeSelector(true); setShowCodeToolsMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors text-[#999]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
+                        Editor Theme
+                      </button>
+                      <button onClick={() => { setMinimapEnabled(p => !p); setShowCodeToolsMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${minimapEnabled ? 'text-white' : 'text-[#999]'}`}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="14" y="3" width="7" height="18" rx="1"/><line x1="3" y1="6" x2="10" y2="6"/><line x1="3" y1="10" x2="10" y2="10"/><line x1="3" y1="14" x2="8" y2="14"/><line x1="3" y1="18" x2="10" y2="18"/></svg>
+                        {minimapEnabled ? 'Hide Minimap' : 'Show Minimap'} {minimapEnabled && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white" />}
+                      </button>
+                      <button onClick={() => { setWordWrapEnabled(p => !p); setShowCodeToolsMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${wordWrapEnabled ? 'text-white' : 'text-[#999]'}`}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18"/><path d="M3 12h15a3 3 0 1 1 0 6h-4"/><polyline points="13 16 11 18 13 20"/><path d="M3 18h4"/></svg>
+                        {wordWrapEnabled ? 'Disable Word Wrap' : 'Enable Word Wrap'} {wordWrapEnabled && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white" />}
+                      </button>
+                      <button onClick={() => { setShowColorPicker(p => !p); setShowCodeToolsMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${showColorPicker ? 'text-white' : 'text-[#999]'}`}>
+                        <div className="w-3 h-3 rounded border border-[#444]" style={{ background: pickedColor }} />
+                        Color Picker {showColorPicker && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white" />}
+                      </button>
+                      <button onClick={() => { shareProjectUrl(); setShowCodeToolsMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors text-[#999]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                        Share Project URL
+                      </button>
+                    </div>
+                  </>)}
+                </div>
                 <div className="w-px h-4 bg-[#222]"/>
               </>
             )}
@@ -10844,11 +15456,62 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <span className="hidden sm:inline">⌘K</span>
             </button>
-            <button onClick={() => setShowIntegrations(!showIntegrations)} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-colors ${showIntegrations ? 'text-white bg-[#1a1a1a]' : 'text-[#555] hover:text-white hover:bg-[#1a1a1a]'}`}>
+            <button onClick={() => setShowIntegrations(!showIntegrations)} className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${showIntegrations ? 'text-white bg-[#1a1a1a]' : 'text-[#555] hover:text-white hover:bg-[#1a1a1a]'}`} title="Integrations">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
-              Integrations
             </button>
             <button onClick={() => setShowGitHubModal(true)} className="w-7 h-7 flex items-center justify-center rounded-md text-[#555] hover:text-white hover:bg-[#1a1a1a] transition-colors"><GitHubIcon /></button>
+            <button onClick={() => setShowCollabPanel(true)} className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors relative ${collabRoomId ? 'text-emerald-400 bg-emerald-500/10' : 'text-[#555] hover:text-white hover:bg-[#1a1a1a]'}`} title={collabRoomId ? `Room ${collabRoomId}` : 'Collaborate'}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              {collabUsers.length > 1 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 text-white text-[7px] flex items-center justify-center font-bold">{collabUsers.length}</span>}
+            </button>
+            <button onClick={() => setAutoFixEnabled(p => !p)} className={`flex items-center gap-1 px-1.5 h-6 rounded-md transition-colors text-[9px] font-medium ${autoFixEnabled ? 'text-emerald-400 bg-emerald-500/10' : 'text-[#555] hover:text-white hover:bg-[#1a1a1a]'}`} title="Auto-fix runtime errors">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+              Fix {autoFixEnabled && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+            </button>
+                {/* ═══ Tools dropdown ═══ */}
+                <div className="relative">
+                  <button onClick={() => { setShowMoreToolsMenu(p => !p); setShowCodeToolsMenu(false); }} className={`flex items-center gap-1 px-1.5 h-6 rounded-md transition-colors text-[9px] font-medium ${showMoreToolsMenu ? 'text-amber-400 bg-amber-500/10' : 'text-[#555] hover:text-white hover:bg-[#1a1a1a]'}`} title="More tools">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                    Tools
+                  </button>
+                  {showMoreToolsMenu && (<>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowMoreToolsMenu(false)} />
+                    <div className="absolute right-0 top-7 z-50 bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] py-1 min-w-[190px] shadow-2xl shadow-black/60">
+                      <div className="px-3 py-1 text-[8px] font-medium text-[#444] uppercase tracking-wider">Tools</div>
+                      <button onClick={() => { setShowResearchPanel(true); setShowMoreToolsMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors text-[#999]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                        <span>NotebookLM Research</span>
+                        {researchMode && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />}
+                      </button>
+                      <button onClick={() => { setClaudeCodeMode(p => !p); setShowMoreToolsMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${claudeCodeMode ? 'text-orange-400' : 'text-[#999]'}`}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                        <span>Claude Code Engine</span>
+                        {claudeCodeMode && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />}
+                      </button>
+                      <div className="h-px bg-[#222] my-1" />
+                      <button onClick={() => { setShowFeedbackPanel(true); setShowMoreToolsMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors text-[#999]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        Send Feedback
+                      </button>
+                      <button onClick={() => { setShowVisualBuilder(true); setShowMoreToolsMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors text-[#999]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                        Visual Builder
+                      </button>
+                      <button onClick={() => { setShowDesignSystem(true); setShowMoreToolsMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors text-[#999]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="15.5" r="2.5"/><circle cx="8.5" cy="15.5" r="2.5"/><path d="M13 9v1M10.5 14l-1-1.5M16 14l1-1.5"/></svg>
+                        Design System
+                      </button>
+                      <button onClick={() => { setShowApiTester(true); setShowMoreToolsMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors text-[#999]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                        API Tester
+                      </button>
+                      <button onClick={() => { setShowScreenshotAnalyzer(true); setShowMoreToolsMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors text-[#999]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                        Screenshot to Code
+                      </button>
+                    </div>
+                  </>)}
+                </div>
             <button
               onClick={() => deployToVercel()}
               disabled={!hasPreviewContent || isDeploying}
@@ -10859,21 +15522,23 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
           </div>
         </div>
 
-        {/* Deploy banners */}
         <AnimatePresence>
           {deployResult && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
               <div className="px-4 py-2 bg-[#111] border-b border-[#1e1e1e] flex items-center justify-between">
-                <div className="flex items-center gap-2 text-[11px] text-emerald-400"><CheckCircleIcon /> Deployed: <a href={deployResult.url} target="_blank" rel="noopener noreferrer" className="underline hover:text-emerald-300">{deployResult.url}</a></div>
-                <button onClick={() => setDeployResult(null)} className="text-[#555] hover:text-white text-[10px]">Dismiss</button>
+                <div className="flex items-center gap-2 text-[11px] text-emerald-400">
+                  <CheckCircleIcon />
+                  Deployed: <a href={deployResult.url} target="_blank" rel="noopener noreferrer" className="text-white underline hover:text-[#aaa] ml-1 truncate max-w-[400px]">{deployResult.url}</a>
+                </div>
+                <button onClick={() => setDeployResult(null)} className="text-[11px] text-[#555] hover:text-white transition-colors">Dismiss</button>
               </div>
             </motion.div>
           )}
           {deployError && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-              <div className="px-4 py-2 bg-[#111] border-b border-[#1e1e1e] flex items-center justify-between">
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
+              <div className="px-4 py-2 bg-[#111] border-b border-red-500/20 flex items-center justify-between">
                 <span className="text-red-400 text-[11px]">{deployError}</span>
-                <button onClick={() => setDeployError(null)} className="text-[#555] hover:text-white text-[10px]">Dismiss</button>
+                <button onClick={() => setDeployError(null)} className="text-[11px] text-[#555] hover:text-white transition-colors">Dismiss</button>
               </div>
             </motion.div>
           )}
@@ -10888,9 +15553,106 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                   <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
                     {hasPreviewContent ? (
                       <div className="relative w-full h-full bg-[#0c0c0c] flex flex-col">
-                        <div className={`flex-1 min-h-0 flex items-center justify-center`}>
-                          <div className={`bg-white ${deviceMode === 'mobile' ? 'w-[393px] h-[852px] rounded-[20px] border-4 border-[#333]' : deviceMode === 'tablet' ? 'w-[810px] h-[1080px] rounded-[12px] border-4 border-[#333]' : 'w-full h-full'} overflow-hidden relative`}>
-                            <iframe ref={iframeRef} className="w-full h-full border-none bg-white" srcDoc={previewHtml ?? ''} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" title="Preview" />
+                        {/* Preview URL bar */}
+                        <div className="h-[28px] flex items-center gap-2 px-2 bg-[#111] border-b border-[#1e1e1e] shrink-0">
+                          <div className="flex items-center gap-1">
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
+                          </div>
+                          <div className="flex-1 flex items-center bg-[#0a0a0a] border border-[#222] rounded-md px-2 py-0.5 text-[10px] text-[#555] font-mono">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-1.5 shrink-0 text-[#444]"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            <span className="truncate">{webContainer.previewUrl || `localhost:3000/${selectedFile === 'index.html' ? '' : selectedFile}`}</span>
+                          </div>
+                          <button onClick={refreshPreview} className="w-5 h-5 flex items-center justify-center text-[#555] hover:text-white rounded transition-colors"><RefreshIcon /></button>
+                        </div>
+                        {/* Responsive Breakpoint Ruler */}
+                        {showBreakpointRuler && deviceMode === 'desktop' && (
+                          <div className="h-[20px] relative bg-[#0a0a0a] border-b border-[#1e1e1e] shrink-0 overflow-hidden">
+                            {[
+                              { w: 320, label: '320', color: '#ef4444' },
+                              { w: 480, label: '480', color: '#f97316' },
+                              { w: 640, label: 'sm', color: '#eab308' },
+                              { w: 768, label: 'md', color: '#22c55e' },
+                              { w: 1024, label: 'lg', color: '#3b82f6' },
+                              { w: 1280, label: 'xl', color: '#8b5cf6' },
+                              { w: 1536, label: '2xl', color: '#ec4899' },
+                            ].map(bp => (
+                              <div key={bp.w} className="absolute top-0 h-full flex flex-col items-center" style={{ left: `${(bp.w / 1920) * 100}%` }}>
+                                <div className="w-px h-[10px]" style={{ background: bp.color, opacity: 0.5 }} />
+                                <span className="text-[7px] font-mono leading-none" style={{ color: bp.color, opacity: 0.7 }}>{bp.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className={`flex-1 min-h-0 flex items-center justify-center`} style={previewZoom !== 100 ? { transform: `scale(${previewZoom / 100})`, transformOrigin: 'center center' } : undefined}>
+                          <div className={`bg-white transition-all duration-300 ${
+                            breakpointTestActive
+                              ? 'h-full rounded-[4px] border-2 border-orange-500/30'
+                              : deviceMode === 'mobile'
+                              ? isLandscape ? 'w-[852px] h-[393px] rounded-[20px] border-4 border-[#333]' : 'w-[393px] h-[852px] rounded-[20px] border-4 border-[#333]'
+                              : deviceMode === 'tablet'
+                              ? isLandscape ? 'w-[1080px] h-[810px] rounded-[12px] border-4 border-[#333]' : 'w-[810px] h-[1080px] rounded-[12px] border-4 border-[#333]'
+                              : 'w-full h-full'
+                          } overflow-hidden relative`} style={breakpointTestActive ? { width: `${BREAKPOINT_SIZES[breakpointTestIdx].w}px` } : undefined}>
+                            {/* Device notch for mobile */}
+                            {deviceMode === 'mobile' && !isLandscape && (
+                              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[120px] h-[28px] bg-[#333] rounded-b-[14px] z-10" />
+                            )}
+                            {/* Preview loading skeleton */}
+                            {previewLoading && (
+                              <div className="absolute inset-0 z-[5] bg-white animate-pulse">
+                                <div className="h-14 bg-gray-100 border-b border-gray-200 flex items-center px-4 gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-gray-200" />
+                                  <div className="flex-1 space-y-2">
+                                    <div className="h-3 w-24 bg-gray-200 rounded" />
+                                    <div className="h-2 w-16 bg-gray-200 rounded" />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <div className="w-16 h-8 bg-gray-200 rounded-md" />
+                                    <div className="w-16 h-8 bg-gray-200 rounded-md" />
+                                  </div>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                  <div className="h-8 w-3/4 bg-gray-100 rounded" />
+                                  <div className="h-4 w-full bg-gray-100 rounded" />
+                                  <div className="h-4 w-5/6 bg-gray-100 rounded" />
+                                  <div className="h-4 w-2/3 bg-gray-100 rounded" />
+                                  <div className="grid grid-cols-3 gap-4 mt-6">
+                                    <div className="h-32 bg-gray-100 rounded-lg" />
+                                    <div className="h-32 bg-gray-100 rounded-lg" />
+                                    <div className="h-32 bg-gray-100 rounded-lg" />
+                                  </div>
+                                  <div className="h-4 w-full bg-gray-100 rounded mt-4" />
+                                  <div className="h-4 w-4/5 bg-gray-100 rounded" />
+                                </div>
+                              </div>
+                            )}
+                            {wcInstalling && (
+                              <div className="absolute inset-0 z-20 bg-[#0a0a0a]/95 flex flex-col items-center justify-center gap-4">
+                                <div className="w-10 h-10 border-2 border-[#333] border-t-emerald-400 rounded-full animate-spin" />
+                                <div className="text-emerald-400 text-sm font-mono">{wcInstallProgress || 'Setting up...'}</div>
+                                <div className="flex gap-1">
+                                  {[0,1,2,3,4].map(i => (
+                                    <div key={i} className="w-1.5 h-4 bg-emerald-500/30 rounded-full animate-pulse" style={{ animationDelay: `${i * 150}ms` }} />
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {webContainer.previewUrl ? (
+                              <iframe ref={iframeRef} className="w-full h-full border-none bg-white" src={webContainer.previewUrl} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" title="Preview" onLoad={() => setPreviewLoading(false)} />
+                            ) : (
+                              <iframe ref={iframeRef} className="w-full h-full border-none bg-white" srcDoc={previewHtml ?? ''} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" title="Preview" onLoad={() => setPreviewLoading(false)} />
+                            )}
+                            {/* Split Preview: mobile view side-by-side */}
+                            {showSplitPreview && deviceMode === 'desktop' && previewHtml && (
+                              <div className="absolute right-0 top-0 bottom-0 w-[200px] border-l-2 border-dashed border-[#333] bg-[#0a0a0a] flex flex-col items-center z-[6]">
+                                <div className="text-[9px] text-[#555] py-1 bg-[#111] w-full text-center border-b border-[#222]">Mobile (375px)</div>
+                                <div className="flex-1 w-[187px] overflow-hidden">
+                                  <iframe className="border-none bg-white origin-top-left" style={{ width: '375px', height: '812px', transform: 'scale(0.5)', transformOrigin: 'top left' }} srcDoc={previewHtml} sandbox="allow-scripts allow-same-origin" title="Mobile Preview" />
+                                </div>
+                              </div>
+                            )}
                             {isEditMode && (
                               <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/90 text-white text-[10px] font-medium shadow-lg pointer-events-none z-10">
                                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -11029,6 +15791,15 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                               </div>
                             )}
                           </div>
+                          {/* Device dimension label */}
+                          {deviceMode !== 'desktop' && (
+                            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-[#1a1a1a]/80 backdrop-blur-sm text-[9px] text-[#666] font-mono">
+                              {deviceMode === 'mobile'
+                                ? isLandscape ? '852 × 393' : '393 × 852'
+                                : isLandscape ? '1080 × 810' : '810 × 1080'
+                              }
+                            </div>
+                          )}
                         </div>
                         {/* Refine Clone Panel — appears when a clone exists */}
                         {clonedHtml && lastScrapeDataRef.current && (
@@ -11092,14 +15863,33 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                           </div>
                         ) : isStreaming ? (
                           <div className="text-center">
-                            <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }} className="w-6 h-6 mx-auto mb-3 border-2 border-white border-t-transparent rounded-full" />
-                            <p className="text-[13px] text-white mb-1">Building...</p>
-                            <p className="text-[11px] text-[#555]">Generating your app</p>
+                            <div className="relative w-12 h-12 mx-auto mb-4">
+                              <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }} className="absolute inset-0 border-2 border-transparent border-t-white rounded-full" />
+                              <motion.div animate={{ rotate: -360 }} transition={{ duration: 3, repeat: Infinity, ease: 'linear' }} className="absolute inset-1.5 border-2 border-transparent border-t-[#444] rounded-full" />
+                              <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="absolute inset-0 flex items-center justify-center">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                              </motion.div>
+                            </div>
+                            <p className="text-[13px] text-white mb-1 font-medium">Building your app</p>
+                            <p className="text-[11px] text-[#555]">AI is writing code...</p>
+                            <div className="flex items-center justify-center gap-1 mt-3">
+                              {[0, 1, 2, 3, 4].map(i => (
+                                <motion.div key={i} animate={{ opacity: [0.2, 1, 0.2] }} transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }} className="w-1.5 h-1.5 rounded-full bg-white" />
+                              ))}
+                            </div>
                           </div>
                         ) : (
-                          <div className="text-center">
-                            <GlobeIcon />
-                            <p className="text-[12px] text-[#555] mt-3">No preview available</p>
+                          <div className="text-center max-w-sm mx-auto">
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-500/20 flex items-center justify-center">
+                              <GlobeIcon />
+                            </div>
+                            <p className="text-[14px] text-white font-medium mb-1">No preview yet</p>
+                            <p className="text-[11px] text-[#555] mb-5">Start building by chatting with AI or pick a template</p>
+                            <div className="flex flex-wrap justify-center gap-2 mb-4">
+                              <button onClick={() => setShowTemplates(true)} className="px-4 py-2 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-300 text-[11px] font-medium hover:bg-purple-500/20 transition-all hover:scale-105">Templates</button>
+                              <button onClick={() => setShowCloneModal(true)} className="px-4 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-[11px] font-medium hover:bg-blue-500/20 transition-all hover:scale-105">Clone Site</button>
+                              <button onClick={() => { setProjectFiles({ 'App.jsx': { content: 'function App() {\n  return (\n    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">\n      <h1 className="text-4xl font-bold">Hello World</h1>\n    </div>\n  );\n}', language: 'jsx' } }); setSelectedFile('App.jsx'); setActiveTab('code'); }} className="px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] font-medium hover:bg-emerald-500/20 transition-all hover:scale-105">React App</button>
+                            </div>
                             {cloneError && (
                               <div className="mt-3 p-3 rounded-lg border border-[#2a2a2a] max-w-xs mx-auto">
                                 <p className="text-red-400 text-[11px]">{cloneError}</p>
@@ -11125,8 +15915,27 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                         <div className="file-tree-sidebar w-[200px] shrink-0 border-r border-[#1e1e1e] bg-[#0f0f0f] flex flex-col overflow-hidden">
                           <div className="px-3 py-2 text-[10px] font-medium text-[#555] uppercase tracking-wider border-b border-[#1e1e1e] flex items-center justify-between">
                             <span>Explorer</span>
-                            <span className="text-[9px] text-[#444]">{Object.keys(projectFiles).length} files</span>
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] text-[#444] normal-case tracking-normal">{Object.keys(projectFiles).length}</span>
+                              <button onClick={() => { setShowNewFileInput(true); setNewFileName(''); setTimeout(() => newFileInputRef.current?.focus(), 50); }} className="w-4 h-4 flex items-center justify-center rounded text-[#555] hover:text-white hover:bg-[#222] transition-colors" title="New File"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+                              <button onClick={() => { const name = prompt('Folder name:'); if (name?.trim()) { const dirPath = name.trim(); setProjectFiles(prev => ({ ...prev, [`${dirPath}/.gitkeep`]: { content: '', language: 'text' } })); setExpandedDirs(prev => { const n = new Set(prev); n.add(dirPath); return n; }); showToast(`Created folder: ${dirPath}`, 'success'); } }} className="w-4 h-4 flex items-center justify-center rounded text-[#555] hover:text-white hover:bg-[#222] transition-colors" title="New Folder"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></button>
+                            </div>
                           </div>
+                          {/* Quick file creator */}
+                          {showNewFileInput && (
+                            <div className="px-2 py-1.5 border-b border-[#1e1e1e]">
+                              <input
+                                ref={newFileInputRef}
+                                value={newFileName}
+                                onChange={(e) => setNewFileName(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') createNewFile(newFileName); if (e.key === 'Escape') setShowNewFileInput(false); }}
+                                onBlur={() => { if (!newFileName.trim()) setShowNewFileInput(false); }}
+                                placeholder="filename.ext"
+                                className="w-full bg-[#111] border border-[#333] focus:border-[#555] rounded px-2 py-1 text-[11px] text-white placeholder-[#555] outline-none"
+                                autoFocus
+                              />
+                            </div>
+                          )}
                           <div className="flex-1 overflow-y-auto py-1">
                             {(() => {
                               const { entries } = buildFileTree(projectFiles);
@@ -11134,7 +15943,9 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                                 if (entry.isDir) {
                                   const isOpen = expandedDirs.has(entry.path);
                                   return (
-                                    <button key={entry.path} onClick={() => setExpandedDirs(prev => { const next = new Set(prev); if (next.has(entry.path)) next.delete(entry.path); else next.add(entry.path); return next; })} className="w-full flex items-center gap-1.5 px-2 py-[3px] text-[11px] text-[#888] hover:text-white hover:bg-[#161616] transition-colors" style={{ paddingLeft: 8 + entry.depth * 12 }}>
+                                    <button key={entry.path} onClick={() => setExpandedDirs(prev => { const next = new Set(prev); if (next.has(entry.path)) next.delete(entry.path); else next.add(entry.path); return next; })}
+                                      onContextMenu={(e) => { e.preventDefault(); setExplorerContextMenu({ x: e.clientX, y: e.clientY, path: entry.path, isDir: true }); }}
+                                      className="w-full flex items-center gap-1.5 px-2 py-[3px] text-[11px] text-[#888] hover:text-white hover:bg-[#161616] transition-colors" style={{ paddingLeft: 8 + entry.depth * 12 }}>
                                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`}><polyline points="9 18 15 12 9 6"/></svg>
                                       <FolderIcon open={isOpen} size={12} />
                                       <span className="truncate">{entry.name}</span>
@@ -11150,11 +15961,44 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                                     if (!expandedDirs.has(dir)) return null;
                                   }
                                 }
+                                const isImage = /\.(png|jpg|jpeg|gif|svg|webp|ico|bmp)$/i.test(entry.name);
                                 return (
-                                  <button key={entry.path} onClick={() => setSelectedFile(entry.path)} className={`w-full flex items-center gap-1.5 px-2 py-[3px] text-[11px] transition-colors ${selectedFile === entry.path ? 'text-white bg-[#1a1a1a]' : 'text-[#888] hover:text-white hover:bg-[#161616]'}`} style={{ paddingLeft: 8 + entry.depth * 12 + (parentDir ? 10 : 0) }}>
-                                    <FileIcon size={12} />
-                                    <span className="truncate">{entry.name}</span>
-                                  </button>
+                                  <div key={entry.path} className="relative">
+                                    {renameTarget === entry.path ? (
+                                      <div className="flex items-center gap-1 px-2 py-[3px]" style={{ paddingLeft: 8 + entry.depth * 12 + (parentDir ? 10 : 0) }}>
+                                        <input ref={renameInputRef} value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                                          onKeyDown={e => {
+                                            if (e.key === 'Enter' && renameValue.trim() && renameValue.trim() !== entry.name) {
+                                              const dir = entry.path.includes('/') ? entry.path.split('/').slice(0, -1).join('/') + '/' : '';
+                                              const newPath = dir + renameValue.trim();
+                                              setProjectFiles(prev => {
+                                                const next = { ...prev };
+                                                next[newPath] = { ...next[entry.path], language: detectLanguage(newPath) };
+                                                delete next[entry.path];
+                                                return next;
+                                              });
+                                              if (selectedFile === entry.path) setSelectedFile(newPath);
+                                              setOpenTabs(prev => prev.map(t => t === entry.path ? newPath : t));
+                                              showToast(`Renamed to ${renameValue.trim()}`, 'success');
+                                              setRenameTarget(null); setRenameValue('');
+                                            }
+                                            if (e.key === 'Escape') { setRenameTarget(null); setRenameValue(''); }
+                                          }}
+                                          onBlur={() => { setRenameTarget(null); setRenameValue(''); }}
+                                          className="flex-1 bg-[#111] border border-[#555] rounded px-1.5 py-0.5 text-[11px] text-white outline-none" autoFocus />
+                                      </div>
+                                    ) : (
+                                      <button onClick={() => openFile(entry.path)}
+                                        onContextMenu={(e) => { e.preventDefault(); setExplorerContextMenu({ x: e.clientX, y: e.clientY, path: entry.path, isDir: false }); }}
+                                        onMouseEnter={(e) => { if (isImage) setHoveredImage({ path: entry.path, x: e.clientX, y: e.clientY }); }}
+                                        onMouseLeave={() => { if (isImage) setHoveredImage(null); }}
+                                        className={`w-full flex items-center gap-1.5 px-2 py-[3px] text-[11px] transition-colors ${selectedFile === entry.path ? 'text-white bg-[#1a1a1a]' : 'text-[#888] hover:text-white hover:bg-[#161616]'}`} style={{ paddingLeft: 8 + entry.depth * 12 + (parentDir ? 10 : 0) }}>
+                                        {getFileIcon(entry.name, 12)}
+                                        <span className="truncate flex-1">{entry.name}</span>
+                                        <span className="text-[9px] text-[#444] shrink-0">{projectFiles[entry.path] ? (projectFiles[entry.path].content.length < 1024 ? projectFiles[entry.path].content.length + 'B' : (projectFiles[entry.path].content.length / 1024).toFixed(1) + 'K') : ''}</span>
+                                      </button>
+                                    )}
+                                  </div>
                                 );
                               });
                             })()}
@@ -11164,15 +16008,33 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                           {/* File tabs */}
                           <div className="h-[32px] flex items-center border-b border-[#1e1e1e] bg-[#111] overflow-x-auto shrink-0">
-                            {Object.keys(projectFiles).filter(f => f === selectedFile || f === 'index.html').map(f => (
-                              <button key={f} onClick={() => setSelectedFile(f)} className={`h-full px-3 flex items-center gap-1.5 text-[11px] border-r border-[#1e1e1e] shrink-0 transition-colors ${f === selectedFile ? 'bg-[#0c0c0c] text-white' : 'text-[#555] hover:text-[#888]'}`}>
-                                <FileIcon size={11} />
+                            {openTabs.filter(f => projectFiles[f]).map(f => (
+                              <div key={f} onClick={() => setSelectedFile(f)} onContextMenu={(e) => { e.preventDefault(); setTabContextMenu({ x: e.clientX, y: e.clientY, file: f }); }} className={`h-full px-3 flex items-center gap-1.5 text-[11px] border-r border-[#1e1e1e] shrink-0 transition-colors cursor-pointer group ${f === selectedFile ? 'bg-[#0c0c0c] text-white' : 'text-[#555] hover:text-[#888]'}`}>
+                                {isFileModified(f) && <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" title="Modified" />}
+                                {getFileIcon(f.split('/').pop() || f, 11)}
                                 <span>{f.split('/').pop()}</span>
-                              </button>
+                                {openTabs.length > 1 && (
+                                  <button onClick={(e) => closeTab(f, e)} className="ml-1 w-4 h-4 flex items-center justify-center rounded hover:bg-[#333] opacity-0 group-hover:opacity-100 transition-opacity text-[#666] hover:text-white">
+                                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                  </button>
+                                )}
+                              </div>
                             ))}
                           </div>
+                          {/* Breadcrumb */}
+                          {selectedFile.includes('/') && (
+                            <div className="h-[22px] flex items-center px-3 bg-[#0e0e0e] border-b border-[#1a1a1a] text-[10px] text-[#555] gap-1 shrink-0 overflow-x-auto">
+                              {selectedFile.split('/').map((part, i, arr) => (
+                                <span key={i} className="flex items-center gap-1 shrink-0">
+                                  {i > 0 && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 18l6-6-6-6"/></svg>}
+                                  <span className={i === arr.length - 1 ? 'text-[#999]' : 'hover:text-[#999] cursor-pointer'}>{part}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
                           {/* Monaco Code Editor / Diff View */}
-                          <div className="flex-1 overflow-hidden">
+                          <div className="flex-1 overflow-hidden flex">
+                            <div className={`${splitFile ? 'w-1/2 border-r border-[#1e1e1e]' : 'flex-1'} overflow-hidden`}>
                             {projectFiles[selectedFile] ? (
                               showDiffView && vfsHistoryIdx > 0 ? (
                                 <MonacoDiffEditor
@@ -11180,7 +16042,7 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                                   language={projectFiles[selectedFile]?.language || 'plaintext'}
                                   original={vfsHistory[vfsHistoryIdx - 1]?.[selectedFile]?.content || ''}
                                   modified={projectFiles[selectedFile]?.content || ''}
-                                  theme="vs-dark"
+                                  theme={editorTheme}
                                   options={{ readOnly: true, renderSideBySide: true, minimap: { enabled: false }, fontSize: 13, automaticLayout: true }}
                                 />
                               ) : (
@@ -11196,31 +16058,100 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                                     }));
                                   }
                                 }}
-                                theme="vs-dark"
+                                onMount={(editor) => { monacoEditorRef.current = editor; editor.onDidChangeCursorPosition((e: { position: { lineNumber: number; column: number } }) => setCursorPosition({ line: e.position.lineNumber, col: e.position.column })); }}
+                                theme={editorTheme}
                                 options={{
-                                  minimap: { enabled: true },
+                                  minimap: { enabled: minimapEnabled, scale: 2, showSlider: 'mouseover' },
                                   fontSize: 13,
+                                  fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, Monaco, monospace",
+                                  fontLigatures: true,
                                   lineNumbers: 'on',
                                   scrollBeyondLastLine: false,
-                                  wordWrap: 'on',
+                                  wordWrap: wordWrapEnabled ? 'on' : 'off',
                                   tabSize: 2,
                                   automaticLayout: true,
                                   bracketPairColorization: { enabled: true },
+                                  'bracketPairColorization.independentColorPoolPerBracketType': true,
+                                  guides: { bracketPairs: true, indentation: true, highlightActiveIndentation: true },
                                   padding: { top: 8, bottom: 8 },
                                   suggestOnTriggerCharacters: true,
-                                  quickSuggestions: true,
+                                  quickSuggestions: { other: true, comments: false, strings: true },
+                                  acceptSuggestionOnCommitCharacter: true,
+                                  parameterHints: { enabled: true },
                                   folding: true,
+                                  foldingStrategy: 'indentation',
+                                  showFoldingControls: 'mouseover',
                                   renderWhitespace: 'selection',
                                   smoothScrolling: true,
                                   cursorBlinking: 'smooth',
                                   cursorSmoothCaretAnimation: 'on',
+                                  cursorStyle: 'line',
                                   formatOnPaste: true,
+                                  formatOnType: true,
                                   linkedEditing: true,
+                                  autoClosingBrackets: 'always',
+                                  autoClosingQuotes: 'always',
+                                  autoSurround: 'languageDefined',
+                                  matchBrackets: 'always',
+                                  renderLineHighlight: 'all',
+                                  renderLineHighlightOnlyWhenFocus: false,
+                                  stickyScroll: { enabled: true },
+                                  colorDecorators: true,
+                                  inlineSuggest: { enabled: true },
                                 }}
                               />
                               )
                             ) : (
                               <div className="text-[12px] text-[#555] p-4">Select a file from the explorer</div>
+                            )}
+                            </div>
+                            {/* Split view — right pane */}
+                            {splitFile && projectFiles[splitFile] && (
+                              <div className="w-1/2 flex flex-col overflow-hidden">
+                                <div className="h-[28px] flex items-center justify-between px-3 bg-[#111] border-b border-[#1e1e1e] shrink-0">
+                                  <div className="flex items-center gap-1.5 text-[11px] text-[#888]">
+                                    {getFileIcon(splitFile.split('/').pop() || splitFile, 11)}
+                                    <span>{splitFile.split('/').pop()}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <select value={splitFile} onChange={e => setSplitFile(e.target.value)} className="bg-transparent text-[9px] text-[#666] outline-none max-w-[100px]">
+                                      {Object.keys(projectFiles).filter(f => f !== selectedFile).map(f => <option key={f} value={f}>{f}</option>)}
+                                    </select>
+                                    <button onClick={() => setSplitFile(null)} className="w-4 h-4 flex items-center justify-center text-[#555] hover:text-white rounded transition-colors">
+                                      <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="flex-1 overflow-hidden">
+                                  <MonacoEditor
+                                    height="100%"
+                                    language={projectFiles[splitFile].language || 'plaintext'}
+                                    value={projectFiles[splitFile].content}
+                                    onChange={(val) => {
+                                      if (val !== undefined) {
+                                        setProjectFiles(prev => ({
+                                          ...prev,
+                                          [splitFile]: { ...prev[splitFile], content: val },
+                                        }));
+                                      }
+                                    }}
+                                    theme={editorTheme}
+                                    options={{
+                                      minimap: { enabled: false },
+                                      fontSize: 13,
+                                      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, Monaco, monospace",
+                                      fontLigatures: true,
+                                      lineNumbers: 'on',
+                                      scrollBeyondLastLine: false,
+                                      wordWrap: 'on',
+                                      tabSize: 2,
+                                      automaticLayout: true,
+                                      bracketPairColorization: { enabled: true },
+                                      padding: { top: 8, bottom: 8 },
+                                    }}
+                                  />
+                                </div>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -11594,6 +16525,50 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                       )}
                     </div>
                   </motion.div>
+                ) : activeTab === 'ide' ? (
+                  <motion.div key="ide" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full flex flex-col bg-[#0c0c0c]">
+                    {ideStatus === 'live' && ideUrl ? (
+                      <div className="flex-1 flex flex-col h-full">
+                        <div className="flex items-center justify-between px-3 py-1.5 bg-[#0a0a0a] border-b border-[#1a1a1a]">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-[10px] text-[#888] font-medium">VS Code IDE</span>
+                            <span className="text-[9px] text-[#333]">•</span>
+                            <span className="text-[9px] text-[#444] truncate max-w-[200px]">{ideUrl}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => { const url = ideUrl?.endsWith('/') ? ideUrl : ideUrl + '/'; window.open(url, '_blank'); }} className="px-2 py-0.5 rounded bg-[#161616] border border-[#222] text-[9px] text-[#666] hover:text-white hover:border-[#444] transition-all" title="Open in new tab">
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                            </button>
+                            <button onClick={async () => { if (!ideServiceId) return; setIdeLoading(true); try { await fetch('/api/render?serviceId=' + ideServiceId, { method: 'DELETE' }); setIdeServiceId(null); setIdeUrl(null); setIdeStatus('none'); } catch {} setIdeLoading(false); }} className="px-2 py-0.5 rounded bg-[#161616] border border-red-500/20 text-[9px] text-red-400/60 hover:text-red-400 hover:border-red-500/40 transition-all" title="Stop IDE">
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+                            </button>
+                          </div>
+                        </div>
+                        <iframe src={ideUrl} className="flex-1 w-full border-0" allow="clipboard-read; clipboard-write" style={{ minHeight: 0 }} />
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                        <div className="relative">
+                          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="1.5"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                          <div className="absolute inset-0 flex items-center justify-center"><div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" /></div>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[13px] text-white font-medium mb-1">Launching IDE...</p>
+                          <p className="text-[11px] text-[#555]">Deploying code-server on Render — this usually takes 1-3 minutes</p>
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
+                          <span className="text-[10px] text-yellow-500/80">{ideStatus === 'creating' ? 'Creating service...' : ideStatus === 'booting' ? `Starting code-server... ${ideCountdown}s remaining` : ideStatus === 'error' ? ideError || 'Error' : 'Waiting for deployment...'}</span>
+                        </div>
+                        {ideStatus === 'error' && (
+                          <button onClick={() => { setIdeStatus('none'); setIdeError(null); }} className="px-4 py-1.5 rounded-lg bg-[#161616] border border-[#333] text-[11px] text-[#888] hover:text-white hover:border-[#555] transition-all">
+                            Retry
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </motion.div>
                 ) : null}
               </AnimatePresence>
             </div>
@@ -11659,6 +16634,166 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* NotebookLM Research + Claude Code Panel */}
+            <AnimatePresence>
+              {showResearchPanel && (
+                <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 340, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="h-full border-l border-[#1e1e1e] bg-[#0f0f0f] overflow-hidden shrink-0">
+                  <div className="w-[340px] h-full flex flex-col">
+                    {/* Header */}
+                    <div className="px-4 py-3 border-b border-[#1e1e1e] flex items-center justify-between shrink-0">
+                      <div className="flex items-center gap-2">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-violet-400"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                        <h3 className="text-[13px] font-medium text-white">Research & Analysis</h3>
+                      </div>
+                      <button onClick={() => setShowResearchPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                    </div>
+
+                    {/* Toggles */}
+                    <div className="px-4 py-3 border-b border-[#1e1e1e] space-y-2 shrink-0">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-violet-400"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                          <span className="text-[11px] text-[#ccc]">NotebookLM Research</span>
+                        </div>
+                        <button onClick={() => setResearchMode(!researchMode)} className={`w-8 h-4 rounded-full transition-all relative ${researchMode ? 'bg-violet-500' : 'bg-[#333]'}`}>
+                          <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${researchMode ? 'left-[18px]' : 'left-0.5'}`} />
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-orange-400"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                          <span className="text-[11px] text-[#ccc]">Claude Code Engine</span>
+                        </div>
+                        <button onClick={() => setClaudeCodeMode(!claudeCodeMode)} className={`w-8 h-4 rounded-full transition-all relative ${claudeCodeMode ? 'bg-orange-500' : 'bg-[#333]'}`}>
+                          <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${claudeCodeMode ? 'left-[18px]' : 'left-0.5'}`} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Search/Research Input */}
+                    <div className="px-4 py-3 border-b border-[#1e1e1e] shrink-0">
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={researchQuery}
+                          onChange={(e) => setResearchQuery(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && researchQuery.trim()) performResearch(researchQuery); }}
+                          placeholder="Research any topic..."
+                          className="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-[11px] text-white placeholder-[#555] outline-none focus:border-violet-500/50 transition-colors"
+                        />
+                        <button
+                          onClick={() => researchQuery.trim() && performResearch(researchQuery)}
+                          disabled={isResearching || !researchQuery.trim()}
+                          className="px-3 py-2 rounded-lg bg-violet-500/20 text-violet-400 text-[11px] font-medium hover:bg-violet-500/30 transition-colors disabled:opacity-30"
+                        >
+                          {isResearching ? (
+                            <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full" />
+                          ) : (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                          )}
+                        </button>
+                      </div>
+                      {researchError && (
+                        <p className="text-[10px] text-red-400 mt-2">{researchError}</p>
+                      )}
+                    </div>
+
+                    {/* Results */}
+                    <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                      {researchResults ? (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[12px] font-medium text-white">{researchResults.topic}</span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-400">
+                              {(researchResults.confidence * 100).toFixed(0)}% confidence
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-[#666]">{researchResults.sources} sources analyzed</div>
+
+                          {researchResults.insights.length > 0 && (
+                            <div className="space-y-2">
+                              <span className="text-[10px] font-medium text-[#888] uppercase tracking-wider">Key Insights</span>
+                              {researchResults.insights.slice(0, 5).map((insight, i) => (
+                                <div key={i} className="p-2 rounded-lg bg-[#1a1a1a] border border-[#222] text-[10px] text-[#bbb] leading-relaxed">
+                                  {insight.slice(0, 300)}{insight.length > 300 ? '...' : ''}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {researchResults.summary && (
+                            <div className="space-y-1">
+                              <span className="text-[10px] font-medium text-[#888] uppercase tracking-wider">Summary</span>
+                              <div className="p-2 rounded-lg bg-violet-500/5 border border-violet-500/20 text-[10px] text-[#bbb] leading-relaxed">
+                                {researchResults.summary.slice(0, 500)}{researchResults.summary.length > 500 ? '...' : ''}
+                              </div>
+                            </div>
+                          )}
+
+                          <button
+                            onClick={() => {
+                              setResearchResults(null);
+                              setResearchContext('');
+                              setResearchQuery('');
+                            }}
+                            className="w-full py-2 rounded-lg border border-[#333] text-[10px] text-[#666] hover:text-white hover:border-[#555] transition-colors"
+                          >
+                            Clear Research
+                          </button>
+                        </>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-8 text-center">
+                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-[#333] mb-3"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                          <span className="text-[11px] text-[#555] mb-1">No research active</span>
+                          <span className="text-[10px] text-[#444]">Search any topic to enhance AI generation with deep research and analysis</span>
+                        </div>
+                      )}
+
+                      {/* Claude Code Status */}
+                      {claudeCodeMode && (
+                        <div className="mt-4 space-y-2">
+                          <span className="text-[10px] font-medium text-[#888] uppercase tracking-wider">Claude Code Engine</span>
+                          <div className="p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
+                              <span className="text-[11px] text-orange-400 font-medium">Active</span>
+                            </div>
+                            <ul className="space-y-1 text-[10px] text-[#888]">
+                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Smart retry with error classification</li>
+                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Parallel task execution</li>
+                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Context compression & budgeting</li>
+                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Quality gates & output recovery</li>
+                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Prompt injection defense</li>
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Integration Status */}
+                      <div className="mt-4 space-y-2">
+                        <span className="text-[10px] font-medium text-[#888] uppercase tracking-wider">Combo Status</span>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className={`p-2 rounded-lg border text-center ${researchMode ? 'border-violet-500/30 bg-violet-500/5' : 'border-[#222] bg-[#1a1a1a]'}`}>
+                            <div className={`text-[10px] font-medium ${researchMode ? 'text-violet-400' : 'text-[#555]'}`}>NotebookLM</div>
+                            <div className="text-[9px] text-[#666] mt-0.5">{researchMode ? 'Active' : 'Off'}</div>
+                          </div>
+                          <div className={`p-2 rounded-lg border text-center ${claudeCodeMode ? 'border-orange-500/30 bg-orange-500/5' : 'border-[#222] bg-[#1a1a1a]'}`}>
+                            <div className={`text-[10px] font-medium ${claudeCodeMode ? 'text-orange-400' : 'text-[#555]'}`}>Claude Code</div>
+                            <div className="text-[9px] text-[#666] mt-0.5">{claudeCodeMode ? 'Active' : 'Off'}</div>
+                          </div>
+                        </div>
+                        {researchMode && claudeCodeMode && (
+                          <div className="p-2 rounded-lg bg-gradient-to-r from-violet-500/10 to-orange-500/10 border border-[#333] text-center">
+                            <span className="text-[10px] font-medium bg-gradient-to-r from-violet-400 to-orange-400 bg-clip-text text-transparent">ULTIMATE COMBO ACTIVE</span>
+                            <p className="text-[9px] text-[#666] mt-0.5">Research-enhanced generation with smart execution</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Terminal resize handle */}
@@ -11688,6 +16823,22 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
             </button>
             {showTerminal && (
               <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                {/* WebContainer status bar */}
+                <div className="flex items-center gap-2 px-4 py-1.5 border-b border-[#1a1a1a] text-[10px]">
+                  <div className={`w-1.5 h-1.5 rounded-full ${webContainer.state.status === 'ready' ? 'bg-emerald-400' : webContainer.state.status === 'booting' ? 'bg-yellow-400 animate-pulse' : webContainer.state.status === 'error' ? 'bg-red-400' : 'bg-[#555]'}`} />
+                  <span className="text-[#555]">WebContainer: {webContainer.state.status}</span>
+                  {webContainer.previewUrl && <span className="text-emerald-400/60 ml-auto truncate max-w-[120px]">{webContainer.previewUrl}</span>}
+                  <div className="flex items-center gap-1 ml-auto">
+                    <button onClick={() => setShowTestRunner(true)} className="px-1.5 py-0.5 rounded bg-[#1a1a1a] text-[#888] hover:text-purple-400 hover:bg-purple-500/10 transition-colors" title="Test Runner">🧪</button>
+                    <button onClick={() => { webContainer.startDevServer(); }} className="px-1.5 py-0.5 rounded bg-[#1a1a1a] text-[#888] hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors" title="npm run dev">▶</button>
+                    <select value={outputFramework} onChange={e => setOutputFramework(e.target.value as 'html' | 'react' | 'nextjs' | 'vue')} className="bg-[#1a1a1a] text-[#555] text-[9px] rounded px-1 py-0.5 outline-none border-none cursor-pointer" title="Output framework">
+                      <option value="html">HTML</option>
+                      <option value="react">React</option>
+                      <option value="nextjs">Next.js</option>
+                      <option value="vue">Vue</option>
+                    </select>
+                  </div>
+                </div>
                 {/* Error panel — shows clickable runtime errors with Fix button */}
                 {runtimeErrors.length > 0 && (
                   <div className="border-b border-[#1a1a1a] px-4 py-1.5 max-h-[120px] overflow-y-auto">
@@ -11708,7 +16859,7 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                 )}
                 <div className="flex-1 overflow-auto px-4 pb-1 font-mono text-[11px] text-[#888]" onClick={() => terminalInputRef.current?.focus()}>
                   {terminalLines.map((line, i) => (
-                    <div key={i} className={`leading-5 ${line.startsWith('$') ? 'text-[#ccc]' : line.startsWith('command not found') ? 'text-red-400' : line.startsWith('✗') ? 'text-red-400' : ''}`}>{line}</div>
+                    <div key={i} className={`leading-5 ${line.startsWith('$') ? 'text-[#ccc]' : line.startsWith('command not found') ? 'text-red-400' : line.startsWith('✗') || line.startsWith('❌') ? 'text-red-400' : line.startsWith('⚠ ') ? 'text-yellow-400' : line.startsWith('ℹ ') || line.startsWith('✅') || line.startsWith('📦') || line.startsWith('🚀') || line.startsWith('📁') || line.startsWith('⚡') || line.startsWith('🧪') || line.startsWith('🖥️') ? 'text-blue-400' : line.includes('PASS') || line.includes('✓') ? 'text-emerald-400' : line.includes('FAIL') || line.includes('Error') || line.includes('ERR!') ? 'text-red-400' : line.includes('WARN') || line.includes('warn') ? 'text-yellow-400' : ''}`}>{line}</div>
                   ))}
                   <div ref={terminalEndRef} />
                 </div>
@@ -11722,7 +16873,7 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                       if (e.key === 'Enter') { runTerminalCommand(terminalInput); }
                       if (e.key === 'Tab') {
                         e.preventDefault();
-                        const cmds = ['clear','help','ls','cat','touch','rm','mkdir','tree','pwd','whoami','date','echo','npm','git','env','node','grep','find','cp','mv','head','tail','wc','which','uptime','hostname'];
+                        const cmds = ['clear','help','ls','cat','touch','rm','mkdir','tree','pwd','whoami','date','echo','npm','git','env','node','grep','find','cp','mv','head','tail','wc','which','uptime','hostname','history','stat','diff','du','sort','uniq'];
                         const match = cmds.filter(c => c.startsWith(terminalInput.trim().toLowerCase()));
                         if (match.length === 1) setTerminalInput(match[0] + ' ');
                         else if (match.length > 1) setTerminalLines(prev => [...prev, '$ ' + terminalInput, match.join('  ')]);
@@ -11740,6 +16891,8 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
           </div>
         </div>
       </div>
+
+
 
       {/* ═══ Clone Website Modal ═══ */}
       <AnimatePresence>
@@ -11857,6 +17010,288 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                   </button>
                 ))}
                 {fileSearchResults.length === 0 && <div className="px-4 py-3 text-[12px] text-[#555]">No files found</div>}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ Component Palette ═══ */}
+      <AnimatePresence>
+        {showComponentPalette && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setShowComponentPalette(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97, y: -10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97, y: -10 }} className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] w-full max-w-2xl mx-4 shadow-2xl shadow-black/80 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-[#222]">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 17.5h7M17.5 14v7"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Insert Component</h2>
+                </div>
+                <button onClick={() => setShowComponentPalette(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto p-3 grid grid-cols-2 gap-2">
+                {COMPONENTS.map(comp => (
+                  <button key={comp.name} onClick={() => insertComponent(comp.code)} className="text-left p-3 rounded-lg bg-[#111] border border-[#222] hover:border-[#444] hover:bg-[#161616] transition-all group">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[12px] font-medium text-white">{comp.name}</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#1e1e1e] text-[#666]">{comp.cat}</span>
+                    </div>
+                    <div className="text-[10px] text-[#555] font-mono line-clamp-2 leading-4">{comp.code.slice(0, 80)}...</div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ Conversation History ═══ */}
+      <AnimatePresence>
+        {showConversationHistory && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-start justify-center pt-[8vh] bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setShowConversationHistory(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97, y: -10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97, y: -10 }} className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] w-full max-w-lg mx-4 shadow-2xl shadow-black/80 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-[#222]">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Conversation History</h2>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#222] text-[#666]">{conversations.length}</span>
+                </div>
+                <button onClick={() => setShowConversationHistory(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto">
+                {conversations.length === 0 ? (
+                  <div className="px-5 py-8 text-center text-[12px] text-[#555]">No saved conversations yet</div>
+                ) : conversations.sort((a, b) => b.timestamp - a.timestamp).map(conv => (
+                  <div key={conv.id} className={`flex items-center gap-3 px-5 py-3 hover:bg-[#222] transition-colors cursor-pointer group ${conv.id === activeConversationId ? 'bg-[#1e1e1e] border-l-2 border-blue-500' : ''}`} onClick={() => loadConversation(conv)}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] text-white truncate">{conv.title}</p>
+                      <p className="text-[10px] text-[#555]">{conv.messages.length} messages · {new Date(conv.timestamp).toLocaleDateString()}</p>
+                    </div>
+                    <button onClick={(e) => { e.stopPropagation(); deleteConversation(conv.id); }} className="opacity-0 group-hover:opacity-100 text-[#555] hover:text-red-400 transition-all"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                  </div>
+                ))}
+              </div>
+              <div className="px-5 py-3 border-t border-[#222]">
+                <button onClick={() => { newConversation(); setShowConversationHistory(false); }} className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-medium transition-colors">New Conversation</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ AI Prompt Templates ═══ */}
+      <AnimatePresence>
+        {showPromptTemplates && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-start justify-center pt-[8vh] bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setShowPromptTemplates(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97, y: -10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97, y: -10 }} className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] w-full max-w-2xl mx-4 shadow-2xl shadow-black/80 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-[#222]">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🚀</span>
+                  <h2 className="text-sm font-semibold text-white">Prompt Templates</h2>
+                </div>
+                <button onClick={() => setShowPromptTemplates(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto p-3">
+                {['Page', 'Enhance', 'Component'].map(cat => (
+                  <div key={cat} className="mb-4">
+                    <h3 className="text-[10px] font-semibold text-[#666] uppercase tracking-wider px-2 mb-2">{cat === 'Page' ? 'Full Pages' : cat === 'Enhance' ? 'Enhancements' : 'Components'}</h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      {PROMPT_TEMPLATES.filter(t => t.cat === cat).map(t => (
+                        <button key={t.title} onClick={() => { sendPrompt(t.prompt); setShowPromptTemplates(false); }} className="text-left p-3 rounded-lg bg-[#111] border border-[#222] hover:border-[#444] hover:bg-[#161616] transition-all group">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-base">{t.icon}</span>
+                            <span className="text-[12px] font-medium text-white">{t.title}</span>
+                          </div>
+                          <p className="text-[10px] text-[#555] leading-4 line-clamp-2">{t.prompt.slice(0, 100)}...</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ Code Bookmarks ═══ */}
+      <AnimatePresence>
+        {showBookmarks && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setShowBookmarks(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97, y: -10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97, y: -10 }} className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] w-full max-w-lg mx-4 shadow-2xl shadow-black/80 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-[#222]">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Code Bookmarks</h2>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#222] text-[#666]">{bookmarks.length}</span>
+                </div>
+                <button onClick={() => setShowBookmarks(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto">
+                {bookmarks.length === 0 ? (
+                  <div className="px-5 py-8 text-center text-[12px] text-[#555]">No bookmarks yet. Use the command palette to bookmark code.</div>
+                ) : bookmarks.map(bm => (
+                  <div key={bm.id} className="px-5 py-3 border-b border-[#1e1e1e] hover:bg-[#222] transition-colors group">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] text-white font-medium">{bm.label}</span>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => insertBookmark(bm.code)} className="text-[9px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors">Insert</button>
+                        <button onClick={() => deleteBookmark(bm.id)} className="text-[#555] hover:text-red-400 transition-colors"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                      </div>
+                    </div>
+                    <div className="text-[9px] text-[#555] font-mono line-clamp-2 leading-4 bg-[#111] rounded p-1.5">{bm.code.slice(0, 200)}</div>
+                    <span className="text-[8px] text-[#444] mt-1 block">{bm.file} · {bm.language}</span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ Version Timeline ═══ */}
+      <AnimatePresence>
+        {showVersionTimeline && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-start justify-center pt-[8vh] bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setShowVersionTimeline(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97, y: -10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97, y: -10 }} className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] w-full max-w-md mx-4 shadow-2xl shadow-black/80 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-[#222]">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Version Timeline</h2>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#222] text-[#666]">{vfsHistory.length} snapshots</span>
+                </div>
+                <button onClick={() => setShowVersionTimeline(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto px-5 py-3">
+                {vfsHistory.length === 0 ? (
+                  <div className="py-8 text-center text-[12px] text-[#555]">No versions yet. Start editing to create snapshots.</div>
+                ) : (
+                  <div className="relative">
+                    <div className="absolute left-[11px] top-3 bottom-3 w-px bg-[#222]" />
+                    {vfsHistory.map((snapshot, i) => {
+                      const fileCount = Object.keys(snapshot).length;
+                      const totalSize = Object.values(snapshot).reduce((acc, f) => acc + (f.content?.length || 0), 0);
+                      const isActive = i === vfsHistoryIdx;
+                      return (
+                        <div key={i} className={`relative flex items-start gap-3 py-2 pl-1 cursor-pointer hover:bg-[#222] rounded-lg px-2 transition-colors ${isActive ? 'bg-[#1e1e1e]' : ''}`} onClick={() => { setVfsHistoryIdx(i); setProjectFiles(snapshot); setShowVersionTimeline(false); }}>
+                          <div className={`w-[22px] h-[22px] rounded-full border-2 flex items-center justify-center shrink-0 z-10 ${isActive ? 'border-emerald-500 bg-emerald-500/20' : 'border-[#333] bg-[#1a1a1a]'}`}>
+                            {isActive && <div className="w-2 h-2 rounded-full bg-emerald-400" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-white font-medium">v{i + 1}</span>
+                              {isActive && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400">Current</span>}
+                            </div>
+                            <p className="text-[10px] text-[#555]">{fileCount} files · {(totalSize / 1024).toFixed(1)}KB</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ Find & Replace ═══ */}
+      <AnimatePresence>
+        {showFindReplace && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-start justify-center pt-[8vh] bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setShowFindReplace(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97, y: -10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97, y: -10 }} className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] w-full max-w-xl mx-4 shadow-2xl shadow-black/80 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-[#222]">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Find & Replace</h2>
+                  {findQuery && <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#222] text-[#666]">{findResults.length} matches</span>}
+                </div>
+                <button onClick={() => setShowFindReplace(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="flex gap-2">
+                  <div className="flex-1 flex items-center bg-[#111] border border-[#333] rounded-lg px-3 py-2 focus-within:border-[#555]">
+                    <input ref={findInputRef} value={findQuery} onChange={(e) => setFindQuery(e.target.value)} placeholder="Find..." className="flex-1 bg-transparent outline-none text-sm text-white placeholder-[#555]" autoFocus />
+                  </div>
+                  <button onClick={() => setFindCaseSensitive(!findCaseSensitive)} className={`w-8 h-8 flex items-center justify-center rounded-lg text-[10px] font-bold transition-colors ${findCaseSensitive ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-[#222] text-[#555] hover:text-white'}`} title="Case Sensitive">Aa</button>
+                  <button onClick={() => setFindRegex(!findRegex)} className={`w-8 h-8 flex items-center justify-center rounded-lg text-[10px] font-bold transition-colors ${findRegex ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-[#222] text-[#555] hover:text-white'}`} title="Regex">.*</button>
+                </div>
+                <div className="flex gap-2">
+                  <input value={replaceQuery} onChange={(e) => setReplaceQuery(e.target.value)} placeholder="Replace with..." className="flex-1 bg-[#111] border border-[#333] rounded-lg px-3 py-2 text-sm text-white placeholder-[#555] outline-none focus:border-[#555]" />
+                  <button onClick={() => replaceInFiles(false)} disabled={!findQuery || !replaceQuery} className="px-3 py-1.5 rounded-lg bg-[#222] text-[11px] text-[#888] hover:text-white hover:bg-[#333] disabled:opacity-30 transition-colors">Replace</button>
+                  <button onClick={() => replaceInFiles(true)} disabled={!findQuery || !replaceQuery} className="px-3 py-1.5 rounded-lg bg-blue-600/20 text-[11px] text-blue-400 hover:bg-blue-600/30 disabled:opacity-30 transition-colors">All</button>
+                </div>
+                <div className="max-h-[300px] overflow-y-auto rounded-lg border border-[#222]">
+                  {findResults.length === 0 && findQuery && <div className="p-3 text-[11px] text-[#555] text-center">No matches</div>}
+                  {findResults.slice(0, 50).map((r, i) => (
+                    <button key={i} onClick={() => { openFile(r.file); setActiveTab('code'); }} className="w-full flex items-start gap-2 px-3 py-1.5 text-[10px] hover:bg-[#222] transition-colors text-left border-b border-[#1e1e1e] last:border-0">
+                      <span className="text-[#666] w-[120px] truncate shrink-0">{r.file}:{r.line}</span>
+                      <span className="text-[#aaa] truncate font-mono">{r.text.trim()}</span>
+                    </button>
+                  ))}
+                  {findResults.length > 50 && <div className="p-2 text-[9px] text-[#555] text-center">...and {findResults.length - 50} more</div>}
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ Keyboard Shortcuts ═══ */}
+      <AnimatePresence>
+        {showShortcuts && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setShowShortcuts(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] w-full max-w-md mx-4 shadow-2xl shadow-black/80 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-[#222]">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Keyboard Shortcuts</h2>
+                </div>
+                <button onClick={() => setShowShortcuts(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto p-4">
+                {['General', 'View', 'Edit', 'Chat', 'Project'].map(cat => {
+                  const catShortcuts = SHORTCUTS.filter(s => s.cat === cat);
+                  if (catShortcuts.length === 0) return null;
+                  return (
+                    <div key={cat} className="mb-4">
+                      <h3 className="text-[10px] font-semibold text-[#666] uppercase tracking-wider mb-2">{cat}</h3>
+                      {catShortcuts.map(s => (
+                        <div key={s.keys} className="flex items-center justify-between py-1.5">
+                          <span className="text-[12px] text-[#aaa]">{s.desc}</span>
+                          <kbd className="px-2 py-0.5 rounded bg-[#222] border border-[#333] text-[11px] text-white font-mono">{s.keys}</kbd>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ Editor Theme Selector ═══ */}
+      <AnimatePresence>
+        {showThemeSelector && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setShowThemeSelector(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] w-full max-w-sm mx-4 shadow-2xl shadow-black/80 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-[#222]">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Editor Theme</h2>
+                </div>
+                <button onClick={() => setShowThemeSelector(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="p-3 space-y-1">
+                {EDITOR_THEMES.map(t => (
+                  <button key={t.id} onClick={() => { setEditorTheme(t.id); setShowThemeSelector(false); }} className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors ${editorTheme === t.id ? 'bg-[#222] border border-[#444]' : 'hover:bg-[#1e1e1e] border border-transparent'}`}>
+                    <div>
+                      <p className="text-[12px] text-white font-medium text-left">{t.name}</p>
+                      <p className="text-[10px] text-[#555] text-left">{t.desc}</p>
+                    </div>
+                    {editorTheme === t.id && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>}
+                  </button>
+                ))}
               </div>
             </motion.div>
           </motion.div>
@@ -12020,6 +17455,2786 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Toast Notifications */}
+      <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+        <AnimatePresence>
+          {toasts.map(t => (
+            <motion.div key={t.id} initial={{ opacity: 0, x: 40, scale: 0.95 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: 40, scale: 0.95 }} transition={{ duration: 0.2 }}
+              className={`pointer-events-auto px-3 py-2 rounded-lg text-[11px] font-medium shadow-lg backdrop-blur-sm border ${t.type === 'error' ? 'bg-red-500/20 border-red-500/30 text-red-300' : t.type === 'info' ? 'bg-blue-500/20 border-blue-500/30 text-blue-300' : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300'}`}>
+              {t.message}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
+      {/* Tab Context Menu */}
+      <AnimatePresence>
+        {tabContextMenu && (
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.1 }}
+            className="fixed z-[9999] bg-[#1a1a1a] border border-[#333] rounded-lg shadow-xl py-1 min-w-[160px]"
+            style={{ left: tabContextMenu.x, top: tabContextMenu.y }}
+            onClick={() => setTabContextMenu(null)}>
+            <button onClick={() => { closeTab(tabContextMenu.file); }} className="w-full px-3 py-1.5 text-left text-[11px] text-[#ccc] hover:bg-[#2a2a2a] transition-colors">Close</button>
+            <button onClick={() => { const others = openTabs.filter(t => t !== tabContextMenu.file); others.forEach(t => closeTab(t)); }} className="w-full px-3 py-1.5 text-left text-[11px] text-[#ccc] hover:bg-[#2a2a2a] transition-colors">Close Others</button>
+            <button onClick={() => { openTabs.forEach(t => closeTab(t)); }} className="w-full px-3 py-1.5 text-left text-[11px] text-[#ccc] hover:bg-[#2a2a2a] transition-colors">Close All</button>
+            <div className="border-t border-[#333] my-1" />
+            <button onClick={() => { navigator.clipboard.writeText(tabContextMenu.file); showToast('Path copied', 'success'); }} className="w-full px-3 py-1.5 text-left text-[11px] text-[#ccc] hover:bg-[#2a2a2a] transition-colors">Copy Path</button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Goto Line Dialog */}
+      <AnimatePresence>
+        {showGotoLine && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[9998] flex items-start justify-center pt-[20vh]" onClick={() => setShowGotoLine(false)}>
+            <motion.div initial={{ y: -10, scale: 0.97 }} animate={{ y: 0, scale: 1 }} exit={{ y: -10, scale: 0.97 }} onClick={e => e.stopPropagation()}
+              className="bg-[#1a1a1a] border border-[#333] rounded-xl shadow-2xl p-3 w-[280px]">
+              <p className="text-[10px] text-[#555] mb-2 font-medium">Go to Line</p>
+              <input ref={gotoLineRef} value={gotoLineValue} onChange={e => setGotoLineValue(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const line = parseInt(gotoLineValue);
+                    if (!isNaN(line) && line > 0 && monacoEditorRef.current) {
+                      const editor = monacoEditorRef.current as { revealLineInCenter: (n: number) => void; setPosition: (p: { lineNumber: number; column: number }) => void; focus: () => void };
+                      editor.revealLineInCenter(line);
+                      editor.setPosition({ lineNumber: line, column: 1 });
+                      editor.focus();
+                    }
+                    setShowGotoLine(false);
+                    setGotoLineValue('');
+                  }
+                }}
+                placeholder="Line number..."
+                className="w-full px-3 py-2 rounded-lg bg-[#111] border border-[#333] text-white text-[12px] placeholder:text-[#444] outline-none focus:border-[#555]"
+                autoFocus
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Explorer Context Menu */}
+      <AnimatePresence>
+        {explorerContextMenu && (
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.1 }}
+            className="fixed z-[9999] bg-[#1a1a1a] border border-[#333] rounded-lg shadow-xl py-1 min-w-[170px]"
+            style={{ left: explorerContextMenu.x, top: explorerContextMenu.y }}
+            onClick={() => setExplorerContextMenu(null)}>
+            {explorerContextMenu.isDir ? (
+              <>
+                <button onClick={() => { const name = prompt('New file name:', explorerContextMenu.path + '/'); if (name?.trim()) { setProjectFiles(prev => ({ ...prev, [name.trim()]: { content: '', language: detectLanguage(name.trim()) } })); openFile(name.trim()); showToast(`Created ${name.trim()}`, 'success'); } }} className="w-full px-3 py-1.5 text-left text-[11px] text-[#ccc] hover:bg-[#2a2a2a] transition-colors">New File in Folder</button>
+                <button onClick={() => {
+                  const prefix = explorerContextMenu.path + '/';
+                  const files = Object.keys(projectFiles).filter(f => f.startsWith(prefix));
+                  if (files.length === 0 || confirm(`Delete folder "${explorerContextMenu.path}" and ${files.length} file(s)?`)) {
+                    setProjectFiles(prev => {
+                      const next = { ...prev };
+                      files.forEach(f => delete next[f]);
+                      return next;
+                    });
+                    showToast(`Deleted folder: ${explorerContextMenu.path}`, 'success');
+                  }
+                }} className="w-full px-3 py-1.5 text-left text-[11px] text-red-400 hover:bg-[#2a2a2a] transition-colors">Delete Folder</button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => { setRenameTarget(explorerContextMenu.path); setRenameValue(explorerContextMenu.path.split('/').pop() || ''); setTimeout(() => renameInputRef.current?.focus(), 50); }} className="w-full px-3 py-1.5 text-left text-[11px] text-[#ccc] hover:bg-[#2a2a2a] transition-colors">Rename</button>
+                <button onClick={() => { const src = explorerContextMenu.path; const ext = src.lastIndexOf('.'); const cp = ext > 0 ? src.slice(0, ext) + '-copy' + src.slice(ext) : src + '-copy'; setProjectFiles(prev => ({ ...prev, [cp]: { ...prev[src] } })); showToast(`Duplicated as ${cp.split('/').pop()}`, 'success'); }} className="w-full px-3 py-1.5 text-left text-[11px] text-[#ccc] hover:bg-[#2a2a2a] transition-colors">Duplicate</button>
+                <button onClick={() => { navigator.clipboard.writeText(explorerContextMenu.path); showToast('Path copied', 'success'); }} className="w-full px-3 py-1.5 text-left text-[11px] text-[#ccc] hover:bg-[#2a2a2a] transition-colors">Copy Path</button>
+                <div className="border-t border-[#333] my-1" />
+                <button onClick={() => {
+                  const file = explorerContextMenu.path;
+                  if (confirm(`Delete "${file}"?`)) {
+                    setProjectFiles(prev => { const next = { ...prev }; delete next[file]; return next; });
+                    if (selectedFile === file) { const remaining = Object.keys(projectFiles).filter(f => f !== file); setSelectedFile(remaining[0] || ''); }
+                    closeTab(file);
+                    showToast(`Deleted ${file.split('/').pop()}`, 'success');
+                  }
+                }} className="w-full px-3 py-1.5 text-left text-[11px] text-red-400 hover:bg-[#2a2a2a] transition-colors">Delete</button>
+              </>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Image Preview Tooltip */}
+      {hoveredImage && projectFiles[hoveredImage.path] && (
+        <div className="fixed z-[9999] pointer-events-none" style={{ left: hoveredImage.x + 16, top: hoveredImage.y - 60 }}>
+          <div className="bg-[#1a1a1a] border border-[#333] rounded-lg shadow-xl p-2 max-w-[200px]">
+            {projectFiles[hoveredImage.path].content.startsWith('<svg') || projectFiles[hoveredImage.path].content.startsWith('<?xml') ? (
+              <iframe
+                sandbox=""
+                srcDoc={projectFiles[hoveredImage.path].content.slice(0, 5000)}
+                className="w-[180px] h-[120px] bg-[#111] rounded overflow-hidden border-0"
+                title="SVG preview"
+              />
+            ) : projectFiles[hoveredImage.path].content.startsWith('data:') ? (
+              <img src={projectFiles[hoveredImage.path].content} alt="" className="max-w-[180px] max-h-[120px] rounded object-contain" />
+            ) : (
+              <div className="w-[180px] h-[60px] flex items-center justify-center text-[10px] text-[#555] bg-[#111] rounded">Image file</div>
+            )}
+            <p className="text-[9px] text-[#666] mt-1 truncate">{hoveredImage.path.split('/').pop()}</p>
+          </div>
+        </div>
+      )}
+
+      {/* A11y Audit Panel */}
+      <AnimatePresence>
+        {showA11yPanel && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(e) => { if (e.target === e.currentTarget) setShowA11yPanel(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#161616] rounded-xl border border-[#2a2a2a] w-full max-w-lg mx-4 max-h-[70vh] flex flex-col">
+              <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2"><circle cx="12" cy="4" r="2"/><path d="M12 6v6"/><path d="M8 22l4-10 4 10"/><path d="M6 14h12"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Accessibility Audit</h2>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#222] text-[#888]">{a11yIssues.length} issues</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={runA11yAudit} className="px-2 py-1 text-[10px] rounded bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors">Re-scan</button>
+                  <button onClick={() => setShowA11yPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                </div>
+              </div>
+              <div className="overflow-y-auto flex-1 p-3 space-y-1.5">
+                {a11yIssues.map((issue, i) => (
+                  <div key={i} className={`flex items-start gap-2.5 p-2.5 rounded-lg border ${issue.type === 'error' ? 'border-red-500/20 bg-red-500/5' : issue.type === 'warning' ? 'border-yellow-500/20 bg-yellow-500/5' : 'border-blue-500/20 bg-blue-500/5'}`}>
+                    <span className="mt-0.5 shrink-0">
+                      {issue.type === 'error' ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> : issue.type === 'warning' ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] text-white/90">{issue.message}</p>
+                      <p className="text-[10px] text-[#666] mt-0.5 font-mono truncate">{issue.element}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* SEO Meta Editor Panel */}
+      <AnimatePresence>
+        {showSeoPanel && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(e) => { if (e.target === e.currentTarget) setShowSeoPanel(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#161616] rounded-xl border border-[#2a2a2a] w-full max-w-lg mx-4">
+              <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                  <h2 className="text-sm font-semibold text-white">SEO Meta Editor</h2>
+                </div>
+                <button onClick={() => setShowSeoPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="text-[11px] text-[#888] mb-1.5 block">Page Title <span className="text-[#555]">({seoTitle.length}/60)</span></label>
+                  <input value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} placeholder="My Awesome App" className={`w-full px-3 py-2 bg-[#111] border rounded-lg text-sm text-white outline-none transition-colors ${seoTitle.length > 60 ? 'border-red-500/50 focus:border-red-500' : 'border-[#2a2a2a] focus:border-[#444]'}`} />
+                </div>
+                <div>
+                  <label className="text-[11px] text-[#888] mb-1.5 block">Meta Description <span className="text-[#555]">({seoDescription.length}/160)</span></label>
+                  <textarea value={seoDescription} onChange={(e) => setSeoDescription(e.target.value)} placeholder="A brief description of your page..." rows={3} className={`w-full px-3 py-2 bg-[#111] border rounded-lg text-sm text-white outline-none resize-none transition-colors ${seoDescription.length > 160 ? 'border-red-500/50 focus:border-red-500' : 'border-[#2a2a2a] focus:border-[#444]'}`} />
+                </div>
+                <div>
+                  <label className="text-[11px] text-[#888] mb-1.5 block">OG Image URL</label>
+                  <input value={seoOgImage} onChange={(e) => setSeoOgImage(e.target.value)} placeholder="https://example.com/og-image.png" className="w-full px-3 py-2 bg-[#111] border border-[#2a2a2a] rounded-lg text-sm text-white outline-none focus:border-[#444] transition-colors" />
+                </div>
+                {/* Google Preview */}
+                <div className="p-3 bg-[#111] rounded-lg border border-[#222]">
+                  <p className="text-[10px] text-[#555] mb-2">Google Preview</p>
+                  <p className="text-[#8ab4f8] text-sm leading-snug truncate">{seoTitle || 'Page Title'}</p>
+                  <p className="text-[#bdc1c6] text-[11px] mt-0.5 line-clamp-2">{seoDescription || 'No description provided.'}</p>
+                  <p className="text-[#969ba1] text-[10px] mt-0.5">https://yoursite.com</p>
+                </div>
+                <button onClick={() => {
+                  if (!projectFiles['index.html']) { showToast('No index.html found', 'error'); return; }
+                  let html = projectFiles['index.html'].content;
+                  // Update or insert title
+                  if (/<title>[^<]*<\/title>/i.test(html)) html = html.replace(/<title>[^<]*<\/title>/i, `<title>${seoTitle}</title>`);
+                  else html = html.replace(/<head([^>]*)>/i, `<head$1><title>${seoTitle}</title>`);
+                  // Update or insert description
+                  if (/<meta[^>]*name=["']description["'][^>]*>/i.test(html)) html = html.replace(/<meta[^>]*name=["']description["'][^>]*>/i, `<meta name="description" content="${seoDescription}">`);
+                  else html = html.replace(/<\/head>/i, `<meta name="description" content="${seoDescription}"></head>`);
+                  // Update or insert og:image
+                  if (seoOgImage) {
+                    if (/<meta[^>]*property=["']og:image["'][^>]*>/i.test(html)) html = html.replace(/<meta[^>]*property=["']og:image["'][^>]*>/i, `<meta property="og:image" content="${seoOgImage}">`);
+                    else html = html.replace(/<\/head>/i, `<meta property="og:image" content="${seoOgImage}"></head>`);
+                  }
+                  setProjectFiles(prev => ({ ...prev, 'index.html': { ...prev['index.html'], content: html } }));
+                  showToast('SEO meta tags updated', 'success');
+                  setShowSeoPanel(false);
+                }} className="w-full py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 transition-colors">Apply Meta Tags</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Tailwind Classes Browser */}
+      <AnimatePresence>
+        {showTailwindPanel && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(e) => { if (e.target === e.currentTarget) setShowTailwindPanel(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#161616] rounded-xl border border-[#2a2a2a] w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+              <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Tailwind CSS Classes</h2>
+                </div>
+                <button onClick={() => setShowTailwindPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-4">
+                {[
+                  { cat: 'Spacing', classes: ['p-0', 'p-1', 'p-2', 'p-3', 'p-4', 'p-6', 'p-8', 'px-4', 'py-2', 'm-0', 'm-1', 'm-2', 'm-4', 'mx-auto', 'my-4', 'gap-1', 'gap-2', 'gap-4', 'gap-6', 'space-x-2', 'space-y-2', 'space-x-4', 'space-y-4'] },
+                  { cat: 'Layout', classes: ['flex', 'inline-flex', 'grid', 'block', 'inline-block', 'hidden', 'items-center', 'items-start', 'items-end', 'justify-center', 'justify-between', 'justify-start', 'justify-end', 'flex-col', 'flex-row', 'flex-wrap', 'flex-1', 'grid-cols-2', 'grid-cols-3', 'grid-cols-4', 'col-span-2'] },
+                  { cat: 'Sizing', classes: ['w-full', 'w-1/2', 'w-1/3', 'w-auto', 'w-screen', 'h-full', 'h-screen', 'h-auto', 'min-h-screen', 'max-w-sm', 'max-w-md', 'max-w-lg', 'max-w-xl', 'max-w-2xl', 'max-w-4xl', 'max-w-6xl'] },
+                  { cat: 'Typography', classes: ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl', 'text-3xl', 'text-4xl', 'text-5xl', 'font-normal', 'font-medium', 'font-semibold', 'font-bold', 'text-center', 'text-left', 'text-right', 'uppercase', 'lowercase', 'capitalize', 'truncate', 'leading-tight', 'leading-relaxed', 'tracking-wide'] },
+                  { cat: 'Colors', classes: ['text-white', 'text-black', 'text-gray-500', 'text-red-500', 'text-blue-500', 'text-green-500', 'text-yellow-500', 'text-purple-500', 'bg-white', 'bg-black', 'bg-gray-100', 'bg-gray-900', 'bg-blue-500', 'bg-green-500', 'bg-red-500', 'bg-gradient-to-r', 'from-blue-500', 'to-purple-500'] },
+                  { cat: 'Borders', classes: ['border', 'border-2', 'border-0', 'border-t', 'border-b', 'rounded', 'rounded-md', 'rounded-lg', 'rounded-xl', 'rounded-2xl', 'rounded-full', 'border-gray-200', 'border-gray-700', 'divide-y', 'divide-x', 'ring-1', 'ring-2'] },
+                  { cat: 'Effects', classes: ['shadow-sm', 'shadow', 'shadow-md', 'shadow-lg', 'shadow-xl', 'shadow-2xl', 'opacity-0', 'opacity-50', 'opacity-100', 'blur-sm', 'blur', 'backdrop-blur-sm', 'backdrop-blur-md', 'transition', 'transition-all', 'duration-200', 'duration-300', 'hover:scale-105', 'hover:opacity-80'] },
+                  { cat: 'Positioning', classes: ['relative', 'absolute', 'fixed', 'sticky', 'top-0', 'right-0', 'bottom-0', 'left-0', 'inset-0', 'z-10', 'z-20', 'z-50', 'overflow-hidden', 'overflow-auto', 'overflow-x-auto', 'overflow-y-auto'] },
+                ].map(group => (
+                  <div key={group.cat} className="mb-4">
+                    <h3 className="text-[11px] font-semibold text-[#888] mb-2 uppercase tracking-wider">{group.cat}</h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      {group.classes.map(cls => (
+                        <button key={cls} onClick={() => { navigator.clipboard.writeText(cls); showToast(`Copied: ${cls}`, 'success'); }} className="px-2 py-1 text-[10px] font-mono rounded bg-[#1a1a1a] border border-[#2a2a2a] text-[#ccc] hover:border-[#444] hover:text-white transition-colors cursor-pointer">{cls}</button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Color Palette Extractor */}
+      <AnimatePresence>
+        {showColorPalettePanel && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(e) => { if (e.target === e.currentTarget) setShowColorPalettePanel(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#161616] rounded-xl border border-[#2a2a2a] w-full max-w-lg mx-4 max-h-[70vh] flex flex-col">
+              <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth="2"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12" r="2.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.1-.7-.4-1-.3-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-5.5-4.5-9-10-9z"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Color Palette</h2>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#222] text-[#888]">{extractedColors.length} colors</span>
+                </div>
+                <button onClick={() => setShowColorPalettePanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-4">
+                {extractedColors.length === 0 ? (
+                  <p className="text-[#555] text-sm text-center py-8">No colors found in project files</p>
+                ) : (
+                  <div className="grid grid-cols-5 gap-2">
+                    {extractedColors.map((color, i) => (
+                      <button key={i} onClick={() => { navigator.clipboard.writeText(color); showToast(`Copied: ${color}`, 'success'); }} className="group flex flex-col items-center gap-1.5 p-2 rounded-lg hover:bg-[#1a1a1a] transition-colors" title={color}>
+                        <div className="w-10 h-10 rounded-lg border border-[#333] shadow-inner group-hover:scale-110 transition-transform" style={{ backgroundColor: color }} />
+                        <span className="text-[8px] text-[#666] group-hover:text-white font-mono truncate max-w-[60px] transition-colors">{color}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {extractedColors.length > 0 && (
+                  <button onClick={() => { navigator.clipboard.writeText(extractedColors.join(', ')); showToast('All colors copied', 'success'); }} className="mt-4 w-full py-2 rounded-lg border border-[#2a2a2a] text-[11px] text-[#888] hover:text-white hover:border-[#444] transition-colors">Copy All Colors</button>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Performance Audit Panel */}
+      <AnimatePresence>
+        {showPerfPanel && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(e) => { if (e.target === e.currentTarget) setShowPerfPanel(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#161616] rounded-xl border border-[#2a2a2a] w-full max-w-lg mx-4 max-h-[70vh] flex flex-col">
+              <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Performance Audit</h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={runPerfAudit} className="px-2 py-1 text-[10px] rounded bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors">Re-scan</button>
+                  <button onClick={() => setShowPerfPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                </div>
+              </div>
+              <div className="overflow-y-auto flex-1 p-3 space-y-1.5">
+                {perfIssues.map((issue, i) => (
+                  <div key={i} className={`flex items-start gap-2.5 p-2.5 rounded-lg border ${i === 0 ? 'border-[#333] bg-[#1a1a1a]' : issue.type === 'error' ? 'border-red-500/20 bg-red-500/5' : issue.type === 'warning' ? 'border-yellow-500/20 bg-yellow-500/5' : 'border-blue-500/20 bg-blue-500/5'}`}>
+                    <span className="mt-0.5 shrink-0">
+                      {i === 0 ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> : issue.type === 'error' ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> : issue.type === 'warning' ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-[11px] ${i === 0 ? 'text-white font-semibold' : 'text-white/90'}`}>{issue.message}</p>
+                      <p className="text-[10px] text-[#666] mt-0.5">{issue.detail}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Project Stats Panel */}
+      <AnimatePresence>
+        {showStatsPanel && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(e) => { if (e.target === e.currentTarget) setShowStatsPanel(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#161616] rounded-xl border border-[#2a2a2a] w-full max-w-md mx-4">
+              <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#06b6d4" strokeWidth="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Project Statistics</h2>
+                </div>
+                <button onClick={() => setShowStatsPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3 rounded-lg bg-[#111] border border-[#222] text-center">
+                    <p className="text-xl font-bold text-white">{projectStats.total}</p>
+                    <p className="text-[10px] text-[#666] mt-1">Files</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-[#111] border border-[#222] text-center">
+                    <p className="text-xl font-bold text-white">{projectStats.totalLines.toLocaleString()}</p>
+                    <p className="text-[10px] text-[#666] mt-1">Lines</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-[#111] border border-[#222] text-center">
+                    <p className="text-xl font-bold text-white">{(projectStats.totalBytes / 1024).toFixed(1)}KB</p>
+                    <p className="text-[10px] text-[#666] mt-1">Size</p>
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-[11px] text-[#888] mb-2 font-medium">Language Breakdown</h3>
+                  <div className="space-y-1.5">
+                    {projectStats.languages.map(([lang, info]) => {
+                      const pct = projectStats.totalLines > 0 ? (info.lines / projectStats.totalLines * 100) : 0;
+                      const colors: Record<string, string> = { html: '#e34c26', css: '#563d7c', javascript: '#f7df1e', typescript: '#3178c6', json: '#292929', markdown: '#083fa1', plaintext: '#555' };
+                      return (
+                        <div key={lang} className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colors[lang] || '#555' }} />
+                          <span className="text-[11px] text-[#ccc] w-20 truncate">{lang}</span>
+                          <div className="flex-1 h-1.5 bg-[#1a1a1a] rounded-full overflow-hidden">
+                            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: colors[lang] || '#555' }} />
+                          </div>
+                          <span className="text-[10px] text-[#666] w-12 text-right">{info.files}f {info.lines}L</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* CSS Variables Manager */}
+      <AnimatePresence>
+        {showCssVarsPanel && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(e) => { if (e.target === e.currentTarget) setShowCssVarsPanel(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#161616] rounded-xl border border-[#2a2a2a] w-full max-w-lg mx-4 max-h-[70vh] flex flex-col">
+              <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                  <h2 className="text-sm font-semibold text-white">CSS Variables</h2>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#222] text-[#888]">{cssVariables.length} vars</span>
+                </div>
+                <button onClick={() => setShowCssVarsPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-3 space-y-1">
+                {cssVariables.length === 0 ? (
+                  <p className="text-[#555] text-sm text-center py-8">No CSS custom properties found</p>
+                ) : cssVariables.map((v, i) => (
+                  <div key={i} className="flex items-center gap-2 p-2 rounded-lg hover:bg-[#1a1a1a] group transition-colors">
+                    {(v.value.startsWith('#') || v.value.startsWith('rgb') || v.value.startsWith('hsl')) && (
+                      <span className="w-4 h-4 rounded border border-[#333] shrink-0" style={{ backgroundColor: v.value }} />
+                    )}
+                    <span className="text-[11px] font-mono text-purple-400 shrink-0">{v.name}</span>
+                    <span className="text-[10px] text-[#666]">:</span>
+                    <span className="text-[11px] font-mono text-[#ccc] truncate flex-1">{v.value}</span>
+                    <span className="text-[9px] text-[#444] shrink-0">{v.file.split('/').pop()}</span>
+                    <button onClick={() => { navigator.clipboard.writeText(`var(${v.name})`); showToast(`Copied: var(${v.name})`, 'success'); }} className="opacity-0 group-hover:opacity-100 text-[#555] hover:text-white transition-all shrink-0">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Console Output Panel */}
+      <AnimatePresence>
+        {showConsolePanel && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="fixed bottom-8 right-4 z-40 w-96 max-h-[300px] bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl flex flex-col">
+            <div className="px-3 py-2 border-b border-[#222] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                <span className="text-[11px] text-white font-medium">Console</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#222] text-[#666]">{consoleLogs.length}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setConsoleLogs([])} className="text-[9px] text-[#555] hover:text-white transition-colors px-1">Clear</button>
+                <button onClick={() => setShowConsolePanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+            </div>
+            <div className="overflow-y-auto flex-1 p-2 space-y-0.5 font-mono text-[10px]">
+              {consoleLogs.length === 0 ? (
+                <p className="text-[#444] text-center py-4">No console output</p>
+              ) : consoleLogs.map((log, i) => (
+                <div key={i} className={`px-2 py-1 rounded ${log.type === 'error' ? 'text-red-400 bg-red-500/5' : log.type === 'warn' ? 'text-yellow-400 bg-yellow-500/5' : 'text-[#aaa]'}`}>
+                  <span className="text-[#444] mr-2">{new Date(log.ts).toLocaleTimeString()}</span>
+                  {log.message}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Dependency Inspector */}
+      <AnimatePresence>
+        {showDepsPanel && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(e) => { if (e.target === e.currentTarget) setShowDepsPanel(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#161616] rounded-xl border border-[#2a2a2a] w-full max-w-lg mx-4 max-h-[70vh] flex flex-col">
+              <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Dependencies</h2>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#222] text-[#888]">{detectedDeps.length} detected</span>
+                </div>
+                <button onClick={() => setShowDepsPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-3 space-y-1.5">
+                {detectedDeps.length === 0 ? (
+                  <p className="text-[#555] text-sm text-center py-8">No CDN dependencies detected</p>
+                ) : detectedDeps.map((dep, i) => (
+                  <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-[#2a2a2a] hover:border-[#333] transition-colors">
+                    <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center text-violet-400 text-[11px] font-bold shrink-0">{dep.name[0]}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[12px] text-white font-medium">{dep.name}</span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#222] text-[#666] font-mono">{dep.version}</span>
+                      </div>
+                      <span className="text-[10px] text-[#555]">{dep.type}</span>
+                    </div>
+                    <button onClick={() => { navigator.clipboard.writeText(dep.name.toLowerCase()); showToast(`Copied: ${dep.name}`, 'success'); }} className="text-[#555] hover:text-white transition-colors shrink-0">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Code Complexity Analyzer */}
+      <AnimatePresence>
+        {showComplexityPanel && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(e) => { if (e.target === e.currentTarget) setShowComplexityPanel(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#161616] rounded-xl border border-[#2a2a2a] w-full max-w-lg mx-4 max-h-[70vh] flex flex-col">
+              <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Code Complexity</h2>
+                </div>
+                <button onClick={() => setShowComplexityPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-3">
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="text-[#666] border-b border-[#222]">
+                      <th className="text-left py-2 pl-2">File</th>
+                      <th className="text-right py-2 px-2">Lines</th>
+                      <th className="text-right py-2 px-2">Functions</th>
+                      <th className="text-right py-2 px-2">Max Depth</th>
+                      <th className="text-right py-2 pr-2">Complexity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {codeComplexity.map((f, i) => (
+                      <tr key={i} className="border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors">
+                        <td className="py-2 pl-2 text-[#ccc] font-mono truncate max-w-[150px]">{f.file}</td>
+                        <td className="py-2 px-2 text-right text-[#888]">{f.lines}</td>
+                        <td className="py-2 px-2 text-right text-[#888]">{f.functions}</td>
+                        <td className="py-2 px-2 text-right text-[#888]">{f.maxDepth}</td>
+                        <td className={`py-2 pr-2 text-right font-medium ${f.complexity === 'High' ? 'text-red-400' : f.complexity === 'Medium' ? 'text-yellow-400' : 'text-emerald-400'}`}>{f.complexity}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* v15: Code Outline / Symbol Navigator */}
+      <AnimatePresence>
+        {showOutlinePanel && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(e) => { if (e.target === e.currentTarget) setShowOutlinePanel(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#161616] rounded-xl border border-[#2a2a2a] w-full max-w-md mx-4 max-h-[70vh] flex flex-col">
+              <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#14b8a6" strokeWidth="2"><path d="M4 6h16M4 12h10M4 18h14"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Code Outline</h2>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#222] text-[#888]">{codeSymbols.length} symbols</span>
+                </div>
+                <button onClick={() => setShowOutlinePanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-2">
+                {codeSymbols.length === 0 ? (
+                  <p className="text-[#555] text-sm text-center py-8">No symbols found in {selectedFile || 'current file'}</p>
+                ) : codeSymbols.map((sym, i) => (
+                  <button key={i} onClick={() => { const ed = monacoEditorRef.current as any; if (ed) { ed.revealLineInCenter(sym.line); ed.setPosition({ lineNumber: sym.line, column: 1 }); ed.focus(); } setShowOutlinePanel(false); }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#1a1a1a] transition-colors text-left">
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium shrink-0 ${sym.type === 'function' ? 'bg-blue-500/20 text-blue-400' : sym.type === 'class' ? 'bg-purple-500/20 text-purple-400' : sym.type === 'component' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>{sym.type === 'function' ? 'fn' : sym.type === 'class' ? 'cls' : sym.type === 'component' ? 'cmp' : 'id'}</span>
+                    <span className="text-[12px] text-white font-mono truncate flex-1">{sym.name}</span>
+                    <span className="text-[10px] text-[#555] shrink-0">:{sym.line}</span>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* v15: Image Size Analyzer */}
+      <AnimatePresence>
+        {showImageOptPanel && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(e) => { if (e.target === e.currentTarget) setShowImageOptPanel(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#161616] rounded-xl border border-[#2a2a2a] w-full max-w-lg mx-4 max-h-[70vh] flex flex-col">
+              <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Image Size Analyzer</h2>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#222] text-[#888]">{imageAssets.reduce((a, b) => a + b.count, 0)} images</span>
+                </div>
+                <button onClick={() => setShowImageOptPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-3 space-y-2">
+                {imageAssets.length === 0 ? (
+                  <p className="text-[#555] text-sm text-center py-8">No inline base64 images detected</p>
+                ) : imageAssets.map((asset, i) => (
+                  <div key={i} className="p-3 rounded-lg border border-[#2a2a2a] hover:border-[#333] transition-colors">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[12px] text-white font-medium font-mono">{asset.file}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${asset.totalSize > 100 ? 'bg-red-500/20 text-red-400' : asset.totalSize > 50 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{asset.totalSize}KB total</span>
+                    </div>
+                    <div className="space-y-1">
+                      {asset.images.map((img, j) => (
+                        <div key={j} className="flex items-center gap-2 text-[10px]">
+                          <span className="text-[#666] font-mono truncate flex-1">{img.src}</span>
+                          <span className={`shrink-0 ${img.sizeKB > 50 ? 'text-red-400' : 'text-[#888]'}`}>{img.sizeKB}KB</span>
+                        </div>
+                      ))}
+                    </div>
+                    {asset.totalSize > 100 && <p className="text-[10px] text-yellow-400 mt-2">Consider using external URLs instead of inline base64 for large images</p>}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* v15: Code Diff Statistics */}
+      <AnimatePresence>
+        {showDiffStatsPanel && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(e) => { if (e.target === e.currentTarget) setShowDiffStatsPanel(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#161616] rounded-xl border border-[#2a2a2a] w-full max-w-lg mx-4 max-h-[70vh] flex flex-col">
+              <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" strokeWidth="2"><path d="M12 3v18M3 12h18"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Diff Statistics</h2>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#222] text-[#888]">{diffStats.length} changed</span>
+                </div>
+                <button onClick={() => setShowDiffStatsPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-3">
+                {diffStats.length === 0 ? (
+                  <p className="text-[#555] text-sm text-center py-8">No changes detected (need at least 2 snapshots)</p>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-4 mb-3 px-2">
+                      <span className="text-[11px] text-emerald-400">+{diffStats.reduce((a, b) => a + b.added, 0)} additions</span>
+                      <span className="text-[11px] text-red-400">-{diffStats.reduce((a, b) => a + b.removed, 0)} deletions</span>
+                      <span className="text-[11px] text-[#666]">{diffStats.length} files changed</span>
+                    </div>
+                    {diffStats.map((s, i) => (
+                      <div key={i} className="flex items-center gap-2 px-2 py-2 rounded hover:bg-[#1a1a1a] transition-colors">
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium shrink-0 ${s.status === 'added' ? 'bg-emerald-500/20 text-emerald-400' : s.status === 'deleted' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>{s.status.charAt(0).toUpperCase()}</span>
+                        <span className="text-[11px] text-[#ccc] font-mono truncate flex-1">{s.file}</span>
+                        <span className="text-[10px] text-emerald-400 shrink-0">+{s.added}</span>
+                        <span className="text-[10px] text-red-400 shrink-0">-{s.removed}</span>
+                        <div className="w-20 h-1.5 bg-[#1a1a1a] rounded-full overflow-hidden flex shrink-0">
+                          <div className="h-full bg-emerald-500" style={{ width: `${s.added / (s.added + s.removed + 1) * 100}%` }} />
+                          <div className="h-full bg-red-500" style={{ width: `${s.removed / (s.added + s.removed + 1) * 100}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* v15: Network / API Calls Panel */}
+      <AnimatePresence>
+        {showNetworkPanel && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={(e) => { if (e.target === e.currentTarget) setShowNetworkPanel(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-[#161616] rounded-xl border border-[#2a2a2a] w-full max-w-lg mx-4 max-h-[70vh] flex flex-col">
+              <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                  <h2 className="text-sm font-semibold text-white">Network / API Calls</h2>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#222] text-[#888]">{networkCalls.length} calls</span>
+                </div>
+                <button onClick={() => setShowNetworkPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-3 space-y-1">
+                {networkCalls.length === 0 ? (
+                  <p className="text-[#555] text-sm text-center py-8">No API calls detected in project files</p>
+                ) : networkCalls.map((call, i) => (
+                  <div key={i} className="flex items-center gap-2.5 p-2.5 rounded-lg border border-[#2a2a2a] hover:border-[#333] transition-colors">
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0 ${call.method.includes('post') || call.method === 'POST' ? 'bg-yellow-500/20 text-yellow-400' : call.method.includes('delete') || call.method === 'DELETE' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{call.method.toUpperCase().replace('AXIOS.', '')}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] text-white font-mono truncate">{call.url}</p>
+                      <p className="text-[9px] text-[#555]">{call.file}:{call.line}</p>
+                    </div>
+                    <button onClick={() => { navigator.clipboard.writeText(call.url); showToast('URL copied', 'success'); }} className="text-[#555] hover:text-white transition-colors shrink-0">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* v15: Breakpoint Tester Overlay */}
+      {/* ═══ HTML Validator Panel ═══ */}
+      {showHtmlValidatorPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[380px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><path d="M12 9v4m0 4h.01M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/></svg>
+              <span className="text-sm font-medium text-white">HTML Validator</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{htmlErrors.length} issue{htmlErrors.length !== 1 ? 's' : ''}</span>
+            </div>
+            <button onClick={() => setShowHtmlValidatorPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {htmlErrors.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No HTML issues detected ✓</div>}
+            {htmlErrors.map((err, i) => (
+              <div key={i} className={`flex items-start gap-2 p-2.5 rounded-lg text-[11px] ${err.type === 'error' ? 'bg-red-500/5 border border-red-500/10' : 'bg-yellow-500/5 border border-yellow-500/10'}`}>
+                <span className="shrink-0 mt-0.5">{err.type === 'error' ? '🔴' : '🟡'}</span>
+                <div>
+                  <div className="text-[#ccc]">{err.message}</div>
+                  {err.line !== undefined && <div className="text-[#555] mt-0.5">Line ~{err.line}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Font Inspector Panel ═══ */}
+      {showFontPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[380px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">🔤</span>
+              <span className="text-sm font-medium text-white">Font Inspector</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{detectedFonts.length} font{detectedFonts.length !== 1 ? 's' : ''}</span>
+            </div>
+            <button onClick={() => setShowFontPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {detectedFonts.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No fonts detected</div>}
+            {detectedFonts.map((f: { name: string; source: string; type: string }, i: number) => (
+              <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-[#1a1a1a] border border-[#222]">
+                <div className="w-8 h-8 rounded bg-purple-500/10 flex items-center justify-center text-purple-400 text-xs font-bold">{f.name.charAt(0)}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] text-white font-medium truncate" style={{ fontFamily: f.name }}>{f.name}</div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{f.type}</span>
+                    <span className="text-[9px] text-[#555]">{f.source}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Code Snippets Manager Panel ═══ */}
+      {showSnippetsPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[400px] max-h-[550px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+              <span className="text-sm font-medium text-white">Snippets Manager</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{savedSnippets.length}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => { const code = selectedFile && projectFiles[selectedFile] ? projectFiles[selectedFile].content.slice(0, 2000) : ''; if (!code) return; saveSnippet(selectedFile || 'snippet', code); }} className="text-[10px] px-2 py-1 rounded bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors">+ Save Selection</button>
+              <button onClick={() => setShowSnippetsPanel(false)} className="text-[#555] hover:text-white transition-colors ml-1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {savedSnippets.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No snippets saved yet. Select code and click &quot;Save Selection&quot;</div>}
+            {savedSnippets.map((s) => (
+              <div key={s.id} className="rounded-lg bg-[#1a1a1a] border border-[#222] overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-[#222]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">{s.language}</span>
+                    <span className="text-[11px] text-white">{s.name}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => insertSnippet(s.code)} className="text-[9px] px-2 py-0.5 rounded bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors">Insert</button>
+                    <button onClick={() => { navigator.clipboard.writeText(s.code); }} className="text-[9px] px-2 py-0.5 rounded bg-[#222] text-[#888] hover:text-white transition-colors">Copy</button>
+                    <button onClick={() => deleteSnippet(s.id)} className="text-[9px] px-2 py-0.5 rounded text-red-400/60 hover:text-red-400 transition-colors">✕</button>
+                  </div>
+                </div>
+                <pre className="p-2 text-[10px] text-[#888] font-mono max-h-[100px] overflow-y-auto">{s.code.slice(0, 500)}</pre>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ File Size Treemap Panel ═══ */}
+      {showTreemapPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[450px] max-h-[550px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
+              <span className="text-sm font-medium text-white">File Size Treemap</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{fileSizeTreemap.length} file{fileSizeTreemap.length !== 1 ? 's' : ''}</span>
+            </div>
+            <button onClick={() => setShowTreemapPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3">
+            {fileSizeTreemap.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No files in project</div>}
+            {(() => {
+              const totalSize = fileSizeTreemap.reduce((a, f) => a + f.bytes, 0);
+              return (
+                <div className="flex flex-wrap gap-1">
+                  {fileSizeTreemap.map((f, i) => {
+                    const pct = Math.max(f.pct, 5);
+                    return (
+                      <div key={i} className="rounded border border-[#333] flex flex-col items-center justify-center p-1.5 text-center transition-all hover:border-[#555]" style={{ width: `${Math.max(pct * 3.5, 45)}px`, height: `${Math.max(pct * 2, 40)}px`, background: `${f.color}15` }} title={`${f.path} — ${f.bytes > 1024 ? (f.bytes / 1024).toFixed(1) + ' KB' : f.bytes + ' B'}`}>
+                        <div className="text-[8px] text-[#ccc] truncate w-full">{f.path.split('/').pop()}</div>
+                        <div className="text-[7px] mt-0.5" style={{ color: f.color }}>{f.bytes > 1024 ? (f.bytes / 1024).toFixed(1) + 'K' : f.bytes + 'B'}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+            {fileSizeTreemap.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-[#222] pt-2">
+                {Object.entries(fileSizeTreemap.reduce((acc: Record<string, { bytes: number; color: string }>, f) => {
+                  const ext = f.path.split('.').pop() || '?';
+                  if (!acc[ext]) acc[ext] = { bytes: 0, color: f.color };
+                  acc[ext].bytes += f.bytes;
+                  return acc;
+                }, {} as Record<string, { bytes: number; color: string }>)).sort((a, b) => b[1].bytes - a[1].bytes).map(([ext, v]) => (
+                  <span key={ext} className="text-[9px] flex items-center gap-1"><span className="w-2 h-2 rounded-sm" style={{ background: v.color }} />{ext} <span className="text-[#555]">{v.bytes > 1024 ? (v.bytes / 1024).toFixed(1) + 'KB' : v.bytes + 'B'}</span></span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Unused CSS Detector Panel ═══ */}
+      {showUnusedCssPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[400px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><path d="M3 3l18 18"/><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94"/></svg>
+              <span className="text-sm font-medium text-white">Unused CSS</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{unusedCssSelectors.length} unused</span>
+            </div>
+            <button onClick={() => setShowUnusedCssPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+            {unusedCssSelectors.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No unused CSS selectors detected ✓</div>}
+            {unusedCssSelectors.map((s, i) => (
+              <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/5 border border-amber-500/10 text-[11px]">
+                <span className="text-amber-400 font-mono flex-1 truncate">{s.selector}</span>
+                <span className="text-[#555] shrink-0">L{s.line}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Link Checker Panel ═══ */}
+      {showLinkCheckerPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[400px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#06b6d4" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              <span className="text-sm font-medium text-white">Link Checker</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{brokenLinks.length} issue{brokenLinks.length !== 1 ? 's' : ''}</span>
+            </div>
+            <button onClick={() => setShowLinkCheckerPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+            {brokenLinks.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">All links valid ✓</div>}
+            {brokenLinks.map((l, i) => (
+              <div key={i} className="flex items-start gap-2 p-2.5 rounded-lg bg-cyan-500/5 border border-cyan-500/10 text-[11px]">
+                <span className="shrink-0 mt-0.5">{l.type === 'anchor' ? '⚓' : l.type === 'empty' ? '⚠️' : '🔗'}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-cyan-300 font-mono truncate">{l.href}</div>
+                  <div className="text-[#666] mt-0.5">{l.reason}</div>
+                </div>
+                <span className="text-[#555] shrink-0">L{l.line}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ DOM Tree Viewer Panel ═══ */}
+      {showDomTreePanel && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] max-h-[550px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="14"/><circle cx="6" cy="19" r="3"/><circle cx="18" cy="19" r="3"/><line x1="12" y1="14" x2="6" y2="16"/><line x1="12" y1="14" x2="18" y2="16"/></svg>
+              <span className="text-sm font-medium text-white">DOM Tree</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{domTree.length} elements</span>
+            </div>
+            <button onClick={() => setShowDomTreePanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 font-mono text-[10px]">
+            {domTree.length === 0 && <div className="text-center py-6 text-[#555] text-[11px] font-sans">No HTML file found</div>}
+            {domTree.map((node, i) => {
+              const tagColors: Record<string, string> = { html: '#e34c26', head: '#f59e0b', body: '#10b981', div: '#3b82f6', span: '#8b5cf6', a: '#06b6d4', p: '#6b7280', h1: '#ef4444', h2: '#ef4444', h3: '#ef4444', section: '#14b8a6', nav: '#f97316', main: '#22c55e', header: '#eab308', footer: '#a855f7', script: '#f59e0b', style: '#a855f7', img: '#ec4899', button: '#6366f1', input: '#8b5cf6', form: '#0ea5e9', ul: '#64748b', ol: '#64748b', li: '#94a3b8' };
+              const color = tagColors[node.tag] || '#888';
+              return (
+                <div key={i} className="flex items-center py-0.5 hover:bg-[#1a1a1a] rounded transition-colors" style={{ paddingLeft: `${node.depth * 16 + 4}px` }}>
+                  <span className="text-[#555] mr-1">{node.selfClose ? '◇' : '▸'}</span>
+                  <span style={{ color }}>&lt;{node.tag}</span>
+                  {node.attrs && <span className="text-[#555] ml-1 truncate max-w-[200px]">{node.attrs}</span>}
+                  <span style={{ color }}>{node.selfClose ? ' />' : '>'}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Meta Tag Editor Panel ═══ */}
+      {showMetaEditorPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[400px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
+              <span className="text-sm font-medium text-white">Meta Tags</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{metaTags.length} tag{metaTags.length !== 1 ? 's' : ''}</span>
+            </div>
+            <button onClick={() => setShowMetaEditorPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {metaTags.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No meta tags found</div>}
+            {metaTags.map((tag, i) => {
+              const iconMap: Record<string, string> = { title: '📝', description: '📄', 'og:title': '🌐', 'og:description': '🌐', 'og:image': '🖼️', 'twitter:card': '🐦', 'twitter:title': '🐦', viewport: '📱', charset: '🔤', robots: '🤖', author: '👤' };
+              return (
+                <div key={i} className="p-2.5 rounded-lg bg-[#1a1a1a] border border-[#222]">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs">{iconMap[tag.name] || '🏷️'}</span>
+                    <span className="text-[10px] font-medium text-purple-400">{tag.name}</span>
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-[#222] text-[#555]">{tag.type}</span>
+                  </div>
+                  <div className="text-[11px] text-[#ccc] font-mono break-all">{tag.content || '(empty)'}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Keyboard Shortcuts Reference ═══ */}
+      {showShortcutsRef && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] max-h-[600px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M18 12h.01M8 16h8"/></svg>
+              <span className="text-sm font-medium text-white">Keyboard Shortcuts</span>
+            </div>
+            <button onClick={() => setShowShortcutsRef(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {[
+              { title: 'General', shortcuts: [['⌘K', 'Command Palette'], ['⌘P', 'File Search'], ['⌘⇧F', 'Search in Files'], ['Escape', 'Close Panel'], ['⌘Z', 'Undo (VFS)'], ['⌘⇧Z', 'Redo (VFS)']] },
+              { title: 'Editor', shortcuts: [['⌘S', 'Save File'], ['⌘H', 'Find & Replace'], ['⌘G', 'Go to Line'], ['⌘D', 'Delete Line'], ['⇧⌥F', 'Format Code']] },
+              { title: 'View', shortcuts: [['⌘1', 'Code Tab'], ['⌘2', 'Preview Tab'], ['⌘3', 'Console Tab'], ['⌘B', 'Toggle Sidebar'], ['⌘\\\\', 'Split Preview']] },
+              { title: 'AI', shortcuts: [['Enter', 'Send Message'], ['⇧Enter', 'New Line in Input']] },
+            ].map(group => (
+              <div key={group.title}>
+                <div className="text-[10px] font-medium text-[#888] uppercase tracking-wider mb-1.5">{group.title}</div>
+                {group.shortcuts.map(([key, desc]) => (
+                  <div key={key} className="flex items-center justify-between py-1 px-1 text-[11px] hover:bg-[#1a1a1a] rounded transition-colors">
+                    <span className="text-[#ccc]">{desc}</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-[#222] border border-[#333] text-[9px] text-[#888] font-mono">{key}</kbd>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Bookmarked Lines Panel ═══ */}
+      {bookmarkedLines.length > 0 && activeTab === 'code' && (
+        <div className="fixed bottom-12 right-4 z-40 w-[220px] bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-3 py-2 border-b border-[#222] flex items-center justify-between">
+            <span className="text-[10px] font-medium text-white flex items-center gap-1">🔖 Bookmarks <span className="text-[#555]">({bookmarkedLines.length})</span></span>
+            <button onClick={() => setBookmarkedLines([])} className="text-[9px] text-[#555] hover:text-white transition-colors">Clear</button>
+          </div>
+          <div className="max-h-[200px] overflow-y-auto py-1">
+            {bookmarkedLines.map(line => (
+              <button key={line} onClick={() => jumpToBookmark(line)} className="w-full flex items-center justify-between px-3 py-1 text-[10px] hover:bg-[#1a1a1a] transition-colors">
+                <span className="text-blue-400">Line {line}</span>
+                <button onClick={(e) => { e.stopPropagation(); toggleBookmark(line); }} className="text-[#555] hover:text-red-400 transition-colors">✕</button>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Color Contrast Checker Panel ═══ */}
+      {showContrastPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v20"/></svg>
+              <span className="text-sm font-medium text-white">Contrast Checker</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{contrastIssues.length} pair{contrastIssues.length !== 1 ? 's' : ''}</span>
+            </div>
+            <button onClick={() => setShowContrastPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {contrastIssues.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No color pairs with explicit bg+fg found</div>}
+            {contrastIssues.map((c, i) => (
+              <div key={i} className={`p-2.5 rounded-lg border text-[11px] ${c.aaPass ? 'bg-green-500/5 border-green-500/10' : 'bg-red-500/5 border-red-500/10'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[#ccc] font-mono truncate flex-1">{c.selector}</span>
+                  <span className={`text-[10px] font-bold ${c.aaPass ? 'text-green-400' : 'text-red-400'}`}>{c.ratio}:1</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1"><span className="w-3 h-3 rounded border border-[#333]" style={{ background: c.fg }} /><span className="text-[9px] text-[#888]">{c.fg}</span></div>
+                  <span className="text-[#555]">/</span>
+                  <div className="flex items-center gap-1"><span className="w-3 h-3 rounded border border-[#333]" style={{ background: c.bg }} /><span className="text-[9px] text-[#888]">{c.bg}</span></div>
+                  <div className="ml-auto flex gap-1">
+                    <span className={`text-[8px] px-1 py-0.5 rounded ${c.aaPass ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>AA</span>
+                    <span className={`text-[8px] px-1 py-0.5 rounded ${c.aaaPass ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>AAA</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Z-Index Map Panel ═══ */}
+      {showZIndexPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[380px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+              <span className="text-sm font-medium text-white">Z-Index Map</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{zIndexMap.length}</span>
+            </div>
+            <button onClick={() => setShowZIndexPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+            {zIndexMap.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No z-index values found</div>}
+            {zIndexMap.map((z, i) => (
+              <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-[#1a1a1a] border border-[#222] text-[11px]">
+                <span className="w-12 text-right font-mono font-bold" style={{ color: z.value > 100 ? '#ef4444' : z.value > 10 ? '#f59e0b' : '#10b981' }}>{z.value}</span>
+                <span className="text-[#ccc] font-mono flex-1 truncate">{z.selector}</span>
+                <span className="text-[9px] text-[#555] shrink-0">{z.file.split('/').pop()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ TODO/FIXME Scanner Panel ═══ */}
+      {showTodoScanPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#84cc16" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              <span className="text-sm font-medium text-white">TODO Scanner</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{todoComments.length} comment{todoComments.length !== 1 ? 's' : ''}</span>
+            </div>
+            <button onClick={() => setShowTodoScanPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+            {todoComments.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No TODO/FIXME comments found ✓</div>}
+            {todoComments.map((t, i) => {
+              const typeColors: Record<string, string> = { TODO: '#3b82f6', FIXME: '#ef4444', HACK: '#f59e0b', NOTE: '#10b981', BUG: '#ef4444', XXX: '#f97316', OPTIMIZE: '#8b5cf6' };
+              return (
+                <button key={i} onClick={() => { setSelectedFile(t.file); setActiveTab('code'); const ed = monacoEditorRef.current as any; if (ed) setTimeout(() => { ed.revealLineInCenter(t.line); ed.setPosition({ lineNumber: t.line, column: 1 }); }, 100); }} className="w-full flex items-start gap-2 p-2 rounded-lg bg-[#1a1a1a] border border-[#222] text-[11px] text-left hover:border-[#333] transition-colors">
+                  <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0" style={{ background: `${typeColors[t.type] || '#555'}20`, color: typeColors[t.type] || '#888' }}>{t.type}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[#ccc] truncate">{t.text}</div>
+                    <div className="text-[#555] mt-0.5">{t.file}:{t.line}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Regex Tester Panel ═══ */}
+      {showRegexPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" strokeWidth="2"><path d="M17 3l4 4-4 4"/><path d="M3 7h18"/></svg>
+              <span className="text-sm font-medium text-white">Regex Tester</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{regexMatches.length} match{regexMatches.length !== 1 ? 'es' : ''}</span>
+            </div>
+            <button onClick={() => setShowRegexPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="p-3 space-y-2">
+            <input value={regexInput} onChange={e => setRegexInput(e.target.value)} placeholder="Enter regex pattern..." className="w-full bg-[#111] border border-[#333] rounded px-3 py-1.5 text-[11px] text-white font-mono outline-none focus:border-rose-500/50" />
+            <textarea value={regexTestStr} onChange={e => setRegexTestStr(e.target.value)} placeholder="Test string..." rows={3} className="w-full bg-[#111] border border-[#333] rounded px-3 py-1.5 text-[11px] text-white font-mono outline-none focus:border-rose-500/50 resize-none" />
+          </div>
+          <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-1">
+            {regexMatches.map((m, i) => (
+              <div key={i} className="flex items-center gap-2 p-2 rounded bg-rose-500/5 border border-rose-500/10 text-[10px]">
+                <span className="text-rose-400 font-mono font-bold">{i + 1}</span>
+                <span className="text-white font-mono flex-1 truncate">&quot;{m.match}&quot;</span>
+                <span className="text-[#555]">@{m.index}</span>
+                {m.groups.length > 0 && <span className="text-[#888]">({m.groups.length} groups)</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ CSS Specificity Panel ═══ */}
+      {showSpecificityPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[400px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+              <span className="text-sm font-medium text-white">CSS Specificity</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{cssSpecificity.length} selectors</span>
+            </div>
+            <button onClick={() => setShowSpecificityPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+            {cssSpecificity.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No CSS file found</div>}
+            {cssSpecificity.map((s, i) => (
+              <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-[#1a1a1a] border border-[#222] text-[11px]">
+                <div className="flex gap-0.5 shrink-0">
+                  <span className={`w-6 text-center text-[9px] font-bold rounded px-1 py-0.5 ${s.specificity[0] > 0 ? 'bg-red-500/20 text-red-400' : 'bg-[#222] text-[#555]'}`}>{s.specificity[0]}</span>
+                  <span className={`w-6 text-center text-[9px] font-bold rounded px-1 py-0.5 ${s.specificity[1] > 0 ? 'bg-amber-500/20 text-amber-400' : 'bg-[#222] text-[#555]'}`}>{s.specificity[1]}</span>
+                  <span className={`w-6 text-center text-[9px] font-bold rounded px-1 py-0.5 ${s.specificity[2] > 0 ? 'bg-blue-500/20 text-blue-400' : 'bg-[#222] text-[#555]'}`}>{s.specificity[2]}</span>
+                </div>
+                <span className="text-[#ccc] font-mono flex-1 truncate">{s.selector}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Image Lazy Loading Panel ═══ */}
+      {showLazyImgPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+              <span className="text-sm font-medium text-white">Image Checker</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{lazyImgIssues.length} image{lazyImgIssues.length !== 1 ? 's' : ''}</span>
+            </div>
+            <button onClick={() => setShowLazyImgPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {lazyImgIssues.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No images found</div>}
+            {lazyImgIssues.map((img, i) => (
+              <div key={i} className="p-2.5 rounded-lg bg-[#1a1a1a] border border-[#222] text-[11px]">
+                <div className="text-[#ccc] font-mono truncate mb-1">{img.src}</div>
+                <div className="flex items-center gap-2 text-[9px]">
+                  <span className={`px-1.5 py-0.5 rounded ${img.hasLazy ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>{img.hasLazy ? '✓ lazy' : '✗ no lazy'}</span>
+                  <span className={`px-1.5 py-0.5 rounded ${img.hasAlt ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>{img.hasAlt ? '✓ alt' : '✗ no alt'}</span>
+                  <span className={`px-1.5 py-0.5 rounded ${img.hasWidth ? 'bg-green-500/10 text-green-400' : 'bg-amber-500/10 text-amber-400'}`}>{img.hasWidth ? '✓ dimensions' : '⚠ no dimensions'}</span>
+                  <span className="text-[#555] ml-auto">{img.file}:{img.line}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Text Statistics Panel ═══ */}
+      {showTextStatsPanel && textStats && (
+        <div className="fixed top-16 right-4 z-40 w-[340px] bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+              <span className="text-sm font-medium text-white">Text Statistics</span>
+            </div>
+            <button onClick={() => setShowTextStatsPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="p-4 grid grid-cols-3 gap-3">
+            {[
+              { label: 'Words', value: textStats.words, color: '#6366f1' },
+              { label: 'Characters', value: textStats.chars, color: '#8b5cf6' },
+              { label: 'Sentences', value: textStats.sentences, color: '#a855f7' },
+              { label: 'Paragraphs', value: textStats.paragraphs, color: '#d946ef' },
+              { label: 'Headings', value: textStats.headings, color: '#ec4899' },
+              { label: 'Links', value: textStats.links, color: '#06b6d4' },
+              { label: 'Images', value: textStats.images, color: '#10b981' },
+              { label: 'Read Time', value: `${textStats.readingTime}m`, color: '#f59e0b' },
+              { label: 'Readability', value: textStats.readability, color: textStats.readability > 60 ? '#10b981' : textStats.readability > 30 ? '#f59e0b' : '#ef4444' },
+            ].map(stat => (
+              <div key={stat.label} className="text-center p-2 rounded-lg bg-[#1a1a1a] border border-[#222]">
+                <div className="text-lg font-bold" style={{ color: stat.color }}>{stat.value}</div>
+                <div className="text-[9px] text-[#888] mt-0.5">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Duplicate Code Panel ═══ */}
+      {showDuplicatePanel && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2"><rect x="8" y="2" width="13" height="13" rx="2"/><path d="M4 15V6a2 2 0 0 1 2-2"/><rect x="2" y="9" width="13" height="13" rx="2"/></svg>
+              <span className="text-sm font-medium text-white">Duplicate Code</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{duplicateBlocks.length} duplicate{duplicateBlocks.length !== 1 ? 's' : ''}</span>
+            </div>
+            <button onClick={() => setShowDuplicatePanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {duplicateBlocks.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No duplicate code blocks found ✓</div>}
+            {duplicateBlocks.map((d, i) => (
+              <div key={i} className="rounded-lg bg-[#1a1a1a] border border-[#222] overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#222]">
+                  <span className="text-[10px] text-orange-400 font-medium">Found in {d.count} files</span>
+                  <div className="flex gap-1">{d.files.map(f => <span key={f} className="text-[8px] px-1 py-0.5 rounded bg-[#222] text-[#888]">{f.split('/').pop()}</span>)}</div>
+                </div>
+                <pre className="p-2 text-[9px] text-[#888] font-mono overflow-x-auto">{d.code}</pre>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Element Counter Panel ═══ */}
+      {showElementCountPanel && elementCounts && (
+        <div className="fixed top-16 right-4 z-40 w-[380px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#14b8a6" strokeWidth="2"><path d="M4 9h16"/><path d="M4 15h16"/><path d="M10 3L8 21"/><path d="M16 3l-2 18"/></svg>
+              <span className="text-sm font-medium text-white">Element Counter</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{elementCounts.totalElements} total</span>
+            </div>
+            <button onClick={() => setShowElementCountPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="p-3">
+            <div className="grid grid-cols-4 gap-2 mb-3">
+              {[
+                { label: 'Elements', value: elementCounts.totalElements, color: '#14b8a6' },
+                { label: 'Unique Tags', value: elementCounts.uniqueTags, color: '#06b6d4' },
+                { label: 'Classes', value: elementCounts.totalClasses, color: '#8b5cf6' },
+                { label: 'IDs', value: elementCounts.totalIds, color: '#f59e0b' },
+              ].map(s => (
+                <div key={s.label} className="text-center p-2 rounded-lg bg-[#1a1a1a] border border-[#222]">
+                  <div className="text-sm font-bold" style={{ color: s.color }}>{s.value}</div>
+                  <div className="text-[8px] text-[#888]">{s.label}</div>
+                </div>
+              ))}
+            </div>
+            <div className="text-[9px] text-[#555] mb-1">Top elements:</div>
+            <div className="max-h-[250px] overflow-y-auto space-y-0.5">
+              {elementCounts.tagCounts.slice(0, 30).map(([tag, count]) => (
+                <div key={tag} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-[#1a1a1a] text-[11px]">
+                  <span className="text-teal-400 font-mono w-20 truncate">&lt;{tag}&gt;</span>
+                  <div className="flex-1 h-1.5 bg-[#222] rounded-full overflow-hidden"><div className="h-full bg-teal-500/40 rounded-full" style={{ width: `${Math.min(100, (count / elementCounts.totalElements) * 100 * 3)}%` }} /></div>
+                  <span className="text-[#888] w-8 text-right">{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Console Filter & Export Panel ═══ */}
+      {showConsoleFilter && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              <span className="text-sm font-medium text-white">Console Filter</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{filteredConsoleLogs.length} entries</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={exportConsoleLogs} className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors">Export .log</button>
+              <button onClick={() => setShowConsoleFilter(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 px-3 pt-2">
+            {(['all', 'log', 'warn', 'error'] as const).map(level => (
+              <button key={level} onClick={() => setConsoleFilterLevel(level)} className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${consoleFilterLevel === level ? (level === 'error' ? 'bg-red-500/20 text-red-400' : level === 'warn' ? 'bg-amber-500/20 text-amber-400' : level === 'log' ? 'bg-blue-500/20 text-blue-400' : 'bg-[#333] text-white') : 'text-[#555] hover:text-white'}`}>{level.toUpperCase()}</button>
+            ))}
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-0.5 max-h-[350px]">
+            {filteredConsoleLogs.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No console output</div>}
+            {filteredConsoleLogs.map((log, i) => (
+              <div key={i} className={`flex items-start gap-2 p-1.5 rounded text-[10px] font-mono ${log.type === 'error' ? 'bg-red-500/5 text-red-300' : log.type === 'warn' ? 'bg-amber-500/5 text-amber-300' : 'text-[#ccc]'}`}>
+                <span className={`shrink-0 w-10 text-[8px] font-bold uppercase ${log.type === 'error' ? 'text-red-400' : log.type === 'warn' ? 'text-amber-400' : 'text-blue-400'}`}>{log.type}</span>
+                <span className="flex-1 break-all">{log.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Inline Color Picker Panel ═══ */}
+      {showColorEdit && (
+        <div className="fixed top-16 right-4 z-40 w-[380px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth="2"><circle cx="13.5" cy="6.5" r="2.5"/><path d="M17.2 9.8l-4.7 4.7L8 18l-.5 3.5L11 21l3.5-4.5 4.7-4.7"/></svg>
+              <span className="text-sm font-medium text-white">Color Picker</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{detectedColors.length} colors</span>
+            </div>
+            <button onClick={() => setShowColorEdit(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          {colorEditTarget && (
+            <div className="px-3 pt-2 flex items-center gap-2">
+              <input type="color" value={colorEditValue} onChange={e => setColorEditValue(e.target.value)} className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent" />
+              <input value={colorEditValue} onChange={e => setColorEditValue(e.target.value)} className="flex-1 bg-[#111] border border-[#333] rounded px-2 py-1 text-[11px] text-white font-mono outline-none" />
+              <button onClick={applyColorEdit} className="px-2 py-1 rounded bg-pink-500/20 text-pink-400 text-[10px] hover:bg-pink-500/30 transition-colors">Apply</button>
+            </div>
+          )}
+          <div className="flex-1 overflow-y-auto p-3 space-y-1 max-h-[350px]">
+            {detectedColors.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No colors detected</div>}
+            {detectedColors.map((c, i) => (
+              <button key={i} onClick={() => { setColorEditTarget({ file: c.file, match: c.color, index: c.index }); setColorEditValue(c.color); }} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-[#1a1a1a] border border-transparent hover:border-[#222] text-[11px] text-left transition-colors">
+                <div className="w-5 h-5 rounded border border-[#333] shrink-0" style={{ backgroundColor: c.color }} />
+                <span className="text-white font-mono flex-1 truncate">{c.color}</span>
+                <span className="text-[#555] text-[9px]">{c.file.split('/').pop()}:{c.line}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Code Folding Map Panel ═══ */}
+      {showFoldMap && (
+        <div className="fixed top-16 right-4 z-40 w-[360px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2"><path d="M3 3h18"/><path d="M9 8h12"/><path d="M9 13h12"/><path d="M3 18h18"/></svg>
+              <span className="text-sm font-medium text-white">Folding Map</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{foldRegions.length} regions</span>
+            </div>
+            <button onClick={() => setShowFoldMap(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-0.5 max-h-[400px]">
+            {foldRegions.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">Open a file to see folding regions</div>}
+            {foldRegions.map((r, i) => (
+              <button key={i} onClick={() => {
+                const editor = monacoEditorRef.current as { revealLineInCenter?: (line: number) => void };
+                if (editor?.revealLineInCenter) editor.revealLineInCenter(r.start);
+              }} className="w-full flex items-center gap-2 p-1.5 rounded hover:bg-[#1a1a1a] text-[10px] text-left transition-colors">
+                <div className="flex gap-px shrink-0">{Array.from({ length: Math.min(r.depth, 5) }).map((_, d) => <div key={d} className="w-1.5 h-3 rounded-sm bg-purple-500/30" />)}</div>
+                <span className="text-[#888] w-12 text-right shrink-0">L{r.start}-{r.end}</span>
+                <span className="text-[#ccc] font-mono flex-1 truncate">{r.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Dependency Graph Panel ═══ */}
+      {showDepGraph && (
+        <div className="fixed top-16 right-4 z-40 w-[440px] max-h-[520px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#06b6d4" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              <span className="text-sm font-medium text-white">Dependency Graph</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{depGraph.nodes.length} files, {depGraph.edges.length} imports</span>
+            </div>
+            <button onClick={() => setShowDepGraph(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 max-h-[420px]">
+            {depGraph.nodes.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No files in project</div>}
+            {depGraph.nodes.map(node => {
+              const imports = depGraph.edges.filter(e => e.from === node.id);
+              const importedBy = depGraph.edges.filter(e => e.to === node.id);
+              return (
+                <div key={node.id} className="rounded-lg bg-[#1a1a1a] border border-[#222] p-2.5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-[8px] px-1 py-0.5 rounded font-bold ${node.type === 'tsx' || node.type === 'jsx' ? 'bg-blue-500/20 text-blue-400' : node.type === 'ts' || node.type === 'js' ? 'bg-amber-500/20 text-amber-400' : node.type === 'css' ? 'bg-purple-500/20 text-purple-400' : 'bg-[#222] text-[#888]'}`}>{node.type}</span>
+                    <span className="text-[11px] text-white font-mono truncate">{node.id}</span>
+                    {importedBy.length > 0 && <span className="text-[8px] px-1 py-0.5 rounded bg-cyan-500/10 text-cyan-400 ml-auto">{importedBy.length} dependents</span>}
+                  </div>
+                  {imports.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {imports.map(imp => <span key={imp.to} className="text-[8px] px-1.5 py-0.5 rounded bg-[#222] text-[#888] font-mono">→ {imp.to.split('/').pop()}</span>)}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Performance Budget Panel ═══ */}
+      {showPerfBudget && (
+        <div className="fixed top-16 right-4 z-40 w-[360px] bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#84cc16" strokeWidth="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-6"/></svg>
+              <span className="text-sm font-medium text-white">Performance Budget</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${perfBudget.score >= 80 ? 'bg-green-500/20 text-green-400' : perfBudget.score >= 50 ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}`}>{perfBudget.score}%</span>
+            </div>
+            <button onClick={() => setShowPerfBudget(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="p-3 space-y-2">
+            {perfBudget.checks.map(check => (
+              <div key={check.name} className="flex items-center gap-3 p-2 rounded-lg bg-[#1a1a1a] border border-[#222]">
+                <span className={`text-sm ${check.pass ? 'text-green-400' : 'text-red-400'}`}>{check.pass ? '✓' : '✗'}</span>
+                <div className="flex-1">
+                  <div className="text-[11px] text-white">{check.name}</div>
+                  <div className="text-[9px] text-[#555]">Limit: {check.limit}</div>
+                </div>
+                <span className={`text-[11px] font-mono font-bold ${check.pass ? 'text-green-400' : 'text-red-400'}`}>{check.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Responsive Preview Grid ═══ */}
+      {showResponsiveGrid && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
+          <div className="flex items-center justify-between px-6 py-3 border-b border-[#222]">
+            <div className="flex items-center gap-3">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              <span className="text-sm font-medium text-white">Responsive Preview Grid</span>
+              <span className="text-[10px] text-[#888]">4 viewports side by side</span>
+            </div>
+            <button onClick={() => setShowResponsiveGrid(false)} className="text-[#555] hover:text-white transition-colors"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 grid grid-cols-2 gap-3 p-4 overflow-hidden">
+            {RESPONSIVE_VIEWPORTS.map(vp => (
+              <div key={vp.name} className="flex flex-col rounded-lg border border-[#333] overflow-hidden bg-[#0a0a0a]">
+                <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#222] bg-[#111]">
+                  <span className="text-sm">{vp.icon}</span>
+                  <span className="text-[11px] text-white font-medium">{vp.name}</span>
+                  <span className="text-[9px] text-[#555] ml-auto">{vp.w}×{vp.h}</span>
+                </div>
+                <div className="flex-1 relative overflow-hidden">
+                  <iframe
+                    srcDoc={previewHtml || ''}
+                    sandbox="allow-scripts allow-same-origin"
+                    className="absolute inset-0 bg-white"
+                    style={{
+                      width: vp.w,
+                      height: vp.h,
+                      transform: `scale(${Math.min(1, 0.45)})`,
+                      transformOrigin: 'top left',
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ CSS Animation Inspector Panel ═══ */}
+      {showAnimPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d946ef" strokeWidth="2"><path d="M5 3v18"/><path d="M12 3v18"/><path d="M19 3v18"/><path d="M5 12c2-4 5-4 7 0s5 4 7 0"/></svg>
+              <span className="text-sm font-medium text-white">CSS Animations</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{cssAnimations.length} found</span>
+            </div>
+            <button onClick={() => setShowAnimPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+            {cssAnimations.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No CSS animations found</div>}
+            {cssAnimations.map((a, i) => (
+              <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-[#1a1a1a] border border-[#222] text-[11px]">
+                <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold shrink-0 ${a.type === 'keyframes' ? 'bg-fuchsia-500/20 text-fuchsia-400' : a.type === 'animation' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>{a.type}</span>
+                <span className="text-white font-mono truncate">{a.name}</span>
+                <span className="text-[#555] text-[9px] ml-auto truncate max-w-[120px]">{a.file.split('/').pop()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Event Listener Audit Panel ═══ */}
+      {showEventAudit && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
+              <span className="text-sm font-medium text-white">Event Listeners</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{inlineEvents.length} inline</span>
+            </div>
+            <button onClick={() => setShowEventAudit(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+            {inlineEvents.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No inline event handlers found ✓</div>}
+            {inlineEvents.map((ev, i) => (
+              <div key={i} className="p-2 rounded-lg bg-[#1a1a1a] border border-[#222] text-[11px]">
+                <div className="flex items-center gap-2">
+                  <span className="text-orange-400 font-mono font-bold">{ev.event}</span>
+                  <span className="text-[#888]">on</span>
+                  <span className="text-cyan-400 font-mono">&lt;{ev.element}&gt;</span>
+                  <span className="text-[#555] text-[9px] ml-auto">{ev.file.split('/').pop()}:{ev.line}</span>
+                </div>
+                {ev.handler && <div className="text-[9px] text-[#666] font-mono mt-1 truncate">{ev.handler}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Open Graph Preview Panel ═══ */}
+      {showOgPreview && ogData && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" strokeWidth="2"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+              <span className="text-sm font-medium text-white">Social Preview</span>
+            </div>
+            <button onClick={() => setShowOgPreview(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="p-4 space-y-3">
+            <div className="text-[10px] text-[#888] mb-1">Facebook / Twitter Card Preview</div>
+            <div className="rounded-lg border border-[#333] overflow-hidden bg-white">
+              {ogData.image && <div className="h-32 bg-gray-200 flex items-center justify-center text-[10px] text-gray-500 overflow-hidden">
+                <img src={ogData.image} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              </div>}
+              <div className="p-3 bg-[#f0f0f0]">
+                {ogData.siteName && <div className="text-[10px] text-gray-500 uppercase">{ogData.siteName}</div>}
+                <div className="text-sm font-bold text-gray-900 leading-tight">{ogData.title}</div>
+                {ogData.desc && <div className="text-[11px] text-gray-600 mt-0.5 line-clamp-2">{ogData.desc}</div>}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-[10px]">
+              <div className="p-2 rounded bg-[#1a1a1a] border border-[#222]"><span className="text-[#555]">Title:</span> <span className="text-white">{ogData.title || '—'}</span></div>
+              <div className="p-2 rounded bg-[#1a1a1a] border border-[#222]"><span className="text-[#555]">Card:</span> <span className="text-white">{ogData.twitterCard}</span></div>
+              <div className="p-2 rounded bg-[#1a1a1a] border border-[#222] col-span-2"><span className="text-[#555]">Description:</span> <span className="text-white">{ogData.desc || '—'}</span></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Semantic HTML Checker Panel ═══ */}
+      {showSemanticPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
+              <span className="text-sm font-medium text-white">Semantic HTML</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${semanticIssues.length === 0 ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'}`}>{semanticIssues.length === 0 ? 'Clean ✓' : `${semanticIssues.length} issues`}</span>
+            </div>
+            <button onClick={() => setShowSemanticPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+            {semanticIssues.length === 0 && <div className="text-center py-6 text-green-400 text-[11px]">All HTML is semantic ✓</div>}
+            {semanticIssues.map((s, i) => (
+              <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-[#1a1a1a] border border-[#222] text-[11px]">
+                <span className={`text-[9px] px-1 py-0.5 rounded font-bold shrink-0 mt-0.5 ${s.severity === 'error' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'}`}>{s.severity}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-white">{s.issue}</div>
+                  <div className="text-green-400 text-[9px]">→ {s.suggestion}</div>
+                </div>
+                <span className="text-[#555] text-[9px] shrink-0">{s.file.split('/').pop()}:{s.line}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ File Change Summary Panel ═══ */}
+      {showChangeSummary && (
+        <div className="fixed top-16 right-4 z-40 w-[360px] bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              <span className="text-sm font-medium text-white">Change Summary</span>
+            </div>
+            <button onClick={() => setShowChangeSummary(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          {!changeSummary ? (
+            <div className="p-6 text-center text-[#555] text-[11px]">No previous snapshot to compare</div>
+          ) : (
+            <div className="p-4 space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="text-center p-2 rounded-lg bg-green-500/5 border border-green-500/10">
+                  <div className="text-lg font-bold text-green-400">{changeSummary.added.length}</div>
+                  <div className="text-[9px] text-[#888]">Added</div>
+                </div>
+                <div className="text-center p-2 rounded-lg bg-amber-500/5 border border-amber-500/10">
+                  <div className="text-lg font-bold text-amber-400">{changeSummary.modified.length}</div>
+                  <div className="text-[9px] text-[#888]">Modified</div>
+                </div>
+                <div className="text-center p-2 rounded-lg bg-red-500/5 border border-red-500/10">
+                  <div className="text-lg font-bold text-red-400">{changeSummary.removed.length}</div>
+                  <div className="text-[9px] text-[#888]">Removed</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-[10px]">
+                <span className="text-green-400">+{changeSummary.totalLinesAdded} lines</span>
+                <span className="text-red-400">-{changeSummary.totalLinesRemoved} lines</span>
+              </div>
+              {changeSummary.added.length > 0 && <div className="space-y-0.5">{changeSummary.added.map(f => <div key={f} className="text-[10px] text-green-400 font-mono">+ {f}</div>)}</div>}
+              {changeSummary.modified.length > 0 && <div className="space-y-0.5">{changeSummary.modified.map(f => <div key={f} className="text-[10px] text-amber-400 font-mono">~ {f}</div>)}</div>}
+              {changeSummary.removed.length > 0 && <div className="space-y-0.5">{changeSummary.removed.map(f => <div key={f} className="text-[10px] text-red-400 font-mono">- {f}</div>)}</div>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ Whitespace/Indent Checker Panel ═══ */}
+      {showWhitespacePanel && (
+        <div className="fixed top-16 right-4 z-40 w-[400px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><path d="M21 10H3"/><path d="M21 6H3"/><path d="M21 14H3"/><path d="M21 18H3"/></svg>
+              <span className="text-sm font-medium text-white">Whitespace Check</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${whitespaceIssues.length === 0 ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`}>{whitespaceIssues.length === 0 ? 'Clean ✓' : `${whitespaceIssues.length} issues`}</span>
+            </div>
+            <button onClick={() => setShowWhitespacePanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+            {whitespaceIssues.length === 0 && <div className="text-center py-6 text-green-400 text-[11px]">No whitespace issues found ✓</div>}
+            {whitespaceIssues.map((w, i) => (
+              <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-[#1a1a1a] border border-[#222] text-[11px]">
+                <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold shrink-0 ${w.type === 'mixed-indent' ? 'bg-red-500/20 text-red-400' : w.type === 'trailing' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/20 text-gray-400'}`}>{w.type}</span>
+                <span className="text-[#ccc] flex-1 truncate">{w.issue}</span>
+                <span className="text-[#555] text-[9px] shrink-0">{w.file.split('/').pop()}:{w.line}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ PWA Checker Panel ═══ */}
+      {showPwaPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[380px] bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+              <span className="text-sm font-medium text-white">PWA Checker</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${pwaChecks.score >= 80 ? 'bg-green-500/20 text-green-400' : pwaChecks.score >= 50 ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}`}>{pwaChecks.score}%</span>
+            </div>
+            <button onClick={() => setShowPwaPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="p-3 space-y-1.5">
+            {pwaChecks.checks.map(check => (
+              <div key={check.name} className="flex items-center gap-3 p-2 rounded-lg bg-[#1a1a1a] border border-[#222]">
+                <span className={`text-sm ${check.pass ? 'text-green-400' : 'text-red-400'}`}>{check.pass ? '\u2713' : '\u2717'}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] text-white">{check.name}</div>
+                  <div className="text-[9px] text-[#555] truncate">{check.detail}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Schema.org Validator Panel ═══ */}
+      {showSchemaPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+              <span className="text-sm font-medium text-white">Schema.org / JSON-LD</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{schemaData.length} found</span>
+            </div>
+            <button onClick={() => setShowSchemaPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {schemaData.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No JSON-LD structured data found</div>}
+            {schemaData.map((s, i) => (
+              <div key={i} className="rounded-lg bg-[#1a1a1a] border border-[#222] overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#222]">
+                  <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold ${s.valid ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.valid ? 'Valid' : 'Invalid'}</span>
+                  <span className="text-[11px] text-amber-400 font-bold">{s.type}</span>
+                  <span className="text-[9px] text-[#555] ml-auto">{s.props.length} properties</span>
+                </div>
+                {s.props.length > 0 && <div className="px-3 py-1.5 flex flex-wrap gap-1">{s.props.map(p => <span key={p} className="text-[8px] px-1 py-0.5 rounded bg-[#222] text-[#888] font-mono">{p}</span>)}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Bundle Size Estimator Panel ═══ */}
+      {showBundlePanel && (
+        <div className="fixed top-16 right-4 z-40 w-[400px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+              <span className="text-sm font-medium text-white">Bundle Size</span>
+            </div>
+            <button onClick={() => setShowBundlePanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="px-4 py-3 border-b border-[#222] grid grid-cols-3 gap-2">
+            <div className="text-center">
+              <div className="text-sm font-bold text-white">{(bundleEstimate.totalRaw / 1024).toFixed(1)} KB</div>
+              <div className="text-[9px] text-[#555]">Raw Total</div>
+            </div>
+            <div className="text-center">
+              <div className="text-sm font-bold text-green-400">{(bundleEstimate.totalMin / 1024).toFixed(1)} KB</div>
+              <div className="text-[9px] text-[#555]">Minified</div>
+            </div>
+            <div className="text-center">
+              <div className="text-sm font-bold text-amber-400">-{(bundleEstimate.savings / 1024).toFixed(1)} KB</div>
+              <div className="text-[9px] text-[#555]">Savings</div>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-0.5">
+            {bundleEstimate.files.map(f => (
+              <div key={f.path} className="flex items-center gap-2 p-1.5 rounded hover:bg-[#1a1a1a] text-[11px]">
+                <span className={`text-[8px] px-1 py-0.5 rounded font-bold ${f.ext === 'js' || f.ext === 'ts' || f.ext === 'tsx' ? 'bg-amber-500/20 text-amber-400' : f.ext === 'css' ? 'bg-purple-500/20 text-purple-400' : f.ext === 'html' ? 'bg-blue-500/20 text-blue-400' : 'bg-[#222] text-[#888]'}`}>{f.ext}</span>
+                <span className="text-[#ccc] font-mono flex-1 truncate">{f.path}</span>
+                <span className="text-[#888] text-[9px] w-16 text-right">{(f.raw / 1024).toFixed(1)} KB</span>
+                <span className="text-green-400 text-[9px] w-16 text-right">{(f.minified / 1024).toFixed(1)} KB</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ ARIA Roles Inspector Panel ═══ */}
+      {showAriaPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] max-h-[500px] flex flex-col bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+              <span className="text-sm font-medium text-white">ARIA Inspector</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#222] text-[#888]">{ariaRoles.length} attributes</span>
+            </div>
+            <button onClick={() => setShowAriaPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+            {ariaRoles.length === 0 && <div className="text-center py-6 text-[#555] text-[11px]">No ARIA attributes found</div>}
+            {ariaRoles.map((r, i) => (
+              <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-[#1a1a1a] border border-[#222] text-[11px]">
+                <span className="text-purple-400 font-mono font-bold text-[10px]">{r.role}</span>
+                <span className="text-[#888]">on</span>
+                <span className="text-cyan-400 font-mono">&lt;{r.element}&gt;</span>
+                {!r.hasLabel && <span className="text-[8px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-400">no label</span>}
+                <span className="text-[#555] text-[9px] ml-auto">{r.file.split('/').pop()}:{r.line}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Security Headers Check Panel ═══ */}
+      {showSecurityPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[380px] bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <span className="text-sm font-medium text-white">Security Check</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${securityChecks.score >= 80 ? 'bg-green-500/20 text-green-400' : securityChecks.score >= 50 ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}`}>{securityChecks.score}%</span>
+            </div>
+            <button onClick={() => setShowSecurityPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="p-3 space-y-1.5">
+            {securityChecks.checks.map(check => (
+              <div key={check.name} className="flex items-center gap-3 p-2 rounded-lg bg-[#1a1a1a] border border-[#222]">
+                <span className={`text-sm ${check.pass ? 'text-green-400' : 'text-red-400'}`}>{check.pass ? '\u2713' : '\u2717'}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] text-white">{check.name}</div>
+                  <div className="text-[9px] text-[#555]">{check.detail}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ v23: Collaboration Room Panel ═══ */}
+      {showCollabPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[400px] bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span className="text-sm font-medium text-white">Collaboration</span>
+              {collabRoomId && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono">{collabRoomId}</span>}
+              {collabRoomId && <span className={`text-[9px] px-1.5 py-0.5 rounded ${collabMode === 'remote' ? 'bg-blue-500/20 text-blue-400' : 'bg-yellow-500/20 text-yellow-400'}`}>{collabMode === 'remote' ? 'Cross-device' : 'Local tabs'}</span>}
+            </div>
+            <button onClick={() => setShowCollabPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="p-4 space-y-4">
+            {!collabRoomId ? (
+              <>
+                <div className="space-y-2">
+                  <div className="flex gap-2 mb-3">
+                    <input value={collabUserName.current} onChange={e => { collabUserName.current = e.target.value; }} placeholder="Your name..." className="flex-1 px-3 py-2 rounded-lg bg-[#1a1a1a] border border-[#333] text-white text-[12px] placeholder:text-[#444] focus:border-indigo-500/50 outline-none" />
+                    <div className="w-8 h-8 rounded-full border-2 border-[#333] cursor-pointer flex items-center justify-center" style={{ background: collabColorRef.current }} onClick={() => { collabColorRef.current = collabColors[(collabColors.indexOf(collabColorRef.current) + 1) % collabColors.length]; }}>
+                      <span className="text-[8px] text-white/80">&#x21bb;</span>
+                    </div>
+                  </div>
+                  <button onClick={() => startCollabRoom()} className="w-full px-4 py-2.5 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-[12px] font-medium hover:bg-indigo-500/30 transition-all flex items-center justify-center gap-2">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                    Create New Room
+                  </button>
+                  <div className="text-center text-[10px] text-[#555]">or join an existing room</div>
+                  <div className="flex gap-2">
+                    <input value={collabJoinInput} onChange={e => setCollabJoinInput(e.target.value.toUpperCase())} placeholder="Room code..." maxLength={6} className="flex-1 px-3 py-2 rounded-lg bg-[#1a1a1a] border border-[#333] text-white text-[12px] font-mono uppercase placeholder:text-[#444] focus:border-indigo-500/50 outline-none" />
+                    <button onClick={() => joinCollabRoom(collabJoinInput)} className="px-4 py-2 rounded-lg bg-[#222] border border-[#333] text-white text-[12px] hover:bg-[#2a2a2a] transition-colors">Join</button>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-[#222] text-[10px] text-[#555] space-y-1">
+                  <p>Real-time collaboration: share your room code with anyone.</p>
+                  <p>Cross-device sync via signaling server. Local tabs use BroadcastChannel as fallback.</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/15">
+                  <div>
+                    <div className="text-[11px] text-[#888]">Room Code</div>
+                    <div className="text-lg font-mono font-bold text-emerald-400 tracking-wider">{collabRoomId}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => navigator.clipboard?.writeText(collabRoomId)} className="px-3 py-1.5 rounded-lg bg-[#222] text-[11px] text-white hover:bg-[#2a2a2a] transition-colors">Copy</button>
+                    <button onClick={leaveCollabRoom} className="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-[11px] text-red-400 hover:bg-red-500/20 transition-colors">Leave</button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-[11px] text-[#888]">Connected ({collabUsers.length})</div>
+                  {collabUsers.map(u => (
+                    <div key={u.id} className="flex items-center gap-2.5 p-2 rounded-lg bg-[#1a1a1a] border border-[#222]">
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ background: u.color }}>{u.name.slice(0, 2)}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[12px] text-white truncate">{u.name} {u.id === collabUserId.current && <span className="text-[9px] text-[#555]">(you)</span>}</div>
+                        {u.cursor && u.id !== collabUserId.current && <div className="text-[9px] text-[#555]">editing {u.cursor.file}</div>}
+                      </div>
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ v23: Feedback Panel ═══ */}
+      {showFeedbackPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[360px] bg-[#161616] rounded-xl border border-[#2a2a2a] shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <span className="text-sm font-medium text-white">Send Feedback</span>
+            </div>
+            <button onClick={() => setShowFeedbackPanel(false)} className="text-[#555] hover:text-white transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div className="p-4 space-y-4">
+            {feedbackSubmitted ? (
+              <div className="text-center py-6">
+                <div className="text-3xl mb-2">🎉</div>
+                <div className="text-sm text-white font-medium">Thank you for your feedback!</div>
+                <div className="text-[11px] text-[#555] mt-1">It helps us improve Aurion.</div>
+              </div>
+            ) : (
+              <>
+                <div className="text-center">
+                  <div className="text-[12px] text-[#aaa] mb-3">How would you rate your experience?</div>
+                  <div className="flex justify-center gap-3">
+                    {[
+                      { emoji: '😞', label: 'Terrible', value: 1 },
+                      { emoji: '😕', label: 'Poor', value: 2 },
+                      { emoji: '😐', label: 'Okay', value: 3 },
+                      { emoji: '😊', label: 'Good', value: 4 },
+                      { emoji: '😍', label: 'Amazing', value: 5 },
+                    ].map(r => (
+                      <button key={r.value} onClick={() => setFeedbackRating(r.value)} className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all ${feedbackRating === r.value ? 'bg-amber-500/15 border border-amber-500/30 scale-110' : 'hover:bg-[#1a1a1a] border border-transparent'}`}>
+                        <span className="text-2xl">{r.emoji}</span>
+                        <span className="text-[9px] text-[#666]">{r.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <textarea value={feedbackComment} onChange={e => setFeedbackComment(e.target.value)} placeholder="Tell us more (optional)..." rows={3} className="w-full px-3 py-2 rounded-lg bg-[#1a1a1a] border border-[#333] text-white text-[12px] placeholder:text-[#444] focus:border-amber-500/50 outline-none resize-none" />
+                <button onClick={submitFeedback} disabled={feedbackRating === 0} className="w-full px-4 py-2.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-[12px] font-medium hover:bg-amber-500/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed">Submit Feedback</button>
+                {feedbackHistory.length > 0 && <div className="text-[9px] text-[#444] text-center">{feedbackHistory.length} previous feedback{feedbackHistory.length !== 1 ? 's' : ''} submitted</div>}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ v23: Onboarding Tour Overlay ═══ */}
+      {showOnboarding && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center">
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-[480px] bg-[#161616] rounded-2xl border border-[#2a2a2a] shadow-2xl overflow-hidden">
+            <div className="relative h-36 bg-gradient-to-br from-indigo-600/30 via-purple-600/20 to-cyan-600/10 flex items-center justify-center">
+              <span className="text-5xl">{onboardingSteps[onboardingStep]?.icon}</span>
+              <div className="absolute top-3 right-3 flex gap-1">
+                {onboardingSteps.map((_, i) => <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === onboardingStep ? 'bg-white w-4' : i < onboardingStep ? 'bg-white/50' : 'bg-white/20'}`} />)}
+              </div>
+            </div>
+            <div className="p-6 space-y-3">
+              <h3 className="text-lg font-bold text-white">{onboardingSteps[onboardingStep]?.title}</h3>
+              <p className="text-[13px] text-[#aaa] leading-relaxed">{onboardingSteps[onboardingStep]?.desc}</p>
+            </div>
+            <div className="px-6 pb-6 flex items-center justify-between">
+              <button onClick={finishOnboarding} className="text-[11px] text-[#555] hover:text-white transition-colors">Skip tour</button>
+              <div className="flex gap-2">
+                {onboardingStep > 0 && <button onClick={() => setOnboardingStep(s => s - 1)} className="px-4 py-2 rounded-lg bg-[#222] text-[12px] text-white hover:bg-[#2a2a2a] transition-colors">Back</button>}
+                {onboardingStep < onboardingSteps.length - 1 ? (
+                  <button onClick={() => setOnboardingStep(s => s + 1)} className="px-4 py-2 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-[12px] font-medium hover:bg-indigo-500/30 transition-colors">Next</button>
+                ) : (
+                  <button onClick={finishOnboarding} className="px-4 py-2 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-[12px] font-medium hover:bg-indigo-500/30 transition-colors">Get Started</button>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ═══ v23: Changelog / What's New ═══ */}
+      {showChangelog && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center" onClick={() => setShowChangelog(false)}>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} onClick={e => e.stopPropagation()} className="w-[520px] max-h-[600px] bg-[#161616] rounded-2xl border border-[#2a2a2a] shadow-2xl flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-[#222] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🚀</span>
+                <span className="text-base font-bold text-white">{"What's New in Aurion"}</span>
+              </div>
+              <button onClick={() => setShowChangelog(false)} className="text-[#555] hover:text-white transition-colors"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {[
+                { version: 'v23', date: 'Latest', title: 'Collaboration, Feedback & AI Quality', items: ['Real-time collaboration rooms with BroadcastChannel sync', 'Feedback widget with emoji ratings', 'Interactive onboarding tour for new users', 'Enhanced AI system prompts for better code generation', 'Iterative editing intelligence — AI preserves existing code', 'Error recovery protocol — smarter debugging', 'Changelog panel (you are here!)'] },
+                { version: 'v22', date: 'Previous', title: 'PWA, Schema, Bundle & Security', items: ['PWA Checker', 'Schema.org/JSON-LD Validator', 'Bundle Size Estimator', 'ARIA Roles Inspector', 'Security Headers Check', 'Project Export as ZIP'] },
+                { version: 'v21', date: 'Previous', title: 'CSS Animations & Semantic HTML', items: ['CSS Animation Inspector', 'Event Listener Audit', 'Open Graph Preview', 'Semantic HTML Checker', 'File Change Summary', 'Whitespace/Indent Checker'] },
+                { version: 'v20', date: 'Previous', title: 'Console, Colors & Performance', items: ['Console Filter & Export', 'Inline Color Picker', 'Code Folding Map', 'Dependency Graph', 'Performance Budget', 'Responsive Preview Grid'] },
+                { version: 'v19', date: 'Previous', title: 'Regex, CSS & Code Analysis', items: ['Regex Tester', 'CSS Specificity Calculator', 'Image Lazy Loading Checker', 'Text Statistics', 'Duplicate Code Detector', 'Element Counter'] },
+              ].map(release => (
+                <div key={release.version}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 font-bold">{release.version}</span>
+                    <span className="text-[10px] text-[#555]">{release.date}</span>
+                  </div>
+                  <h4 className="text-[13px] font-bold text-white mb-2">{release.title}</h4>
+                  <ul className="space-y-1">
+                    {release.items.map((item, i) => (
+                      <li key={i} className="text-[11px] text-[#aaa] flex items-start gap-2">
+                        <span className="text-indigo-400 mt-0.5 shrink-0">+</span>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ═══ v24: Visual Drag & Drop Builder ═══ */}
+      {showVisualBuilder && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex">
+          {/* Component Palette */}
+          <div className="w-[280px] bg-[#111] border-r border-[#2a2a2a] flex flex-col">
+            <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between">
+              <span className="text-[13px] font-bold text-white">Components</span>
+              <button onClick={() => setShowVisualBuilder(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {vbComponents.map(comp => (
+                <button key={comp.id} onClick={() => vbAddComponent(comp.id)} draggable onDragStart={() => setVbDragging(comp.id)} onDragEnd={() => setVbDragging(null)} className="w-full p-3 bg-[#1a1a1a] rounded-lg border border-[#2a2a2a] hover:border-purple-500/40 transition-colors text-left flex items-center gap-3 group cursor-grab active:cursor-grabbing">
+                  <span className="text-xl">{comp.icon}</span>
+                  <div>
+                    <div className="text-[12px] text-white font-medium group-hover:text-purple-400 transition-colors">{comp.name}</div>
+                    <div className="text-[10px] text-[#555]">Click or drag to add</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Canvas */}
+          <div className="flex-1 flex flex-col">
+            <div className="px-4 py-2.5 bg-[#161616] border-b border-[#2a2a2a] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-[13px] font-bold text-white">Canvas</span>
+                <span className="text-[10px] text-[#555]">{vbCanvas.length} components</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setVbCanvas([])} className="px-3 py-1 text-[10px] text-[#888] hover:text-white bg-[#222] rounded-md transition-colors">Clear All</button>
+                <button onClick={vbGenerateCode} disabled={vbCanvas.length === 0} className="px-3 py-1 text-[10px] text-white bg-purple-600 hover:bg-purple-700 rounded-md transition-colors disabled:opacity-30">Generate Code →</button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto bg-[#0a0a0a] p-6" onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }} onDrop={e => { e.preventDefault(); if (vbDragging) vbAddComponent(vbDragging); }}>
+              {vbCanvas.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-[#333] border-2 border-dashed border-[#222] rounded-xl">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                  <p className="mt-3 text-[13px]">Drag & drop components here</p>
+                  <p className="text-[10px] text-[#444] mt-1">Or click a component to add it</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {vbCanvas.map((html, idx) => (
+                    <div key={idx} onClick={() => setVbSelectedIdx(idx)} className={`relative group rounded-lg overflow-hidden transition-all ${vbSelectedIdx === idx ? 'ring-2 ring-purple-500' : 'ring-1 ring-transparent hover:ring-[#333]'}`}>
+                      <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={(e) => { e.stopPropagation(); vbMoveComponent(idx, 'up'); }} disabled={idx === 0} className="w-6 h-6 flex items-center justify-center bg-black/80 rounded text-white text-[10px] hover:bg-purple-600 disabled:opacity-30">↑</button>
+                        <button onClick={(e) => { e.stopPropagation(); vbMoveComponent(idx, 'down'); }} disabled={idx === vbCanvas.length - 1} className="w-6 h-6 flex items-center justify-center bg-black/80 rounded text-white text-[10px] hover:bg-purple-600 disabled:opacity-30">↓</button>
+                        <button onClick={(e) => { e.stopPropagation(); vbRemoveComponent(idx); }} className="w-6 h-6 flex items-center justify-center bg-black/80 rounded text-red-400 text-[10px] hover:bg-red-600 hover:text-white">×</button>
+                      </div>
+                      <div className="absolute top-2 left-2 z-10 px-2 py-0.5 bg-black/80 rounded text-[9px] text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity">{idx + 1}</div>
+                      <iframe sandbox="" srcDoc={html} className="w-full h-[120px] border-0 pointer-events-none" title={`Component ${idx + 1}`} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Properties Panel */}
+          {vbSelectedIdx >= 0 && (
+            <div className="w-[300px] bg-[#111] border-l border-[#2a2a2a] flex flex-col">
+              <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between">
+                <span className="text-[12px] font-bold text-white">Properties</span>
+                <div className="flex gap-1">
+                  {(['style', 'content'] as const).map(tab => (
+                    <button key={tab} onClick={() => setVbPropertyTab(tab)} className={`px-2 py-0.5 rounded text-[10px] transition-colors ${vbPropertyTab === tab ? 'bg-purple-600 text-white' : 'text-[#666] hover:text-white'}`}>{tab}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3">
+                {vbPropertyTab === 'content' ? (
+                  <textarea value={vbCanvas[vbSelectedIdx] || ''} onChange={e => setVbCanvas(prev => { const n = [...prev]; n[vbSelectedIdx] = e.target.value; return n; })} className="w-full h-full bg-[#0a0a0a] text-[11px] text-green-400 font-mono p-3 rounded-lg border border-[#222] focus:border-purple-500 focus:outline-none resize-none" spellCheck={false} />
+                ) : (
+                  <div className="space-y-3 text-[11px]">
+                    <p className="text-[#555]">Select a component on the canvas to edit its HTML directly in the Content tab.</p>
+                    <div className="p-3 bg-[#1a1a1a] rounded-lg border border-[#222]">
+                      <div className="text-[10px] text-[#888] mb-1">Component #{vbSelectedIdx + 1}</div>
+                      <div className="text-[10px] text-[#555]">{vbCanvas[vbSelectedIdx]?.length || 0} chars</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ v24: Animation Timeline Builder ═══ */}
+      {showAnimBuilder && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-[800px] max-h-[85vh] bg-[#111] rounded-2xl border border-[#2a2a2a] shadow-2xl flex flex-col overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[#222] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="text-[14px] font-bold text-white">Animation Builder</span>
+                <span className="text-[10px] text-[#555]">{animKeyframes.length} animations</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={animCopyCSS} className="px-3 py-1 text-[10px] text-[#888] hover:text-white bg-[#222] rounded-md transition-colors">Copy CSS</button>
+                <button onClick={animInjectToProject} disabled={animKeyframes.length === 0} className="px-3 py-1 text-[10px] text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition-colors disabled:opacity-30">Inject to Project</button>
+                <button onClick={() => setShowAnimBuilder(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+            </div>
+            <div className="flex flex-1 min-h-0">
+              {/* Animation List */}
+              <div className="w-[200px] border-r border-[#222] flex flex-col">
+                <button onClick={animAddNew} className="m-2 px-3 py-2 text-[11px] text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 rounded-lg hover:bg-indigo-500/20 transition-colors">+ New Animation</button>
+                <div className="flex-1 overflow-y-auto">
+                  {animKeyframes.map((anim, i) => (
+                    <div key={anim.id} onClick={() => setAnimSelected(i)} className={`px-3 py-2 cursor-pointer border-b border-[#1a1a1a] flex items-center justify-between ${animSelected === i ? 'bg-indigo-500/10 text-white' : 'text-[#888] hover:text-white hover:bg-[#1a1a1a]'}`}>
+                      <span className="text-[11px] truncate">{anim.name}</span>
+                      <button onClick={(e) => { e.stopPropagation(); animDeleteAnim(i); }} className="text-[#555] hover:text-red-400 shrink-0"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Editor */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {animSelected >= 0 && animKeyframes[animSelected] ? (() => {
+                  const anim = animKeyframes[animSelected];
+                  return (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-4 gap-3">
+                        <div><label className="text-[9px] text-[#555] uppercase">Name</label><input value={anim.name} onChange={e => setAnimKeyframes(prev => { const n = [...prev]; n[animSelected] = { ...n[animSelected], name: e.target.value }; return n; })} className="w-full mt-1 px-2 py-1.5 bg-[#1a1a1a] border border-[#2a2a2a] rounded text-[11px] text-white focus:border-indigo-500 focus:outline-none" /></div>
+                        <div><label className="text-[9px] text-[#555] uppercase">Duration (s)</label><input type="number" step="0.1" min="0.1" value={anim.duration} onChange={e => setAnimKeyframes(prev => { const n = [...prev]; n[animSelected] = { ...n[animSelected], duration: parseFloat(e.target.value) || 0.1 }; return n; })} className="w-full mt-1 px-2 py-1.5 bg-[#1a1a1a] border border-[#2a2a2a] rounded text-[11px] text-white focus:border-indigo-500 focus:outline-none" /></div>
+                        <div><label className="text-[9px] text-[#555] uppercase">Easing</label><select value={anim.easing} onChange={e => setAnimKeyframes(prev => { const n = [...prev]; n[animSelected] = { ...n[animSelected], easing: e.target.value }; return n; })} className="w-full mt-1 px-2 py-1.5 bg-[#1a1a1a] border border-[#2a2a2a] rounded text-[11px] text-white focus:border-indigo-500 focus:outline-none">{['ease', 'ease-in', 'ease-out', 'ease-in-out', 'linear', 'cubic-bezier(0.22,1,0.36,1)'].map(e => <option key={e} value={e}>{e}</option>)}</select></div>
+                        <div><label className="text-[9px] text-[#555] uppercase">Iteration</label><select value={anim.iteration} onChange={e => setAnimKeyframes(prev => { const n = [...prev]; n[animSelected] = { ...n[animSelected], iteration: e.target.value }; return n; })} className="w-full mt-1 px-2 py-1.5 bg-[#1a1a1a] border border-[#2a2a2a] rounded text-[11px] text-white focus:border-indigo-500 focus:outline-none">{['1', '2', '3', 'infinite'].map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+                      </div>
+
+                      {/* Timeline */}
+                      <div className="relative h-8 bg-[#1a1a1a] rounded-lg border border-[#2a2a2a] overflow-hidden">
+                        {anim.frames.map((frame, fi) => (
+                          <div key={fi} className="absolute top-0 h-full w-1 bg-indigo-500 rounded-full" style={{ left: `${frame.pct}%` }}>
+                            <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-[8px] text-indigo-400 whitespace-nowrap">{frame.pct}%</div>
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-indigo-500 rounded-full border-2 border-indigo-300" />
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Keyframes */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-white font-medium">Keyframes</span>
+                          <button onClick={() => animAddFrame(animSelected)} className="text-[10px] text-indigo-400 hover:text-indigo-300">+ Add Frame</button>
+                        </div>
+                        {anim.frames.map((frame, fi) => (
+                          <div key={fi} className="p-3 bg-[#1a1a1a] rounded-lg border border-[#2a2a2a]">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-indigo-400 font-bold">{frame.pct}%</span>
+                                <input type="range" min="0" max="100" value={frame.pct} onChange={e => setAnimKeyframes(prev => { const n = [...prev]; const a = { ...n[animSelected], frames: [...n[animSelected].frames] }; a.frames[fi] = { ...a.frames[fi], pct: parseInt(e.target.value) }; n[animSelected] = a; return n; })} className="w-20 h-1 accent-indigo-500" />
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              {Object.entries(frame.props).map(([prop, val]) => (
+                                <div key={prop} className="flex items-center gap-1">
+                                  <span className="text-[9px] text-[#666] w-16 truncate">{prop}</span>
+                                  <input value={val} onChange={e => animUpdateFrame(animSelected, fi, prop, e.target.value)} className="flex-1 px-1.5 py-0.5 bg-[#0a0a0a] border border-[#222] rounded text-[10px] text-white focus:border-indigo-500 focus:outline-none" />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Preview */}
+                      <div className="p-4 bg-[#1a1a1a] rounded-lg border border-[#2a2a2a]">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-[11px] text-white font-medium">Preview</span>
+                          <button onClick={() => setAnimPreviewPlaying(p => !p)} className={`px-3 py-1 rounded text-[10px] transition-colors ${animPreviewPlaying ? 'bg-red-500/20 text-red-400' : 'bg-indigo-500/20 text-indigo-400'}`}>{animPreviewPlaying ? '⏹ Stop' : '▶ Play'}</button>
+                        </div>
+                        <div className="h-20 flex items-center justify-center">
+                          <div className="w-16 h-16 bg-indigo-600 rounded-xl" style={animPreviewPlaying ? { animation: `${anim.name} ${anim.duration}s ${anim.easing} ${anim.iteration === 'infinite' ? 'infinite' : anim.iteration}` } : undefined} />
+                        </div>
+                        {animPreviewPlaying && <style>{animGenerateCSS()}</style>}
+                      </div>
+
+                      {/* Generated CSS */}
+                      <div className="p-3 bg-[#0a0a0a] rounded-lg border border-[#222]">
+                        <div className="text-[9px] text-[#555] uppercase mb-2">Generated CSS</div>
+                        <pre className="text-[10px] text-green-400 font-mono whitespace-pre-wrap">{animGenerateCSS()}</pre>
+                      </div>
+                    </div>
+                  );
+                })() : (
+                  <div className="h-full flex items-center justify-center text-[#333]">
+                    <div className="text-center">
+                      <p className="text-[13px] mb-2">No animation selected</p>
+                      <button onClick={animAddNew} className="px-4 py-2 text-[11px] text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 rounded-lg hover:bg-indigo-500/20">Create your first animation</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ═══ v24: Design System Manager ═══ */}
+      {showDesignSystem && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-[900px] max-h-[85vh] bg-[#111] rounded-2xl border border-[#2a2a2a] shadow-2xl flex flex-col overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[#222] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="text-[14px] font-bold text-white">Design System</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { const css = dsGenerateCSS(); navigator.clipboard.writeText(css); }} className="px-3 py-1 text-[10px] text-[#888] hover:text-white bg-[#222] rounded-md transition-colors">Copy CSS</button>
+                <button onClick={() => { const json = dsGenerateTokensJSON(); navigator.clipboard.writeText(json); }} className="px-3 py-1 text-[10px] text-[#888] hover:text-white bg-[#222] rounded-md transition-colors">Copy JSON</button>
+                <button onClick={() => setShowDesignSystem(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b border-[#222] px-4">
+              {(['colors', 'typography', 'spacing', 'shadows', 'export'] as const).map(tab => (
+                <button key={tab} onClick={() => setDsTab(tab)} className={`px-4 py-2.5 text-[11px] font-medium transition-colors border-b-2 ${dsTab === tab ? 'text-pink-400 border-pink-400' : 'text-[#666] border-transparent hover:text-white'}`}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
+              ))}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              {dsTab === 'colors' && (
+                <div className="space-y-6">
+                  {dsColors.map((color, ci) => (
+                    <div key={ci}>
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-6 h-6 rounded-md border border-[#333]" style={{ backgroundColor: color.value }} />
+                        <span className="text-[12px] text-white font-medium">{color.name}</span>
+                        <span className="text-[10px] text-[#555]">{color.value}</span>
+                        <button onClick={() => setDsColors(prev => prev.filter((_, i) => i !== ci))} className="text-[10px] text-[#555] hover:text-red-400 ml-auto">Remove</button>
+                      </div>
+                      <div className="flex gap-1">
+                        {color.variants.map((v, vi) => (
+                          <div key={vi} className="flex-1 group cursor-pointer" onClick={() => navigator.clipboard.writeText(v)}>
+                            <div className="h-10 rounded-md transition-transform group-hover:scale-110" style={{ backgroundColor: v }} />
+                            <div className="text-[8px] text-[#555] text-center mt-1 group-hover:text-white">{(vi + 1) * 100}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <button onClick={() => dsAddColor('Custom', '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0'))} className="w-full py-2.5 border-2 border-dashed border-[#2a2a2a] rounded-lg text-[11px] text-[#555] hover:text-pink-400 hover:border-pink-500/30 transition-colors">+ Add Color</button>
+                </div>
+              )}
+
+              {dsTab === 'typography' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] text-[#555] uppercase">Primary Font</label>
+                      <select value={dsFontPrimary} onChange={e => setDsFontPrimary(e.target.value)} className="w-full mt-1 px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-[12px] text-white focus:border-pink-500 focus:outline-none">
+                        {['Inter', 'Plus Jakarta Sans', 'DM Sans', 'Space Grotesk', 'Outfit', 'Sora', 'Poppins', 'Manrope', 'Geist'].map(f => <option key={f} value={f}>{f}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#555] uppercase">Monospace Font</label>
+                      <select value={dsFontSecondary} onChange={e => setDsFontSecondary(e.target.value)} className="w-full mt-1 px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-[12px] text-white focus:border-pink-500 focus:outline-none">
+                        {['JetBrains Mono', 'Fira Code', 'Source Code Pro', 'IBM Plex Mono', 'Geist Mono'].map(f => <option key={f} value={f}>{f}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <span className="text-[11px] text-white font-medium">Type Scale</span>
+                    {dsTypeScale.map((t, i) => (
+                      <div key={i} className="p-3 bg-[#1a1a1a] rounded-lg border border-[#2a2a2a] flex items-center gap-4">
+                        <span className="text-[10px] text-pink-400 w-16 shrink-0">{t.name}</span>
+                        <span style={{ fontSize: t.size, fontWeight: parseInt(t.weight), lineHeight: t.lineHeight }} className="text-white truncate flex-1">The quick brown fox</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[9px] text-[#555]">{t.size}</span>
+                          <span className="text-[9px] text-[#555]">w{t.weight}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {dsTab === 'spacing' && (
+                <div className="space-y-4">
+                  <span className="text-[11px] text-white font-medium">Spacing Scale</span>
+                  <div className="space-y-2">
+                    {dsSpacing.map(s => (
+                      <div key={s} className="flex items-center gap-4">
+                        <span className="text-[10px] text-[#555] w-12 shrink-0">{s}px</span>
+                        <div className="h-4 bg-pink-500/30 rounded-sm" style={{ width: `${Math.min(s * 2, 300)}px` }} />
+                        <span className="text-[9px] text-[#666]">--space-{s}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <span className="text-[11px] text-white font-medium block mt-6">Border Radius</span>
+                  <div className="flex gap-3 flex-wrap">
+                    {dsBorderRadius.map(r => (
+                      <div key={r} className="text-center">
+                        <div className="w-12 h-12 bg-pink-500/20 border border-pink-500/30" style={{ borderRadius: `${r}px` }} />
+                        <span className="text-[9px] text-[#555] mt-1 block">{r === 9999 ? 'full' : `${r}px`}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {dsTab === 'shadows' && (
+                <div className="space-y-4">
+                  <span className="text-[11px] text-white font-medium">Shadow Scale</span>
+                  <div className="grid grid-cols-3 gap-4">
+                    {dsShadows.map(s => (
+                      <div key={s.name} className="p-6 bg-[#1a1a1a] rounded-xl text-center cursor-pointer hover:scale-105 transition-transform" style={{ boxShadow: s.value }} onClick={() => navigator.clipboard.writeText(s.value)}>
+                        <span className="text-[11px] text-white font-medium">{s.name}</span>
+                        <div className="text-[8px] text-[#555] mt-1 truncate">{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {dsTab === 'export' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-[#0a0a0a] rounded-lg border border-[#222]">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] text-white font-medium">CSS Variables</span>
+                      <button onClick={() => navigator.clipboard.writeText(dsGenerateCSS())} className="text-[10px] text-pink-400 hover:text-pink-300">Copy</button>
+                    </div>
+                    <pre className="text-[10px] text-green-400 font-mono whitespace-pre-wrap max-h-[200px] overflow-y-auto">{dsGenerateCSS()}</pre>
+                  </div>
+                  <div className="p-4 bg-[#0a0a0a] rounded-lg border border-[#222]">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] text-white font-medium">Design Tokens (JSON)</span>
+                      <button onClick={() => navigator.clipboard.writeText(dsGenerateTokensJSON())} className="text-[10px] text-pink-400 hover:text-pink-300">Copy</button>
+                    </div>
+                    <pre className="text-[10px] text-amber-400 font-mono whitespace-pre-wrap max-h-[200px] overflow-y-auto">{dsGenerateTokensJSON()}</pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ═══ v24: REST API Tester ═══ */}
+      {showApiTester && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-[850px] max-h-[85vh] bg-[#111] rounded-2xl border border-[#2a2a2a] shadow-2xl flex flex-col overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[#222] flex items-center justify-between shrink-0">
+              <span className="text-[14px] font-bold text-white">API Tester</span>
+              <button onClick={() => setShowApiTester(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            </div>
+
+            {/* Request Bar */}
+            <div className="px-4 py-3 border-b border-[#222] flex items-center gap-2">
+              <select value={apiMethod} onChange={e => setApiMethod(e.target.value as typeof apiMethod)} className={`px-3 py-2 rounded-lg text-[12px] font-bold border border-[#2a2a2a] focus:outline-none ${apiMethod === 'GET' ? 'bg-emerald-500/10 text-emerald-400' : apiMethod === 'POST' ? 'bg-amber-500/10 text-amber-400' : apiMethod === 'PUT' ? 'bg-blue-500/10 text-blue-400' : apiMethod === 'PATCH' ? 'bg-purple-500/10 text-purple-400' : 'bg-red-500/10 text-red-400'}`}>
+                {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <input value={apiUrl} onChange={e => setApiUrl(e.target.value)} placeholder="https://api.example.com/endpoint" className="flex-1 px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-[12px] text-white placeholder-[#444] focus:border-amber-500 focus:outline-none" onKeyDown={e => e.key === 'Enter' && apiSendRequest()} />
+              <button onClick={apiSendRequest} disabled={apiLoading || !apiUrl.trim()} className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-[12px] font-bold rounded-lg transition-colors disabled:opacity-30 flex items-center gap-2">
+                {apiLoading ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} className="w-3 h-3 border-2 border-white border-t-transparent rounded-full" /> : null}
+                Send
+              </button>
+            </div>
+
+            <div className="flex flex-1 min-h-0">
+              {/* Request Panel */}
+              <div className="w-1/2 border-r border-[#222] flex flex-col">
+                <div className="flex border-b border-[#222]">
+                  {(['body', 'headers', 'history'] as const).map(tab => (
+                    <button key={tab} onClick={() => setApiTab(tab)} className={`flex-1 py-2 text-[10px] font-medium transition-colors border-b-2 ${apiTab === tab ? 'text-amber-400 border-amber-400' : 'text-[#555] border-transparent hover:text-white'}`}>{tab.charAt(0).toUpperCase() + tab.slice(1)}{tab === 'headers' ? ` (${apiHeaders.length})` : tab === 'history' ? ` (${apiHistory.length})` : ''}</button>
+                  ))}
+                </div>
+                <div className="flex-1 overflow-y-auto p-3">
+                  {apiTab === 'body' && (
+                    <textarea value={apiBody} onChange={e => setApiBody(e.target.value)} className="w-full h-full bg-[#0a0a0a] border border-[#222] rounded-lg p-3 text-[11px] text-amber-400 font-mono focus:border-amber-500 focus:outline-none resize-none" placeholder='{ "key": "value" }' spellCheck={false} />
+                  )}
+                  {apiTab === 'headers' && (
+                    <div className="space-y-2">
+                      {apiHeaders.map((h, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <input value={h.key} onChange={e => setApiHeaders(prev => { const n = [...prev]; n[i] = { ...n[i], key: e.target.value }; return n; })} placeholder="Key" className="flex-1 px-2 py-1.5 bg-[#1a1a1a] border border-[#222] rounded text-[10px] text-white focus:border-amber-500 focus:outline-none" />
+                          <input value={h.value} onChange={e => setApiHeaders(prev => { const n = [...prev]; n[i] = { ...n[i], value: e.target.value }; return n; })} placeholder="Value" className="flex-1 px-2 py-1.5 bg-[#1a1a1a] border border-[#222] rounded text-[10px] text-white focus:border-amber-500 focus:outline-none" />
+                          <button onClick={() => apiRemoveHeader(i)} className="text-[#555] hover:text-red-400"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                        </div>
+                      ))}
+                      <button onClick={apiAddHeader} className="w-full py-1.5 border border-dashed border-[#333] rounded text-[10px] text-[#555] hover:text-amber-400 hover:border-amber-500/30 transition-colors">+ Add Header</button>
+                    </div>
+                  )}
+                  {apiTab === 'history' && (
+                    <div className="space-y-1">
+                      {apiHistory.length === 0 ? <p className="text-[11px] text-[#444] text-center py-8">No requests yet</p> :
+                        apiHistory.map((h, i) => (
+                          <button key={i} onClick={() => { setApiMethod(h.method as typeof apiMethod); setApiUrl(h.url); }} className="w-full p-2 bg-[#1a1a1a] rounded-lg border border-[#222] hover:border-[#333] transition-colors text-left flex items-center gap-2">
+                            <span className={`text-[9px] font-bold ${h.method === 'GET' ? 'text-emerald-400' : h.method === 'POST' ? 'text-amber-400' : h.method === 'DELETE' ? 'text-red-400' : 'text-blue-400'}`}>{h.method}</span>
+                            <span className="text-[10px] text-[#888] truncate flex-1">{h.url}</span>
+                            <span className={`text-[9px] ${h.status < 300 ? 'text-emerald-400' : h.status < 400 ? 'text-amber-400' : 'text-red-400'}`}>{h.status}</span>
+                            <span className="text-[9px] text-[#555]">{h.time}ms</span>
+                          </button>
+                        ))
+                      }
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Response Panel */}
+              <div className="w-1/2 flex flex-col">
+                <div className="px-3 py-2 border-b border-[#222] flex items-center gap-3">
+                  <span className="text-[10px] text-[#555]">Response</span>
+                  {apiResponse && (
+                    <>
+                      <span className={`text-[10px] font-bold ${apiResponse.status < 300 ? 'text-emerald-400' : apiResponse.status < 400 ? 'text-amber-400' : 'text-red-400'}`}>{apiResponse.status || 'Error'}</span>
+                      <span className="text-[10px] text-[#555]">{apiResponse.time}ms</span>
+                      <span className="text-[10px] text-[#555]">{(apiResponse.data.length / 1024).toFixed(1)} KB</span>
+                    </>
+                  )}
+                </div>
+                <div className="flex-1 overflow-auto p-3">
+                  {apiResponse ? (
+                    <pre className="text-[10px] text-emerald-400 font-mono whitespace-pre-wrap break-all">{(() => { try { return JSON.stringify(JSON.parse(apiResponse.data), null, 2); } catch { return apiResponse.data; } })()}</pre>
+                  ) : (
+                    <p className="text-[12px] text-[#333] text-center py-12">Send a request to see the response</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ═══ v24: Git Branch Manager ═══ */}
+      {showGitPanel && (
+        <div className="fixed top-16 right-4 z-40 w-[420px] max-h-[70vh] bg-[#111] rounded-xl border border-[#2a2a2a] shadow-2xl flex flex-col overflow-hidden">
+          <div className="px-4 py-3 border-b border-[#222] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>
+              <span className="text-[13px] font-bold text-white">Git</span>
+              <span className="px-2 py-0.5 bg-orange-500/10 text-orange-400 text-[9px] rounded-full border border-orange-500/20">{gitCurrentBranch}</span>
+            </div>
+            <button onClick={() => setShowGitPanel(false)} className="text-[#555] hover:text-white"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex border-b border-[#222]">
+            {(['branches', 'commits', 'stash', 'remote'] as const).map(tab => (
+              <button key={tab} onClick={() => setGitTab(tab as 'branches' | 'commits' | 'stash')} className={`flex-1 py-2 text-[10px] font-medium transition-colors border-b-2 ${gitTab === tab ? 'text-orange-400 border-orange-400' : 'text-[#555] border-transparent hover:text-white'}`}>{tab.charAt(0).toUpperCase() + tab.slice(1)}{tab === 'branches' ? ` (${gitBranches.length})` : tab === 'commits' ? ` (${gitBranchCommits.length})` : tab === 'stash' ? ` (${gitStash.length})` : ''}</button>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-3">
+            {gitTab === 'branches' && (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input value={gitNewBranch} onChange={e => setGitNewBranch(e.target.value)} placeholder="New branch name..." className="flex-1 px-2.5 py-1.5 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-[11px] text-white placeholder-[#444] focus:border-orange-500 focus:outline-none" onKeyDown={e => e.key === 'Enter' && gitCreateBranch(gitNewBranch)} />
+                  <button onClick={() => gitCreateBranch(gitNewBranch)} disabled={!gitNewBranch.trim()} className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-bold rounded-lg transition-colors disabled:opacity-30">Create</button>
+                </div>
+                {gitBranches.map(branch => (
+                  <div key={branch.name} className={`p-3 rounded-lg border transition-colors ${branch.current ? 'bg-orange-500/10 border-orange-500/20' : 'bg-[#1a1a1a] border-[#2a2a2a] hover:border-[#333]'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {branch.current && <div className="w-2 h-2 rounded-full bg-orange-400" />}
+                        <span className={`text-[11px] font-medium ${branch.current ? 'text-orange-400' : 'text-white'}`}>{branch.name}</span>
+                        <span className="text-[9px] text-[#555]">{branch.commits} commits</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {!branch.current && <button onClick={() => gitSwitchBranch(branch.name)} className="px-2 py-0.5 text-[9px] text-[#888] hover:text-white bg-[#222] rounded transition-colors">Checkout</button>}
+                        {branch.name !== 'main' && !branch.current && <button onClick={() => gitDeleteBranch(branch.name)} className="px-2 py-0.5 text-[9px] text-red-400/50 hover:text-red-400 bg-[#222] rounded transition-colors">Delete</button>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {gitTab === 'commits' && (
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input value={gitCommitMsg} onChange={e => setGitCommitMsg(e.target.value)} placeholder="Commit message..." className="flex-1 px-2.5 py-1.5 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-[11px] text-white placeholder-[#444] focus:border-orange-500 focus:outline-none" onKeyDown={e => e.key === 'Enter' && gitCommit(gitCommitMsg)} />
+                  <button onClick={() => gitCommit(gitCommitMsg)} disabled={!gitCommitMsg.trim()} className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-bold rounded-lg transition-colors disabled:opacity-30">Commit</button>
+                </div>
+                <div className="text-[9px] text-[#555]">{Object.keys(projectFiles).length} files in working tree</div>
+                {gitBranchCommits.length === 0 ? <p className="text-[11px] text-[#444] text-center py-6">No commits yet</p> :
+                  <div className="relative pl-4 border-l border-[#2a2a2a] space-y-3">
+                    {gitBranchCommits.map(commit => (
+                      <div key={commit.id} className="relative">
+                        <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-orange-500 border-2 border-[#111]" />
+                        <div className="p-2.5 bg-[#1a1a1a] rounded-lg border border-[#222]">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-white">{commit.message}</span>
+                            <span className="text-[8px] text-orange-400 font-mono">{commit.id}</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[9px] text-[#555]">{commit.branch}</span>
+                            <span className="text-[9px] text-[#555]">{commit.files.length} files</span>
+                            <span className="text-[9px] text-[#555]">{new Date(commit.timestamp).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                }
+              </div>
+            )}
+
+            {gitTab === 'stash' && (
+              <div className="space-y-2">
+                <button onClick={gitStashSave} className="w-full py-2 border border-dashed border-[#333] rounded-lg text-[11px] text-[#888] hover:text-orange-400 hover:border-orange-500/30 transition-colors">Stash Current Changes</button>
+                {gitStash.length === 0 ? <p className="text-[11px] text-[#444] text-center py-6">No stashes</p> :
+                  gitStash.map((stash, i) => (
+                    <div key={stash.id} className="p-3 bg-[#1a1a1a] rounded-lg border border-[#2a2a2a] flex items-center justify-between">
+                      <div>
+                        <div className="text-[11px] text-white">{stash.message}</div>
+                        <div className="text-[9px] text-[#555] mt-0.5">{Object.keys(stash.files).length} files · {new Date(stash.timestamp).toLocaleString()}</div>
+                      </div>
+                      <button onClick={() => gitStashPop(i)} className="px-2.5 py-1 text-[9px] text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded hover:bg-orange-500/20 transition-colors">Pop</button>
+                    </div>
+                  ))
+                }
+              </div>
+            )}
+
+            {gitTab === 'remote' && (
+              <div className="space-y-3">
+                {/* GitHub Token */}
+                <div><input type="password" value={githubToken} onChange={e => setGithubToken(e.target.value)} placeholder="GitHub token (ghp_...)" className="w-full px-2.5 py-1.5 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-[11px] text-white placeholder-[#444] focus:border-orange-500 focus:outline-none" /></div>
+                <button onClick={gitFetchRepos} disabled={!githubToken || gitRemoteLoading} className="w-full py-2 bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-bold rounded-lg transition-colors disabled:opacity-30">{gitRemoteLoading ? 'Loading...' : 'Fetch Repos'}</button>
+
+                {gitRepos.length > 0 && (
+                  <div className="space-y-2">
+                    <select value={gitSelectedRepo} onChange={e => { setGitSelectedRepo(e.target.value); if (e.target.value) { gitFetchBranches(e.target.value); gitFetchPRs(); gitFetchCommits(e.target.value); } }} className="w-full px-2.5 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-[11px] text-white focus:border-orange-500 focus:outline-none">
+                      <option value="">Select repo...</option>
+                      {gitRepos.map(r => <option key={r.fullName} value={r.fullName}>{r.fullName} {r.language ? `(${r.language})` : ''}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {gitSelectedRepo && (
+                  <>
+                    {/* Branches */}
+                    {gitRemoteBranches.length > 0 && (
+                      <div className="space-y-1">
+                        <div className="text-[9px] text-[#888] font-medium">Branches ({gitRemoteBranches.length})</div>
+                        <div className="max-h-[100px] overflow-y-auto space-y-1">
+                          {gitRemoteBranches.map(b => (
+                            <div key={b.name} className="flex items-center justify-between p-1.5 bg-[#1a1a1a] rounded border border-[#222] text-[10px]">
+                              <span className="text-white truncate">{b.name}</span>
+                              <div className="flex gap-1">
+                                <button onClick={() => gitFetchCommits(gitSelectedRepo, b.name)} className="px-1.5 py-0.5 text-[8px] text-[#888] bg-[#222] rounded hover:text-white">Log</button>
+                                {b.name !== 'main' && <button onClick={() => gitMergeBranch(b.name, 'main')} className="px-1.5 py-0.5 text-[8px] text-orange-400 bg-orange-500/10 rounded hover:bg-orange-500/20">Merge→main</button>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Create PR */}
+                    <div className="space-y-2 p-3 bg-[#0a0a0a] rounded-lg border border-[#222]">
+                      <div className="text-[9px] text-orange-400 font-medium">Create Pull Request</div>
+                      <input value={gitPRTitle} onChange={e => setGitPRTitle(e.target.value)} placeholder="PR title..." className="w-full px-2 py-1.5 bg-[#111] border border-[#2a2a2a] rounded text-[10px] text-white placeholder-[#444] focus:outline-none" />
+                      <div className="flex gap-2">
+                        <select value={gitPRHead} onChange={e => setGitPRHead(e.target.value)} className="flex-1 px-2 py-1 bg-[#111] border border-[#2a2a2a] rounded text-[10px] text-white focus:outline-none">
+                          <option value="">Head branch...</option>
+                          {gitRemoteBranches.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
+                        </select>
+                        <span className="text-[10px] text-[#555] self-center">→</span>
+                        <select value={gitPRBase} onChange={e => setGitPRBase(e.target.value)} className="flex-1 px-2 py-1 bg-[#111] border border-[#2a2a2a] rounded text-[10px] text-white focus:outline-none">
+                          {gitRemoteBranches.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
+                        </select>
+                      </div>
+                      <button onClick={gitCreatePR} disabled={!gitPRTitle || !gitPRHead} className="w-full py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-[9px] font-bold rounded transition-colors disabled:opacity-30">Create PR</button>
+                    </div>
+
+                    {/* Open PRs */}
+                    {gitPRs.length > 0 && (
+                      <div className="space-y-1">
+                        <div className="text-[9px] text-[#888] font-medium">Pull Requests ({gitPRs.length})</div>
+                        {gitPRs.map(pr => (
+                          <div key={pr.number} className="p-2 bg-[#1a1a1a] rounded-lg border border-[#222] flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[10px] text-white truncate">#{pr.number} {pr.title}</div>
+                              <div className="text-[8px] text-[#555]">{pr.head} → {pr.base} · {pr.author}</div>
+                            </div>
+                            <button onClick={() => gitMergePR(pr.number)} className="px-2 py-1 text-[8px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded hover:bg-emerald-500/20 ml-2 shrink-0">Merge</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Remote Commits */}
+                    {gitRemoteCommits.length > 0 && (
+                      <div className="space-y-1">
+                        <div className="text-[9px] text-[#888] font-medium">Recent Commits</div>
+                        <div className="max-h-[120px] overflow-y-auto space-y-1">
+                          {gitRemoteCommits.slice(0, 10).map(c => (
+                            <div key={c.sha} className="flex items-center gap-2 p-1.5 bg-[#1a1a1a] rounded border border-[#222]">
+                              {c.avatar && <img src={c.avatar} alt="" className="w-4 h-4 rounded-full" />}
+                              <div className="flex-1 min-w-0">
+                                <div className="text-[9px] text-white truncate">{c.message}</div>
+                                <div className="text-[8px] text-[#555]">{c.sha} · {c.author}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Figma Import Panel ═══ */}
+      {showFigmaPanel && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) setShowFigmaPanel(false); }}>
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-[700px] max-h-[85vh] bg-[#111] rounded-2xl border border-[#2a2a2a] shadow-2xl flex flex-col overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[#222] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>
+                <span className="text-[14px] font-bold text-white">Import from Figma</span>
+              </div>
+              <button onClick={() => setShowFigmaPanel(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              <div className="space-y-3">
+                <div><label className="block text-[11px] text-[#888] mb-1">Figma URL</label><input value={figmaUrl} onChange={e => setFigmaUrl(e.target.value)} placeholder="https://www.figma.com/design/..." className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2.5 text-sm text-white placeholder-[#444] outline-none focus:border-purple-500/50" /></div>
+                <div><label className="block text-[11px] text-[#888] mb-1">Access Token <span className="text-[#555]">(from figma.com/developers)</span></label><input type="password" value={figmaToken} onChange={e => setFigmaToken(e.target.value)} placeholder="figd_..." className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2.5 text-sm text-white placeholder-[#444] outline-none focus:border-purple-500/50" /></div>
+                <div className="flex gap-2">
+                  <button onClick={() => figmaImport()} disabled={figmaLoading || !figmaUrl.trim()} className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-[12px] font-bold rounded-lg transition-colors disabled:opacity-30 flex items-center justify-center gap-2">{figmaLoading ? 'Loading...' : 'Import Frame'}</button>
+                  <button onClick={() => figmaListFrames()} disabled={figmaLoading || !figmaUrl.trim()} className="px-4 py-2.5 bg-[#222] hover:bg-[#2a2a2a] text-white text-[12px] rounded-lg transition-colors disabled:opacity-30">List All Frames</button>
+                </div>
+              </div>
+
+              {figmaFrames && (
+                <div className="space-y-2">
+                  <div className="text-[11px] text-[#888]">Pages & Frames</div>
+                  {figmaFrames.pages.map((page, pi) => (
+                    <div key={pi} className="space-y-1">
+                      <div className="text-[10px] text-purple-400 font-medium">{page.name}</div>
+                      {page.frames.map(frame => (
+                        <button key={frame.id} onClick={() => figmaImport(frame.id)} className="w-full flex items-center justify-between p-2.5 bg-[#1a1a1a] rounded-lg border border-[#222] hover:border-purple-500/30 transition-colors text-left">
+                          <div>
+                            <div className="text-[11px] text-white">{frame.name}</div>
+                            <div className="text-[9px] text-[#555]">{frame.width}x{frame.height} · {frame.childCount} children</div>
+                          </div>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {figmaData && (
+                <div className="space-y-3 pt-2 border-t border-[#222]">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[12px] text-white font-medium">{figmaData.frameName}</div>
+                      <div className="text-[9px] text-[#555]">{figmaData.fileName} {figmaData.frameSize ? `· ${figmaData.frameSize.width}x${figmaData.frameSize.height}` : ''}</div>
+                    </div>
+                    <button onClick={figmaGenCode} className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-[11px] font-bold rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all">Generate Code</button>
+                  </div>
+                  {figmaData.screenshotUrl && <img src={figmaData.screenshotUrl} alt="Frame" className="w-full rounded-lg border border-[#222] max-h-[200px] object-contain bg-[#0a0a0a]" />}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-[#0a0a0a] rounded-lg border border-[#222]">
+                      <div className="text-[9px] text-[#888] mb-1.5">Colors</div>
+                      <div className="flex flex-wrap gap-1">{figmaData.colors.map((c, i) => (<div key={i} className="w-5 h-5 rounded border border-[#333]" style={{ background: c }} title={c} />))}</div>
+                    </div>
+                    <div className="p-3 bg-[#0a0a0a] rounded-lg border border-[#222]">
+                      <div className="text-[9px] text-[#888] mb-1.5">Fonts</div>
+                      <div className="text-[10px] text-white">{figmaData.fonts.join(', ') || 'None detected'}</div>
+                    </div>
+                  </div>
+                  {figmaData.components && figmaData.components.length > 0 && (
+                    <div className="p-3 bg-[#0a0a0a] rounded-lg border border-[#222]">
+                      <div className="text-[9px] text-[#888] mb-1.5">Components ({figmaData.components.length})</div>
+                      <div className="flex flex-wrap gap-1">{figmaData.components.slice(0, 12).map((c, i) => (
+                        <span key={i} className="px-2 py-0.5 text-[9px] rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">{c.name} x{c.count}</span>
+                      ))}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ═══ Test Runner Panel ═══ */}
+      {showTestRunner && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-[750px] max-h-[85vh] bg-[#111] rounded-2xl border border-[#2a2a2a] shadow-2xl flex flex-col overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[#222] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[14px] font-bold text-white">Test Runner</span>
+                <span className="text-[10px] text-[#555]">Vitest • {webContainer.state.status === 'ready' ? 'WebContainer Ready' : 'WebContainer Idle'}</span>
+              </div>
+              <button onClick={() => setShowTestRunner(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            </div>
+            <div className="p-4 space-y-3 overflow-y-auto flex-1">
+              {/* Actions */}
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => generateAndRunTests()} disabled={testRunning || !selectedFile} className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 text-[11px] font-medium hover:bg-emerald-500/30 transition-colors disabled:opacity-30 flex items-center gap-1.5">
+                  {testRunning ? <div className="w-3 h-3 border border-emerald-400 border-t-transparent rounded-full animate-spin" /> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
+                  Generate & Run Tests
+                </button>
+                <button onClick={() => runTestsInContainer()} disabled={testRunning} className="px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 text-[11px] font-medium hover:bg-blue-500/30 transition-colors disabled:opacity-30">
+                  Run All Tests
+                </button>
+                {testFile && (
+                  <button onClick={() => { openFile(testFile); setShowTestRunner(false); }} className="px-3 py-1.5 rounded-lg bg-[#222] text-[#888] text-[11px] hover:bg-[#2a2a2a] transition-colors">
+                    Open {testFile}
+                  </button>
+                )}
+              </div>
+              {/* Results */}
+              {testResults.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-[#888] font-medium">Results ({testResults.filter(r => r.status === 'pass').length}/{testResults.length} passed)</div>
+                  <div className="bg-[#0a0a0a] rounded-lg border border-[#222] divide-y divide-[#1a1a1a]">
+                    {testResults.map((t, i) => (
+                      <div key={i} className="flex items-center gap-2 px-3 py-2 text-[11px]">
+                        {t.status === 'pass' ? <span className="text-emerald-400">✓</span> : t.status === 'fail' ? <span className="text-red-400">✗</span> : <span className="text-yellow-400">○</span>}
+                        <span className={t.status === 'pass' ? 'text-emerald-400/80' : t.status === 'fail' ? 'text-red-400/80' : 'text-yellow-400/80'}>{t.name}</span>
+                        {t.duration && <span className="text-[#555] ml-auto">{t.duration}ms</span>}
+                      </div>
+                    ))}
+                  </div>
+                  {/* Summary bar */}
+                  <div className="flex gap-3 text-[10px]">
+                    <span className="text-emerald-400">{testResults.filter(r => r.status === 'pass').length} passed</span>
+                    <span className="text-red-400">{testResults.filter(r => r.status === 'fail').length} failed</span>
+                    <span className="text-yellow-400">{testResults.filter(r => r.status === 'skip').length} skipped</span>
+                  </div>
+                </div>
+              )}
+              {/* Raw output */}
+              {testRawOutput && (
+                <details className="text-[10px]">
+                  <summary className="text-[#555] cursor-pointer hover:text-[#888]">Raw terminal output</summary>
+                  <pre className="mt-2 p-3 bg-[#0a0a0a] rounded-lg border border-[#222] text-[#888] overflow-auto max-h-[200px] whitespace-pre-wrap font-mono text-[10px]">{testRawOutput}</pre>
+                </details>
+              )}
+              {/* Test files in project */}
+              {Object.keys(projectFiles).filter(f => f.includes('.test.') || f.includes('.spec.')).length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-[#888] font-medium">Test files in project</div>
+                  <div className="space-y-1">
+                    {Object.keys(projectFiles).filter(f => f.includes('.test.') || f.includes('.spec.')).map(f => (
+                      <div key={f} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0a0a0a] border border-[#222] text-[11px]">
+                        <span className="text-purple-400">🧪</span>
+                        <span className="text-[#888] flex-1">{f}</span>
+                        <button onClick={() => runTestsInContainer(f)} disabled={testRunning} className="text-[10px] text-blue-400 hover:text-blue-300">Run</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Getting started */}
+              {testResults.length === 0 && !testRunning && (
+                <div className="text-center py-6 text-[#555] text-[11px]">
+                  <div className="text-2xl mb-2">🧪</div>
+                  <div>Select a source file and click &quot;Generate &amp; Run Tests&quot;</div>
+                  <div className="mt-1 text-[10px]">Tests are generated by AI and executed in a real WebContainer runtime</div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ═══ AI Code Review Panel ═══ */}
+      {showCodeReview && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-[750px] max-h-[85vh] bg-[#111] rounded-2xl border border-[#2a2a2a] shadow-2xl flex flex-col overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[#222] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[14px] font-bold text-white">AI Code Review</span>
+                <span className="text-[10px] text-[#555]">{selectedFile || 'No file'}</span>
+                {codeReviewLoading && <div className="w-3 h-3 border border-indigo-400 border-t-transparent rounded-full animate-spin" />}
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => runAICodeReview()} disabled={codeReviewLoading} className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-400 text-[10px] font-medium hover:bg-indigo-500/30 transition-colors disabled:opacity-30">Re-run</button>
+                <button onClick={() => setShowCodeReview(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+            </div>
+            <div className="p-5 overflow-y-auto flex-1">
+              {codeReviewResult ? (
+                <div className="prose prose-invert prose-sm max-w-none text-[12px] leading-relaxed" style={{ color: '#ccc' }}>
+                  <div dangerouslySetInnerHTML={{ __html: (() => { const e = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); return e(codeReviewResult).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code style="background:#1a1a1a;padding:1px 4px;border-radius:3px;font-size:11px">$1</code>').replace(/^### (.*$)/gm, '<h3 style="color:white;font-size:14px;margin-top:16px">$1</h3>').replace(/^## (.*$)/gm, '<h2 style="color:white;font-size:15px;margin-top:18px">$1</h2>').replace(/^- (.*$)/gm, '<div style="padding-left:12px;margin:4px 0">• $1</div>').replace(/^(\d+)\. (.*$)/gm, '<div style="padding-left:12px;margin:4px 0">$1. $2</div>').replace(/```(\w*)\n([\s\S]*?)```/g, '<pre style="background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:12px;margin:8px 0;overflow-x:auto"><code>$2</code></pre>').replace(/\n/g, '<br/>'); })() }} />
+                </div>
+              ) : !codeReviewLoading ? (
+                <div className="text-center py-10 text-[#555] text-[11px]">
+                  <div className="text-2xl mb-2">🔍</div>
+                  <div>Select a file and run AI Code Review</div>
+                  <div className="mt-1 text-[10px]">Get bug detection, performance tips, and refactoring suggestions</div>
+                </div>
+              ) : (
+                <div className="text-center py-10 text-[#555] text-[11px]">
+                  <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <div>Analyzing {selectedFile}...</div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ═══ v24: AI Screenshot Analyzer ═══ */}
+      {showScreenshotAnalyzer && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-[700px] max-h-[85vh] bg-[#111] rounded-2xl border border-[#2a2a2a] shadow-2xl flex flex-col overflow-hidden" onPaste={ssHandlePaste}>
+            <div className="px-5 py-3.5 border-b border-[#222] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[14px] font-bold text-white">Screenshot to Code</span>
+                <span className="text-[10px] text-[#555]">AI-powered design to code</span>
+              </div>
+              <button onClick={() => setShowScreenshotAnalyzer(false)} className="text-[#555] hover:text-white"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {/* Drop Zone */}
+              {!ssImage && (
+                <div onDragOver={e => { e.preventDefault(); setSsDragOver(true); }} onDragLeave={() => setSsDragOver(false)} onDrop={ssHandleDrop} className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${ssDragOver ? 'border-cyan-500 bg-cyan-500/5' : 'border-[#2a2a2a] hover:border-[#444]'}`}>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={ssDragOver ? '#06b6d4' : '#333'} strokeWidth="1" className="mx-auto mb-4"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                  <p className="text-[13px] text-[#888] mb-2">Drop a screenshot here</p>
+                  <p className="text-[10px] text-[#555] mb-4">or paste from clipboard (Ctrl+V)</p>
+                  <label className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-[11px] font-bold rounded-lg cursor-pointer transition-colors">
+                    Browse Files
+                    <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) { const r = new FileReader(); r.onload = () => setSsImage(r.result as string); r.readAsDataURL(f); } }} />
+                  </label>
+                </div>
+              )}
+
+              {/* Preview */}
+              {ssImage && (
+                <div className="space-y-4">
+                  <div className="relative rounded-xl overflow-hidden border border-[#2a2a2a]">
+                    <img src={ssImage} alt="Screenshot" className="w-full max-h-[300px] object-contain bg-[#0a0a0a]" />
+                    <button onClick={() => { setSsImage(null); setSsResult(null); }} className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center bg-black/80 rounded-full text-[#888] hover:text-white">&times;</button>
+                  </div>
+
+                  <button onClick={ssAnalyze} disabled={ssAnalyzing} className="w-full py-3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white text-[12px] font-bold rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                    {ssAnalyzing ? (<><motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} className="w-4 h-4 border-2 border-white border-t-transparent rounded-full" />Analyzing with Claude...</>) : '🧠 Analyze & Generate Code'}
+                  </button>
+
+                  {ssResult && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px] text-white font-medium">Generated Code</span>
+                        <div className="flex gap-2">
+                          <button onClick={() => navigator.clipboard.writeText(ssResult)} className="px-3 py-1 text-[10px] text-[#888] hover:text-white bg-[#222] rounded-md transition-colors">Copy</button>
+                          <button onClick={ssApplyCode} className="px-3 py-1 text-[10px] text-white bg-cyan-600 hover:bg-cyan-700 rounded-md transition-colors">Apply to Project</button>
+                        </div>
+                      </div>
+                      <pre className="p-3 bg-[#0a0a0a] rounded-lg border border-[#222] text-[10px] text-cyan-400 font-mono whitespace-pre-wrap max-h-[300px] overflow-y-auto">{ssResult}</pre>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+
+
+      {breakpointTestActive && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-2 rounded-full bg-[#1a1a1a] border border-[#333] shadow-2xl">
+          {BREAKPOINT_SIZES.map((bp, i) => (
+            <button key={bp.name} onClick={() => setBreakpointTestIdx(i)} className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-colors ${i === breakpointTestIdx ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'text-[#666] hover:text-white'}`}>{bp.w}</button>
+          ))}
+          <span className="text-[10px] text-[#888] ml-1">{BREAKPOINT_SIZES[breakpointTestIdx].name}</span>
+          <button onClick={() => setBreakpointTestActive(false)} className="ml-2 text-[#555] hover:text-white transition-colors"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+        </div>
+      )}
+
     </div>
   );
 }

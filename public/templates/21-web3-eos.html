@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EOS — Web3 Infrastructure</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=General+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
+  body{font-family:'Inter','General Sans',sans-serif;background:#000;color:#fff;overflow-x:hidden}
+
+  .navbar{position:fixed;top:0;left:0;width:100%;z-index:100;padding:16px 24px;transition:all 0.5s}
+  @media(min-width:1024px){.navbar{padding:16px 80px}}
+  .navbar.scrolled{background:rgba(0,0,0,0.9);backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,0.04)}
+  .nav-inner{max-width:1400px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+  .nav-logo{font-weight:700;font-size:22px;color:#fff;text-decoration:none;letter-spacing:-0.02em}
+  .nav-links{display:none;align-items:center;gap:28px}
+  @media(min-width:1024px){.nav-links{display:flex}}
+  .nav-links a{font-size:14px;color:rgba(255,255,255,0.35);text-decoration:none;transition:color 0.3s}
+  .nav-links a:hover{color:#fff}
+
+  /* Gradient text — 144.5deg white to transparent */
+  .gradient-text-hero{background:linear-gradient(144.5deg,#fff 40%,rgba(255,255,255,0));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+
+  /* Layered waitlist button with glow */
+  .waitlist-btn{position:relative;display:inline-flex;align-items:center;gap:8px;padding:14px 32px;border-radius:99px;background:#fff;color:#000;font-size:15px;font-weight:600;border:none;cursor:pointer;transition:all 0.3s;z-index:1}
+  .waitlist-btn::before{content:'';position:absolute;inset:-3px;border-radius:99px;background:linear-gradient(135deg,#3b82f6,#8b5cf6,#ec4899);z-index:-2;opacity:0.6;transition:opacity 0.3s}
+  .waitlist-btn::after{content:'';position:absolute;inset:-3px;border-radius:99px;background:linear-gradient(135deg,#3b82f6,#8b5cf6,#ec4899);z-index:-3;filter:blur(20px);opacity:0.3;transition:opacity 0.3s}
+  .waitlist-btn:hover::before{opacity:0.8}
+  .waitlist-btn:hover::after{opacity:0.5}
+  .waitlist-btn:hover{transform:scale(1.03)}
+
+  .hero{position:relative;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden}
+  .hero-video{position:absolute;inset:0;z-index:0}
+  .hero-video video{width:100%;height:100%;object-fit:cover;opacity:0.2}
+  .hero-overlay{position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(0,0,0,0.3),rgba(0,0,0,0.95));z-index:1}
+  .hero-content{position:relative;z-index:2;padding:0 24px;max-width:900px}
+  .hero-tag{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:99px;border:1px solid rgba(255,255,255,0.06);font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:32px;opacity:0;animation:fadeUp 0.6s 0.1s ease forwards}
+  .hero-tag-dot{width:6px;height:6px;border-radius:50%;background:#10b981;animation:pulse 2s ease infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+  .hero-headline{font-size:48px;font-weight:700;line-height:1.05;letter-spacing:-0.03em;margin-bottom:24px;opacity:0;animation:fadeUp 0.6s 0.2s ease forwards}
+  @media(min-width:768px){.hero-headline{font-size:72px}}
+  @media(min-width:1200px){.hero-headline{font-size:88px}}
+  .hero-subtitle{font-size:18px;font-weight:300;color:rgba(255,255,255,0.3);max-width:520px;margin:0 auto 40px;line-height:1.7;opacity:0;animation:fadeUp 0.6s 0.3s ease forwards}
+  .hero-buttons{display:flex;justify-content:center;gap:16px;flex-wrap:wrap;opacity:0;animation:fadeUp 0.6s 0.4s ease forwards}
+
+  .features{padding:120px 24px;border-top:1px solid rgba(255,255,255,0.04)}
+  .features-inner{max-width:1200px;margin:0 auto}
+  .section-title{font-size:48px;font-weight:700;color:#fff;letter-spacing:-0.02em;text-align:center;margin-bottom:16px}
+  .section-desc{font-size:18px;font-weight:300;color:rgba(255,255,255,0.3);text-align:center;max-width:480px;margin:0 auto 64px}
+  .features-grid{display:grid;grid-template-columns:1fr;gap:2px}
+  @media(min-width:768px){.features-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(min-width:1024px){.features-grid{grid-template-columns:repeat(3,1fr)}}
+  .f-card{padding:36px 28px;border:1px solid rgba(255,255,255,0.03);background:rgba(255,255,255,0.01);transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .f-card.visible{opacity:1;transform:translateY(0)}
+  .f-card:hover{background:rgba(255,255,255,0.02);border-color:rgba(255,255,255,0.06)}
+  .f-card h3{font-size:18px;font-weight:600;color:#fff;margin-bottom:8px}
+  .f-card p{font-size:14px;font-weight:300;color:rgba(255,255,255,0.3);line-height:1.6}
+
+  .roadmap{padding:120px 24px;border-top:1px solid rgba(255,255,255,0.04)}
+  .roadmap-inner{max-width:800px;margin:0 auto}
+  .roadmap-item{display:flex;gap:24px;padding:32px 0;border-bottom:1px solid rgba(255,255,255,0.03);opacity:0;transform:translateY(20px)}
+  .roadmap-item.visible{opacity:1;transform:translateY(0);transition:all 0.6s}
+  .roadmap-q{font-size:14px;font-weight:600;color:rgba(255,255,255,0.15);min-width:60px}
+  .roadmap-content h3{font-size:18px;font-weight:600;color:#fff;margin-bottom:4px}
+  .roadmap-content p{font-size:14px;font-weight:300;color:rgba(255,255,255,0.3);line-height:1.6}
+
+  .cta{padding:120px 24px;text-align:center;position:relative;overflow:hidden}
+  .cta-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:600px;height:400px;background:linear-gradient(135deg,rgba(59,130,246,0.06),rgba(139,92,246,0.04),rgba(236,72,153,0.03));filter:blur(100px);border-radius:50%}
+  .cta-inner{position:relative;z-index:1;max-width:640px;margin:0 auto}
+  .cta-title{font-size:56px;font-weight:700;color:#fff;letter-spacing:-0.02em;margin-bottom:16px}
+  .cta-sub{font-size:18px;font-weight:300;color:rgba(255,255,255,0.3);margin-bottom:40px}
+
+  .footer{padding:40px 24px;border-top:1px solid rgba(255,255,255,0.04)}
+  .footer-inner{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px}
+  @media(min-width:768px){.footer-inner{flex-direction:row;justify-content:space-between}}
+  .footer-copy{font-size:13px;color:rgba(255,255,255,0.12)}
+  .footer-links{display:flex;gap:24px}
+  .footer-links a{font-size:13px;color:rgba(255,255,255,0.12);text-decoration:none}
+  .footer-links a:hover{color:rgba(255,255,255,0.3)}
+
+  @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+
+<nav class="navbar" id="navbar"><div class="nav-inner"><a href="#" class="nav-logo">EOS</a><div class="nav-links"><a href="#">Protocol</a><a href="#">Developers</a><a href="#">Ecosystem</a><a href="#">Docs</a></div><button class="waitlist-btn">Join Waitlist</button></div></nav>
+
+<section class="hero">
+  <div class="hero-video"><video autoplay muted loop playsinline><source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260217_030345_246c0224-9c42-4397-9339-11fad83c5ad9.mp4" type="video/mp4"></video></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="hero-tag"><span class="hero-tag-dot"></span> Mainnet Live</div>
+    <h1 class="hero-headline"><span class="gradient-text-hero">The new era<br>of Web3</span></h1>
+    <p class="hero-subtitle">EOS delivers next-generation blockchain infrastructure. Fast, scalable, and developer-first. Build the decentralized future.</p>
+    <div class="hero-buttons"><button class="waitlist-btn">Join Waitlist <span>→</span></button></div>
+  </div>
+</section>
+
+<section class="features">
+  <div class="features-inner">
+    <h2 class="section-title">Protocol features</h2>
+    <p class="section-desc">Built for scale, designed for developers.</p>
+    <div class="features-grid">
+      <div class="f-card" data-delay="0"><h3>100K+ TPS</h3><p>Sub-second finality with parallel transaction processing on our custom consensus.</p></div>
+      <div class="f-card" data-delay="80"><h3>Zero Gas Fees</h3><p>Users never pay gas. Resource model enables free transactions for end users.</p></div>
+      <div class="f-card" data-delay="160"><h3>WebAssembly VM</h3><p>Write smart contracts in Rust, C++, or AssemblyScript. Native WASM execution.</p></div>
+      <div class="f-card" data-delay="240"><h3>EVM Compatible</h3><p>Deploy Solidity contracts unchanged. Full EVM bytecode compatibility layer.</p></div>
+      <div class="f-card" data-delay="320"><h3>Cross-Chain</h3><p>Native IBC protocol for trustless bridging to Ethereum, Cosmos, and Solana.</p></div>
+      <div class="f-card" data-delay="400"><h3>Governance</h3><p>On-chain governance with delegated proof of stake. Community-driven protocol upgrades.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="roadmap">
+  <div class="roadmap-inner">
+    <h2 class="section-title" style="text-align:left;margin-bottom:48px">Roadmap</h2>
+    <div class="roadmap-item" data-delay="0"><div class="roadmap-q">Q1 26</div><div class="roadmap-content"><h3>Mainnet Launch</h3><p>Public mainnet with validator onboarding and genesis block.</p></div></div>
+    <div class="roadmap-item" data-delay="100"><div class="roadmap-q">Q2 26</div><div class="roadmap-content"><h3>EVM Bridge</h3><p>Full EVM compatibility layer and Ethereum bridge deployment.</p></div></div>
+    <div class="roadmap-item" data-delay="200"><div class="roadmap-q">Q3 26</div><div class="roadmap-content"><h3>DeFi Primitives</h3><p>Native DEX, lending protocol, and stablecoin integration.</p></div></div>
+    <div class="roadmap-item" data-delay="300"><div class="roadmap-q">Q4 26</div><div class="roadmap-content"><h3>SDK v2</h3><p>Developer SDK v2 with TypeScript, mobile, and game engine bindings.</p></div></div>
+  </div>
+</section>
+
+<section class="cta"><div class="cta-glow"></div><div class="cta-inner"><h2 class="cta-title">Build on EOS</h2><p class="cta-sub">Get access to devnet, documentation, and $10M ecosystem fund.</p><button class="waitlist-btn">Join Waitlist <span>→</span></button></div></section>
+
+<footer class="footer"><div class="footer-inner"><div class="footer-copy">© 2026 EOS Foundation</div><div class="footer-links"><a href="#">Docs</a><a href="#">GitHub</a><a href="#">Discord</a><a href="#">Twitter</a></div></div></footer>
+
+<script>
+window.addEventListener('scroll',()=>{document.getElementById('navbar').classList.toggle('scrolled',window.scrollY>80)});
+(function(){const io=new IntersectionObserver(e=>{e.forEach(en=>{if(en.isIntersecting){const d=en.target.dataset.delay||0;setTimeout(()=>en.target.classList.add('visible'),parseInt(d));io.unobserve(en.target)}})},{threshold:0.1,rootMargin:'-50px'});document.querySelectorAll('.f-card,.roadmap-item').forEach(el=>io.observe(el))})();
+</script>
+</body>
+</html>

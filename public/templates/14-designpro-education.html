@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DesignPro — Become a Product Leader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
+  body{font-family:'Inter',sans-serif;background:#0a0a0a;color:#fff;overflow-x:hidden}
+
+  .navbar{position:fixed;top:0;left:0;width:100%;z-index:100;padding:16px 24px;transition:all 0.5s}
+  @media(min-width:1024px){.navbar{padding:16px 80px}}
+  .navbar.scrolled{background:rgba(10,10,10,0.9);backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,0.04)}
+  .nav-inner{max-width:1400px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+  .nav-logo{font-weight:700;font-size:20px;color:#fff;text-decoration:none}
+  .nav-links{display:none;align-items:center;gap:28px}
+  @media(min-width:1024px){.nav-links{display:flex}}
+  .nav-links a{font-size:14px;color:rgba(255,255,255,0.5);text-decoration:none;transition:color 0.3s}
+  .nav-links a:hover{color:#fff}
+  .nav-cta{padding:10px 24px;border-radius:99px;background:linear-gradient(135deg,#64CEFB,#3B82F6);color:#fff;font-size:14px;font-weight:600;border:none;cursor:pointer;transition:all 0.3s;box-shadow:0 4px 20px rgba(100,206,251,0.2)}
+  .nav-cta:hover{transform:scale(1.03);box-shadow:0 8px 30px rgba(100,206,251,0.3)}
+
+  /* ShinyText effect */
+  .shiny-text{display:inline-block;position:relative;background:linear-gradient(135deg,#64CEFB 0%,#fff 50%,#64CEFB 100%);background-size:200% auto;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:shinyGradient 3s linear infinite}
+  @keyframes shinyGradient{0%{background-position:200% center}100%{background-position:-200% center}}
+
+  .hero{position:relative;min-height:100vh;display:flex;align-items:center;overflow:hidden}
+  .hero-video{position:absolute;inset:0;z-index:0}
+  .hero-video video{width:100%;height:100%;object-fit:cover;opacity:0.25}
+  .hero-overlay{position:absolute;inset:0;background:linear-gradient(to right,rgba(10,10,10,0.95) 0%,rgba(10,10,10,0.6) 50%,rgba(10,10,10,0.95) 100%);z-index:1}
+  .hero-content{position:relative;z-index:2;max-width:1400px;margin:0 auto;padding:140px 24px;width:100%}
+  @media(min-width:1024px){.hero-content{padding:140px 80px}}
+  .hero-tag{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:99px;background:rgba(100,206,251,0.08);border:1px solid rgba(100,206,251,0.15);font-size:13px;color:#64CEFB;margin-bottom:32px;opacity:0;animation:fadeUp 0.6s 0.1s ease forwards}
+  .hero-headline{font-size:48px;font-weight:900;line-height:1.05;letter-spacing:-0.03em;color:#fff;max-width:700px;margin-bottom:24px;opacity:0;animation:fadeUp 0.6s 0.2s ease forwards}
+  @media(min-width:768px){.hero-headline{font-size:72px}}
+  @media(min-width:1200px){.hero-headline{font-size:88px}}
+  .hero-subtitle{font-size:18px;font-weight:300;color:rgba(255,255,255,0.4);max-width:480px;line-height:1.7;margin-bottom:40px;opacity:0;animation:fadeUp 0.6s 0.3s ease forwards}
+  .hero-buttons{display:flex;flex-wrap:wrap;gap:16px;opacity:0;animation:fadeUp 0.6s 0.4s ease forwards}
+  .btn-shine{padding:14px 32px;border-radius:99px;background:linear-gradient(135deg,#64CEFB,#3B82F6);color:#fff;font-size:15px;font-weight:600;border:none;cursor:pointer;transition:all 0.3s;box-shadow:0 4px 20px rgba(100,206,251,0.2)}
+  .btn-shine:hover{transform:scale(1.03);box-shadow:0 8px 30px rgba(100,206,251,0.3)}
+  .btn-ghost{padding:14px 32px;border-radius:99px;background:transparent;border:1px solid rgba(255,255,255,0.1);color:#fff;font-size:15px;font-weight:500;cursor:pointer;transition:all 0.3s}
+  .btn-ghost:hover{background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.2)}
+
+  /* Curriculum */
+  .curriculum{padding:120px 24px}
+  .curriculum-inner{max-width:1200px;margin:0 auto}
+  .section-label{font-size:12px;text-transform:uppercase;letter-spacing:0.15em;color:rgba(100,206,251,0.5);margin-bottom:12px}
+  .section-title{font-size:40px;font-weight:800;color:#fff;letter-spacing:-0.02em;margin-bottom:16px}
+  @media(min-width:768px){.section-title{font-size:48px}}
+  .section-desc{font-size:18px;font-weight:300;color:rgba(255,255,255,0.4);max-width:480px;margin-bottom:48px}
+  .modules{display:flex;flex-direction:column;gap:0}
+  .module{display:grid;grid-template-columns:1fr;gap:16px;padding:28px 0;border-bottom:1px solid rgba(255,255,255,0.04);transition:all 0.3s;opacity:0;transform:translateY(20px)}
+  .module.visible{opacity:1;transform:translateY(0)}
+  @media(min-width:768px){.module{grid-template-columns:60px 1fr auto;align-items:center}}
+  .module:hover{padding-left:12px}
+  .module-num{font-size:14px;font-weight:700;color:rgba(100,206,251,0.4)}
+  .module-title{font-size:18px;font-weight:600;color:#fff}
+  .module-meta{font-size:13px;color:rgba(255,255,255,0.2)}
+
+  /* Features grid */
+  .features{padding:120px 24px;border-top:1px solid rgba(255,255,255,0.04)}
+  .features-inner{max-width:1200px;margin:0 auto}
+  .features-grid{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:768px){.features-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(min-width:1024px){.features-grid{grid-template-columns:repeat(3,1fr)}}
+  .f-card{padding:36px 28px;border-radius:20px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .f-card.visible{opacity:1;transform:translateY(0)}
+  .f-card:hover{border-color:rgba(100,206,251,0.15);transform:translateY(-4px)}
+  .f-card h3{font-size:18px;font-weight:600;color:#fff;margin-bottom:8px}
+  .f-card h3 .shiny-text{font-size:inherit}
+  .f-card p{font-size:14px;font-weight:300;color:rgba(255,255,255,0.4);line-height:1.6}
+
+  /* Social Proof */
+  .proof{padding:80px 24px;border-top:1px solid rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.04)}
+  .proof-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);gap:40px}
+  @media(min-width:768px){.proof-inner{grid-template-columns:repeat(4,1fr)}}
+  .proof-stat{text-align:center;opacity:0;transform:translateY(20px)}
+  .proof-stat.visible{opacity:1;transform:translateY(0);transition:all 0.6s}
+  .proof-num{font-size:48px;font-weight:800;color:#fff}
+  .proof-label{font-size:14px;font-weight:300;color:rgba(255,255,255,0.3);margin-top:4px}
+
+  /* CTA */
+  .cta{padding:120px 24px;text-align:center;position:relative;overflow:hidden}
+  .cta-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:500px;height:300px;background:linear-gradient(135deg,rgba(100,206,251,0.08),rgba(59,130,246,0.04));filter:blur(100px);border-radius:50%}
+  .cta-inner{position:relative;z-index:1;max-width:640px;margin:0 auto}
+  .cta-title{font-size:48px;font-weight:800;color:#fff;letter-spacing:-0.02em;margin-bottom:16px}
+  @media(min-width:768px){.cta-title{font-size:56px}}
+  .cta-sub{font-size:18px;font-weight:300;color:rgba(255,255,255,0.4);margin-bottom:40px}
+
+  .footer{padding:40px 24px;border-top:1px solid rgba(255,255,255,0.04)}
+  .footer-inner{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px}
+  @media(min-width:768px){.footer-inner{flex-direction:row;justify-content:space-between}}
+  .footer-copy{font-size:13px;color:rgba(255,255,255,0.2)}
+  .footer-links{display:flex;gap:24px}
+  .footer-links a{font-size:13px;color:rgba(255,255,255,0.2);text-decoration:none}
+  .footer-links a:hover{color:rgba(100,206,251,0.5)}
+
+  @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+
+<nav class="navbar" id="navbar"><div class="nav-inner"><a href="#" class="nav-logo">DesignPro</a><div class="nav-links"><a href="#">Curriculum</a><a href="#">Community</a><a href="#">Pricing</a><a href="#">Reviews</a></div><button class="nav-cta">Enroll Now</button></div></nav>
+
+<section class="hero">
+  <div class="hero-video"><video autoplay muted loop playsinline><source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_105406_16f4600d-06e0-44d5-bbf4-ed5a4e9eecab.mp4" type="video/mp4"></video></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="hero-tag">🎓 New Cohort Starting Soon</div>
+    <h1 class="hero-headline">Become a<br><span class="shiny-text">Product Leader</span></h1>
+    <p class="hero-subtitle">Master product design, strategy, and leadership. Go from individual contributor to Director in 12 weeks.</p>
+    <div class="hero-buttons"><button class="btn-shine">Start Learning</button><button class="btn-ghost">View Curriculum</button></div>
+  </div>
+</section>
+
+<section class="curriculum">
+  <div class="curriculum-inner">
+    <div class="section-label">Curriculum</div>
+    <h2 class="section-title">12-week program</h2>
+    <p class="section-desc">A structured path from product designer to product leader.</p>
+    <div class="modules">
+      <div class="module" data-delay="0"><div class="module-num">01</div><div class="module-title">Product Strategy Fundamentals</div><div class="module-meta">2 weeks • 8 lessons</div></div>
+      <div class="module" data-delay="60"><div class="module-num">02</div><div class="module-title">User Research at Scale</div><div class="module-meta">2 weeks • 6 lessons</div></div>
+      <div class="module" data-delay="120"><div class="module-num">03</div><div class="module-title">Design Systems & Governance</div><div class="module-meta">2 weeks • 7 lessons</div></div>
+      <div class="module" data-delay="180"><div class="module-num">04</div><div class="module-title">Data-Driven Decision Making</div><div class="module-meta">2 weeks • 6 lessons</div></div>
+      <div class="module" data-delay="240"><div class="module-num">05</div><div class="module-title">Leading Design Teams</div><div class="module-meta">2 weeks • 8 lessons</div></div>
+      <div class="module" data-delay="300"><div class="module-num">06</div><div class="module-title">Stakeholder Management & Influence</div><div class="module-meta">2 weeks • 5 lessons</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="features">
+  <div class="features-inner">
+    <div class="section-label">Why DesignPro</div>
+    <h2 class="section-title" style="margin-bottom:48px">What you get</h2>
+    <div class="features-grid">
+      <div class="f-card" data-delay="0"><h3>Live Workshops</h3><p>Weekly 2-hour live sessions with senior product leaders from top companies.</p></div>
+      <div class="f-card" data-delay="80"><h3>1:1 Mentorship</h3><p>Matched with a Director-level mentor for personalized career guidance.</p></div>
+      <div class="f-card" data-delay="160"><h3>Portfolio Review</h3><p>Get your portfolio and case studies reviewed by hiring managers at FAANG.</p></div>
+      <div class="f-card" data-delay="240"><h3>Community</h3><p>Join 2,000+ alumni network with exclusive job leads and referrals.</p></div>
+      <div class="f-card" data-delay="320"><h3>Certifications</h3><p>Industry-recognized credential to validate your product leadership skills.</p></div>
+      <div class="f-card" data-delay="400"><h3>Lifetime Access</h3><p>All materials, recordings, and future updates included forever.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="proof">
+  <div class="proof-inner">
+    <div class="proof-stat" data-delay="0"><div class="proof-num">2,400+</div><div class="proof-label">Graduates</div></div>
+    <div class="proof-stat" data-delay="100"><div class="proof-num">92%</div><div class="proof-label">Promoted Within 6mo</div></div>
+    <div class="proof-stat" data-delay="200"><div class="proof-num">$45K</div><div class="proof-label">Avg. Salary Increase</div></div>
+    <div class="proof-stat" data-delay="300"><div class="proof-num">4.9/5</div><div class="proof-label">Student Rating</div></div>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="cta-glow"></div>
+  <div class="cta-inner">
+    <h2 class="cta-title">Ready to lead?</h2>
+    <p class="cta-sub">Next cohort starts in 2 weeks. Limited to 40 seats.</p>
+    <button class="btn-shine">Enroll Now — $1,997</button>
+  </div>
+</section>
+
+<footer class="footer"><div class="footer-inner"><div class="footer-copy">© 2026 DesignPro Academy</div><div class="footer-links"><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Refund Policy</a></div></div></footer>
+
+<script>
+window.addEventListener('scroll',()=>{document.getElementById('navbar').classList.toggle('scrolled',window.scrollY>80)});
+(function(){const io=new IntersectionObserver(e=>{e.forEach(en=>{if(en.isIntersecting){const d=en.target.dataset.delay||0;setTimeout(()=>en.target.classList.add('visible'),parseInt(d));io.unobserve(en.target)}})},{threshold:0.1,rootMargin:'-50px'});document.querySelectorAll('.module,.f-card,.proof-stat').forEach(el=>io.observe(el))})();
+</script>
+</body>
+</html>

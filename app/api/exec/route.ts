@@ -83,14 +83,13 @@ export async function POST(req: Request) {
 
     const fn = new Function(wrappedCode);
 
-    const timer = setTimeout(() => { /* noop — edge runtime handles timeout */ }, timeout);
-
     try {
       const output = fn();
-      clearTimeout(timer);
-      return Response.json(output);
+      // Limit output size to prevent oversized responses
+      const logs = Array.isArray(output?.logs) ? output.logs.slice(0, 200) : [];
+      const truncatedLogs = logs.map((l: string) => typeof l === 'string' && l.length > 5000 ? l.slice(0, 5000) + '...(truncated)' : l);
+      return Response.json({ logs: truncatedLogs, result: output?.result, error: output?.error });
     } catch (err: unknown) {
-      clearTimeout(timer);
       const msg = err instanceof Error ? err.message : String(err);
       return Response.json({ logs: [], error: msg });
     }

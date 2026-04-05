@@ -3,6 +3,7 @@
  * 
  * Uses the server-side VERCEL_TOKEN to deploy generated HTML
  * to the owner's Vercel account. Users don't need their own token.
+ * Supports single HTML or multi-file projects.
  */
 
 import { NextRequest } from 'next/server';
@@ -10,6 +11,12 @@ import { NextRequest } from 'next/server';
 export const runtime = 'edge';
 
 const VERCEL_API = 'https://api.vercel.com';
+
+interface DeployFile {
+  file: string;
+  data: string;
+  encoding?: string;
+}
 
 export async function POST(req: NextRequest) {
   const token = (process.env.VERCEL_DEPLOY_TOKEN || '').trim();
@@ -20,7 +27,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  let body: { html: string; projectName?: string };
+  let body: { html?: string; files?: Record<string, string>; projectName?: string };
   try {
     body = await req.json();
   } catch {
@@ -30,10 +37,10 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const { html, projectName } = body;
+  const { html, files, projectName } = body;
 
-  if (!html) {
-    return new Response(JSON.stringify({ error: 'HTML content is required' }), {
+  if (!html && (!files || Object.keys(files).length === 0)) {
+    return new Response(JSON.stringify({ error: 'HTML content or files object is required' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -46,6 +53,39 @@ export async function POST(req: NextRequest) {
     .slice(0, 50);
 
   try {
+    // Build file list — support both single HTML and multi-file projects
+    const deployFiles: DeployFile[] = [];
+
+    if (files && Object.keys(files).length > 0) {
+      // Multi-file deployment
+      for (const [filePath, content] of Object.entries(files)) {
+        // Sanitize file path (prevent directory traversal)
+        const safePath = filePath.replace(/\.\./g, '').replace(/^\/+/, '');
+        if (safePath && content) {
+          deployFiles.push({ file: safePath, data: content, encoding: 'utf-8' });
+        }
+      }
+      // Ensure index.html exists
+      if (!deployFiles.some(f => f.file === 'index.html')) {
+        const firstHtml = deployFiles.find(f => f.file.endsWith('.html'));
+        if (firstHtml) {
+          deployFiles.push({ file: 'index.html', data: firstHtml.data, encoding: 'utf-8' });
+        }
+      }
+    } else if (html) {
+      // Single HTML deployment
+      deployFiles.push({ file: 'index.html', data: html, encoding: 'utf-8' });
+    }
+
+    // Always add vercel.json for SPA routing
+    deployFiles.push({
+      file: 'vercel.json',
+      data: JSON.stringify({
+        rewrites: [{ source: "/(.*)", destination: "/index.html" }],
+      }),
+      encoding: 'utf-8',
+    });
+
     // Deploy using Vercel's file-based deployment API
     const deployRes = await fetch(`${VERCEL_API}/v13/deployments`, {
       method: 'POST',
@@ -55,20 +95,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         name: safeName,
-        files: [
-          {
-            file: 'index.html',
-            data: html,
-            encoding: 'utf-8',
-          },
-          {
-            file: 'vercel.json',
-            data: JSON.stringify({
-              rewrites: [{ source: "/(.*)", destination: "/index.html" }],
-            }),
-            encoding: 'utf-8',
-          },
-        ],
+        files: deployFiles,
         projectSettings: {
           framework: null,
         },

@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logoisum — AI Video Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
+  body{font-family:'Barlow',sans-serif;background:#0a0a0a;color:#fff;overflow-x:hidden}
+
+  /* ═══════════════════ NAVBAR ═══════════════════ */
+  .navbar{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:100;display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:16px;background:rgba(255,255,255,0.95);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 8px 40px rgba(0,0,0,0.1)}
+  .navbar-logo{font-family:'Barlow',sans-serif;font-weight:700;font-size:18px;color:#0a0a0a;padding:0 12px;text-decoration:none;display:flex;align-items:center;gap:6px}
+  .navbar-logo svg{width:20px;height:20px;fill:#0a0a0a}
+  .nav-links{display:none;align-items:center;gap:4px}
+  @media(min-width:768px){.nav-links{display:flex}}
+  .nav-links a{font-size:14px;font-weight:500;color:#333;text-decoration:none;padding:8px 16px;border-radius:10px;transition:background 0.2s}
+  .nav-links a:hover{background:rgba(0,0,0,0.05)}
+  .nav-cta{padding:10px 20px;border-radius:12px;background:#0a0a0a;color:#fff;font-size:14px;font-weight:600;border:none;cursor:pointer;transition:transform 0.2s}
+  .nav-cta:hover{transform:scale(1.02)}
+
+  /* ═══════════════════ HERO ═══════════════════ */
+  .hero{position:relative;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;padding-top:100px}
+  .hero-video-bg{position:absolute;inset:0;z-index:0}
+  .hero-video-bg video{width:100%;height:100%;object-fit:cover;opacity:0.5}
+  .hero-gradient{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(10,10,10,0.6) 0%,rgba(10,10,10,0.95) 100%);z-index:1}
+  .hero-content{position:relative;z-index:2;text-align:center;padding:0 24px;max-width:900px}
+  .hero-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:99px;border:1px solid rgba(255,255,255,0.1);font-size:13px;font-weight:500;color:rgba(255,255,255,0.6);margin-bottom:32px;opacity:0;animation:fadeUp 0.6s 0.1s ease forwards}
+  .hero-badge .dot{width:6px;height:6px;border-radius:50%;background:#4ade80;animation:pulse 2s infinite}
+  .hero-headline{font-family:'Instrument Serif',serif;font-size:48px;line-height:1.05;color:#fff;margin-bottom:24px;opacity:0;animation:fadeUp 0.6s 0.2s ease forwards}
+  @media(min-width:768px){.hero-headline{font-size:72px}}
+  @media(min-width:1024px){.hero-headline{font-size:88px}}
+  .hero-subtitle{font-size:18px;font-weight:300;color:rgba(255,255,255,0.5);max-width:560px;margin:0 auto 40px;line-height:1.6;opacity:0;animation:fadeUp 0.6s 0.3s ease forwards}
+  .hero-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:16px;opacity:0;animation:fadeUp 0.6s 0.4s ease forwards}
+  .btn-play{display:inline-flex;align-items:center;gap:12px;padding:14px 32px;border-radius:99px;background:#fff;color:#0a0a0a;font-size:16px;font-weight:600;border:none;cursor:pointer;transition:all 0.3s}
+  .btn-play:hover{transform:scale(1.03);box-shadow:0 0 30px rgba(255,255,255,0.15)}
+  .btn-play .play-icon{width:32px;height:32px;border-radius:50%;background:#0a0a0a;display:flex;align-items:center;justify-content:center}
+  .btn-play .play-icon svg{width:14px;height:14px;fill:#fff;stroke:none;margin-left:2px}
+  .btn-secondary{padding:14px 32px;border-radius:99px;background:transparent;border:1px solid rgba(255,255,255,0.15);color:#fff;font-size:16px;font-weight:500;cursor:pointer;transition:all 0.3s}
+  .btn-secondary:hover{background:rgba(255,255,255,0.05)}
+
+  /* ═══════════════════ EDITOR PREVIEW ═══════════════════ */
+  .editor-preview{position:relative;z-index:2;margin-top:-60px;padding:0 24px 120px}
+  .editor-inner{max-width:1100px;margin:0 auto;border-radius:24px;overflow:hidden;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  .editor-toolbar{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02)}
+  .editor-dots{display:flex;gap:8px}
+  .editor-dots span{width:12px;height:12px;border-radius:50%}
+  .editor-dots span:nth-child(1){background:#ff5f57}
+  .editor-dots span:nth-child(2){background:#ffbd2e}
+  .editor-dots span:nth-child(3){background:#28ca41}
+  .editor-title{font-size:13px;color:rgba(255,255,255,0.4)}
+  .editor-actions{display:flex;gap:8px}
+  .editor-actions button{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all 0.3s}
+  .editor-actions .btn-export{background:#fff;color:#0a0a0a}
+  .editor-actions .btn-share{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6)}
+  .editor-body{display:grid;grid-template-columns:1fr;min-height:400px}
+  @media(min-width:768px){.editor-body{grid-template-columns:200px 1fr 200px}}
+  .editor-sidebar{padding:20px;border-right:1px solid rgba(255,255,255,0.04);display:none}
+  @media(min-width:768px){.editor-sidebar{display:block}}
+  .sidebar-section{margin-bottom:24px}
+  .sidebar-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.3);margin-bottom:12px}
+  .sidebar-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;font-size:13px;color:rgba(255,255,255,0.5);cursor:pointer;transition:all 0.2s}
+  .sidebar-item:hover{background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.8)}
+  .sidebar-item.active{background:rgba(255,255,255,0.06);color:#fff}
+  .sidebar-item svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.5}
+  .editor-canvas{background:rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;padding:40px;position:relative}
+  .canvas-placeholder{width:100%;max-width:500px;aspect-ratio:16/9;border-radius:12px;background:linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01));border:1px dashed rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+  .canvas-placeholder svg{width:40px;height:40px;stroke:rgba(255,255,255,0.15);fill:none;stroke-width:1}
+  .canvas-placeholder span{font-size:13px;color:rgba(255,255,255,0.2)}
+  .editor-timeline{grid-column:1/-1;padding:16px 20px;border-top:1px solid rgba(255,255,255,0.04);display:flex;align-items:center;gap:16px}
+  .timeline-controls{display:flex;align-items:center;gap:8px}
+  .timeline-controls button{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.04);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .timeline-controls button svg{width:14px;height:14px;stroke:rgba(255,255,255,0.5);fill:none;stroke-width:2}
+  .timeline-track{flex:1;height:4px;background:rgba(255,255,255,0.06);border-radius:99px;position:relative}
+  .timeline-progress{position:absolute;left:0;top:0;height:100%;width:35%;background:linear-gradient(to right,#fff,rgba(255,255,255,0.6));border-radius:99px}
+  .timeline-time{font-size:12px;color:rgba(255,255,255,0.3);font-variant-numeric:tabular-nums}
+  .editor-props{padding:20px;border-left:1px solid rgba(255,255,255,0.04);display:none}
+  @media(min-width:768px){.editor-props{display:block}}
+  .props-section{margin-bottom:24px}
+  .props-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.3);margin-bottom:12px}
+  .props-slider{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .props-slider span{font-size:12px;color:rgba(255,255,255,0.4);min-width:60px}
+  .props-slider input[type=range]{flex:1;-webkit-appearance:none;height:4px;background:rgba(255,255,255,0.1);border-radius:99px;outline:none}
+  .props-slider input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;cursor:pointer}
+
+  /* ═══════════════════ FEATURES ═══════════════════ */
+  .features{padding:120px 24px;background:#0a0a0a}
+  .features-inner{max-width:1200px;margin:0 auto}
+  .features-header{text-align:center;margin-bottom:80px}
+  .features-tag{display:inline-flex;padding:8px 16px;border-radius:99px;border:1px solid rgba(255,255,255,0.08);font-size:12px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:20px}
+  .features-title{font-family:'Instrument Serif',serif;font-size:48px;color:#fff;margin-bottom:16px}
+  @media(min-width:768px){.features-title{font-size:56px}}
+  .features-subtitle{font-size:18px;font-weight:300;color:rgba(255,255,255,0.4);max-width:480px;margin:0 auto}
+  .features-grid{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:768px){.features-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(min-width:1024px){.features-grid{grid-template-columns:repeat(3,1fr)}}
+  .feat-card{padding:36px 28px;border-radius:20px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .feat-card.visible{opacity:1;transform:translateY(0)}
+  .feat-card:hover{border-color:rgba(255,255,255,0.1);transform:translateY(-4px)}
+  .feat-icon{width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+  .feat-icon svg{width:22px;height:22px;stroke:rgba(255,255,255,0.6);fill:none;stroke-width:1.5}
+  .feat-card h3{font-size:18px;font-weight:600;color:#fff;margin-bottom:8px}
+  .feat-card p{font-size:14px;font-weight:300;line-height:1.6;color:rgba(255,255,255,0.4)}
+
+  /* ═══════════════════ PRICING ═══════════════════ */
+  .pricing{padding:120px 24px;background:#0a0a0a}
+  .pricing-inner{max-width:900px;margin:0 auto}
+  .pricing-header{text-align:center;margin-bottom:64px}
+  .pricing-title{font-family:'Instrument Serif',serif;font-size:48px;color:#fff;margin-bottom:16px}
+  .pricing-subtitle{font-size:18px;font-weight:300;color:rgba(255,255,255,0.4)}
+  .pricing-grid{display:grid;grid-template-columns:1fr;gap:24px}
+  @media(min-width:768px){.pricing-grid{grid-template-columns:repeat(3,1fr)}}
+  .price-card{padding:36px 28px;border-radius:20px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);text-align:center;transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .price-card.visible{opacity:1;transform:translateY(0)}
+  .price-card.featured{border-color:rgba(255,255,255,0.15);background:rgba(255,255,255,0.04)}
+  .price-card:hover{transform:translateY(-4px)}
+  .price-name{font-size:14px;font-weight:600;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px}
+  .price-amount{font-family:'Instrument Serif',serif;font-size:48px;color:#fff;margin-bottom:4px}
+  .price-amount span{font-size:16px;color:rgba(255,255,255,0.3);font-family:'Barlow',sans-serif}
+  .price-desc{font-size:13px;color:rgba(255,255,255,0.3);margin-bottom:28px}
+  .price-features{list-style:none;text-align:left;margin-bottom:28px}
+  .price-features li{display:flex;align-items:center;gap:8px;padding:8px 0;font-size:13px;color:rgba(255,255,255,0.5);border-bottom:1px solid rgba(255,255,255,0.03)}
+  .price-features li svg{width:14px;height:14px;stroke:#4ade80;fill:none;stroke-width:2;flex-shrink:0}
+  .price-btn{display:block;width:100%;padding:12px;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all 0.3s}
+  .price-btn-white{background:#fff;color:#0a0a0a}
+  .price-btn-white:hover{transform:scale(1.02)}
+  .price-btn-ghost{background:transparent;border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.6)}
+  .price-btn-ghost:hover{border-color:rgba(255,255,255,0.2)}
+
+  /* ═══════════════════ FOOTER ═══════════════════ */
+  .footer{padding:40px 24px;border-top:1px solid rgba(255,255,255,0.04)}
+  .footer-inner{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px}
+  @media(min-width:768px){.footer-inner{flex-direction:row;justify-content:space-between}}
+  .footer-copy{font-size:13px;color:rgba(255,255,255,0.2)}
+  .footer-links{display:flex;gap:24px}
+  .footer-links a{font-size:13px;color:rgba(255,255,255,0.2);text-decoration:none;transition:color 0.3s}
+  .footer-links a:hover{color:rgba(255,255,255,0.5)}
+
+  @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+</style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar">
+  <a href="#" class="navbar-logo">
+    <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    Logoisum
+  </a>
+  <div class="nav-links">
+    <a href="#">Features</a>
+    <a href="#">Pricing</a>
+    <a href="#">Templates</a>
+    <a href="#">Docs</a>
+  </div>
+  <button class="nav-cta">Try Free</button>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-video-bg">
+    <video autoplay muted loop playsinline>
+      <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260228_065522_522e2295-2b13-4b3a-b0e7-57e19256e2e1.mp4" type="video/mp4">
+    </video>
+  </div>
+  <div class="hero-gradient"></div>
+  <div class="hero-content">
+    <div class="hero-badge"><span class="dot"></span> Now in Public Beta</div>
+    <h1 class="hero-headline">Edit videos with<br><em style="font-style:italic">AI precision</em></h1>
+    <p class="hero-subtitle">Professional video editing powered by AI. Cut, enhance, and export in minutes, not hours.</p>
+    <div class="hero-actions">
+      <button class="btn-play">
+        <span class="play-icon"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg></span>
+        Watch Demo
+      </button>
+      <button class="btn-secondary">Start Editing Free</button>
+    </div>
+  </div>
+</section>
+
+<!-- EDITOR PREVIEW -->
+<section class="editor-preview">
+  <div class="editor-inner">
+    <div class="editor-toolbar">
+      <div class="editor-dots"><span></span><span></span><span></span></div>
+      <div class="editor-title">Untitled Project — Logoisum Editor</div>
+      <div class="editor-actions">
+        <button class="btn-share">Share</button>
+        <button class="btn-export">Export</button>
+      </div>
+    </div>
+    <div class="editor-body">
+      <div class="editor-sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-label">Media</div>
+          <div class="sidebar-item active"><svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg> Video Clips</div>
+          <div class="sidebar-item"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> Audio</div>
+          <div class="sidebar-item"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg> Images</div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Effects</div>
+          <div class="sidebar-item"><svg viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r="2.5"/><path d="M17 21l-5-5-5 5"/></svg> Transitions</div>
+          <div class="sidebar-item"><svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M17 8l-5-5-5 5"/><path d="M17 16l-5 5-5-5"/></svg> AI Enhance</div>
+        </div>
+      </div>
+      <div class="editor-canvas">
+        <div class="canvas-placeholder">
+          <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span>Drop media here to start editing</span>
+        </div>
+      </div>
+      <div class="editor-props">
+        <div class="props-section">
+          <div class="props-label">Transform</div>
+          <div class="props-slider"><span>Scale</span><input type="range" min="0" max="200" value="100"></div>
+          <div class="props-slider"><span>Rotation</span><input type="range" min="0" max="360" value="0"></div>
+          <div class="props-slider"><span>Opacity</span><input type="range" min="0" max="100" value="100"></div>
+        </div>
+        <div class="props-section">
+          <div class="props-label">Color</div>
+          <div class="props-slider"><span>Brightness</span><input type="range" min="0" max="200" value="100"></div>
+          <div class="props-slider"><span>Contrast</span><input type="range" min="0" max="200" value="100"></div>
+          <div class="props-slider"><span>Saturation</span><input type="range" min="0" max="200" value="100"></div>
+        </div>
+      </div>
+      <div class="editor-timeline">
+        <div class="timeline-controls">
+          <button><svg viewBox="0 0 24 24"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg></button>
+          <button><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
+          <button><svg viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg></button>
+        </div>
+        <div class="timeline-track"><div class="timeline-progress"></div></div>
+        <div class="timeline-time">00:12 / 00:34</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features" id="features">
+  <div class="features-inner">
+    <div class="features-header">
+      <div class="features-tag">Capabilities</div>
+      <h2 class="features-title">AI-powered editing tools</h2>
+      <p class="features-subtitle">Everything you need to create professional videos, powered by cutting-edge AI.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feat-card" data-delay="0">
+        <div class="feat-icon"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg></div>
+        <h3>Auto-Cut</h3>
+        <p>AI automatically detects scene changes and removes silences for perfect pacing.</p>
+      </div>
+      <div class="feat-card" data-delay="80">
+        <div class="feat-icon"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
+        <h3>Smart Captions</h3>
+        <p>Generate accurate captions in 50+ languages with word-level timing automatically.</p>
+      </div>
+      <div class="feat-card" data-delay="160">
+        <div class="feat-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></div>
+        <h3>AI Color Grade</h3>
+        <p>One-click cinematic color grading that matches professional Hollywood looks.</p>
+      </div>
+      <div class="feat-card" data-delay="240">
+        <div class="feat-icon"><svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg></div>
+        <h3>Multi-Track</h3>
+        <p>Unlimited video, audio, and text tracks with magnetic snapping and grouping.</p>
+      </div>
+      <div class="feat-card" data-delay="320">
+        <div class="feat-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+        <h3>Cloud Export</h3>
+        <p>Export in 4K to YouTube, TikTok, Instagram, or download in any format you need.</p>
+      </div>
+      <div class="feat-card" data-delay="400">
+        <div class="feat-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div>
+        <h3>Team Collab</h3>
+        <p>Real-time collaboration with comments, version history, and role-based access.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="pricing" id="pricing">
+  <div class="pricing-inner">
+    <div class="pricing-header">
+      <h2 class="pricing-title">Simple pricing</h2>
+      <p class="pricing-subtitle">Start free, upgrade when you need more power.</p>
+    </div>
+    <div class="pricing-grid">
+      <div class="price-card" data-delay="0">
+        <div class="price-name">Free</div>
+        <div class="price-amount">$0<span>/mo</span></div>
+        <p class="price-desc">For getting started</p>
+        <ul class="price-features">
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>720p export</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>5 min max</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Basic AI tools</li>
+        </ul>
+        <button class="price-btn price-btn-ghost">Start Free</button>
+      </div>
+      <div class="price-card featured" data-delay="100">
+        <div class="price-name">Pro</div>
+        <div class="price-amount">$24<span>/mo</span></div>
+        <p class="price-desc">For creators</p>
+        <ul class="price-features">
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>4K export</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Unlimited length</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>All AI tools</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Priority rendering</li>
+        </ul>
+        <button class="price-btn price-btn-white">Start Pro Trial</button>
+      </div>
+      <div class="price-card" data-delay="200">
+        <div class="price-name">Team</div>
+        <div class="price-amount">$49<span>/user/mo</span></div>
+        <p class="price-desc">For teams</p>
+        <ul class="price-features">
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Everything in Pro</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Team collaboration</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Brand kit</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>API access</li>
+        </ul>
+        <button class="price-btn price-btn-ghost">Contact Sales</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-copy">© 2026 Logoisum. All rights reserved.</div>
+    <div class="footer-links"><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Contact</a></div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  const observer = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){
+        const delay = entry.target.dataset.delay || 0;
+        setTimeout(()=>{entry.target.classList.add('visible')}, parseInt(delay));
+        observer.unobserve(entry.target);
+      }
+    });
+  },{threshold:0.1,rootMargin:'-50px'});
+  document.querySelectorAll('.feat-card,.price-card').forEach(el=>observer.observe(el));
+})();
+</script>
+</body>
+</html>

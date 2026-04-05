@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Datacore — Book your perfect stay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Cabin:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
+  body{font-family:'Inter',sans-serif;background:#000;color:#fff;overflow-x:hidden}
+
+  /* ═══════════════════ NAVBAR ═══════════════════ */
+  .navbar{position:relative;z-index:20;width:100%;padding:16px 24px;display:flex;align-items:center;justify-content:space-between}
+  @media(min-width:1024px){.navbar{padding:16px 120px}}
+  .navbar-logo{display:flex;align-items:center;gap:10px}
+  .navbar-logo svg{width:32px;height:32px;fill:#fff}
+  .navbar-links{display:none;align-items:center;gap:24px}
+  @media(min-width:1024px){.navbar-links{display:flex}}
+  .navbar-links a{font-family:'Manrope',sans-serif;font-size:14px;font-weight:500;color:#fff;text-decoration:none;transition:opacity 0.3s;display:flex;align-items:center;gap:4px}
+  .navbar-links a:hover{opacity:0.8}
+  .navbar-links a svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+  .navbar-actions{display:none;align-items:center;gap:12px}
+  @media(min-width:1024px){.navbar-actions{display:flex}}
+  .btn-signin{padding:10px 20px;border-radius:8px;background:#fff;border:1px solid #d4d4d4;color:#171717;font-family:'Manrope',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.3s}
+  .btn-signin:hover{background:#f5f5f5}
+  .btn-getstarted{padding:10px 20px;border-radius:8px;background:#7b39fc;color:#fafafa;font-family:'Manrope',sans-serif;font-size:14px;font-weight:600;border:none;cursor:pointer;transition:all 0.3s;box-shadow:0 2px 8px rgba(123,57,252,0.3)}
+  .btn-getstarted:hover{background:#6a2fe0}
+  .mobile-menu-btn{display:flex;align-items:center;justify-content:center;width:40px;height:40px;background:none;border:none;cursor:pointer}
+  @media(min-width:1024px){.mobile-menu-btn{display:none}}
+  .mobile-menu-btn svg{width:24px;height:24px;stroke:#fff;fill:none;stroke-width:2}
+
+  /* ═══════════════════ HERO ═══════════════════ */
+  .hero{position:relative;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
+  .hero-video{position:absolute;inset:0;z-index:0}
+  .hero-video video{width:100%;height:100%;object-fit:cover;opacity:1}
+  .hero-content{position:relative;z-index:10;margin-top:128px;display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 24px;max-width:800px}
+
+  .hero-tagline{display:inline-flex;align-items:center;gap:8px;padding:6px 6px 6px 8px;border-radius:10px;background:rgba(85,80,110,0.4);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(164,132,215,0.5);margin-bottom:32px;opacity:0;animation:fadeUp 0.6s 0.1s ease forwards}
+  .hero-tagline-badge{background:#7b39fc;color:#fff;font-family:'Cabin',sans-serif;font-size:14px;font-weight:500;padding:4px 12px;border-radius:6px}
+  .hero-tagline-text{font-family:'Cabin',sans-serif;font-size:14px;font-weight:500;color:#fff;padding-right:8px}
+
+  .hero-headline{font-family:'Instrument Serif',serif;font-size:48px;line-height:1.1;color:#fff;margin-bottom:24px;opacity:0;animation:fadeUp 0.6s 0.2s ease forwards}
+  @media(min-width:640px){.hero-headline{font-size:72px}}
+  @media(min-width:1024px){.hero-headline{font-size:96px}}
+  .hero-headline em{font-style:italic;letter-spacing:0.02em}
+
+  .hero-subtitle{font-family:'Inter',sans-serif;font-size:18px;font-weight:400;color:rgba(255,255,255,0.7);max-width:662px;margin-bottom:40px;opacity:0;animation:fadeUp 0.6s 0.3s ease forwards}
+
+  .hero-buttons{display:flex;flex-direction:row;align-items:center;gap:16px;opacity:0;animation:fadeUp 0.6s 0.4s ease forwards}
+  .btn-demo{padding:14px 28px;border-radius:10px;background:#7b39fc;color:#fff;font-family:'Cabin',sans-serif;font-size:16px;font-weight:500;border:none;cursor:pointer;transition:all 0.3s}
+  .btn-demo:hover{background:#6a2fe0}
+  .btn-start{padding:14px 28px;border-radius:10px;background:#2b2344;color:#f6f7f9;font-family:'Cabin',sans-serif;font-size:16px;font-weight:500;border:none;cursor:pointer;transition:all 0.3s}
+  .btn-start:hover{background:#3a3060}
+
+  /* ═══════════════════ FEATURES ═══════════════════ */
+  .features{position:relative;padding:120px 24px;background:#000}
+  @media(min-width:1024px){.features{padding:120px 120px}}
+  .features-inner{max-width:1200px;margin:0 auto}
+  .features-header{text-align:center;margin-bottom:80px}
+  .features-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:99px;background:rgba(123,57,252,0.1);border:1px solid rgba(123,57,252,0.2);font-family:'Cabin',sans-serif;font-size:13px;font-weight:600;color:#7b39fc;margin-bottom:20px}
+  .features-title{font-family:'Instrument Serif',serif;font-size:48px;line-height:1.1;color:#fff;margin-bottom:16px}
+  @media(min-width:768px){.features-title{font-size:56px}}
+  .features-subtitle{font-family:'Inter',sans-serif;font-size:18px;color:rgba(255,255,255,0.5);max-width:480px;margin:0 auto}
+
+  .features-grid{display:grid;grid-template-columns:1fr;gap:24px}
+  @media(min-width:768px){.features-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(min-width:1024px){.features-grid{grid-template-columns:repeat(3,1fr)}}
+
+  .feature-card{padding:40px 32px;border-radius:20px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);transition:all 0.4s;opacity:0;transform:translateY(30px)}
+  .feature-card.visible{opacity:1;transform:translateY(0)}
+  .feature-card:hover{border-color:rgba(123,57,252,0.3);transform:translateY(-4px);background:rgba(123,57,252,0.03)}
+  .feature-icon{width:48px;height:48px;border-radius:12px;background:rgba(123,57,252,0.1);display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+  .feature-icon svg{width:24px;height:24px;stroke:#7b39fc;fill:none;stroke-width:1.5}
+  .feature-card h3{font-family:'Manrope',sans-serif;font-size:20px;font-weight:700;color:#fff;margin-bottom:10px}
+  .feature-card p{font-family:'Inter',sans-serif;font-size:15px;line-height:1.6;color:rgba(255,255,255,0.5)}
+
+  /* ═══════════════════ STATS ═══════════════════ */
+  .stats{padding:100px 24px;background:#000;border-top:1px solid rgba(255,255,255,0.05);border-bottom:1px solid rgba(255,255,255,0.05)}
+  .stats-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);gap:48px}
+  @media(min-width:768px){.stats-inner{grid-template-columns:repeat(4,1fr)}}
+  .stat-item{text-align:center;opacity:0;transform:translateY(20px)}
+  .stat-item.visible{opacity:1;transform:translateY(0);transition:all 0.6s}
+  .stat-number{font-family:'Instrument Serif',serif;font-size:48px;color:#fff}
+  @media(min-width:768px){.stat-number{font-size:56px}}
+  .stat-label{font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,0.4);margin-top:4px}
+
+  /* ═══════════════════ TESTIMONIALS ═══════════════════ */
+  .testimonials{padding:120px 24px;background:#000}
+  .testimonials-inner{max-width:1200px;margin:0 auto}
+  .testimonials-header{text-align:center;margin-bottom:64px}
+  .testimonials-title{font-family:'Instrument Serif',serif;font-size:48px;color:#fff;margin-bottom:16px}
+  .testimonials-grid{display:grid;grid-template-columns:1fr;gap:24px}
+  @media(min-width:768px){.testimonials-grid{grid-template-columns:repeat(3,1fr)}}
+  .testimonial-card{padding:32px;border-radius:20px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .testimonial-card.visible{opacity:1;transform:translateY(0)}
+  .testimonial-card:hover{border-color:rgba(123,57,252,0.2);background:rgba(123,57,252,0.02)}
+  .testimonial-text{font-family:'Inter',sans-serif;font-size:15px;line-height:1.7;color:rgba(255,255,255,0.6);font-style:italic;margin-bottom:24px}
+  .testimonial-author{display:flex;align-items:center;gap:12px}
+  .testimonial-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#7b39fc,#b4c0ff);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px}
+  .testimonial-name{font-family:'Manrope',sans-serif;font-size:14px;font-weight:600;color:#fff}
+  .testimonial-role{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,0.4)}
+
+  /* ═══════════════════ PRICING ═══════════════════ */
+  .pricing{padding:120px 24px;background:#000}
+  .pricing-inner{max-width:900px;margin:0 auto}
+  .pricing-header{text-align:center;margin-bottom:64px}
+  .pricing-title{font-family:'Instrument Serif',serif;font-size:48px;color:#fff;margin-bottom:16px}
+  .pricing-subtitle{font-family:'Inter',sans-serif;font-size:18px;color:rgba(255,255,255,0.5)}
+  .pricing-grid{display:grid;grid-template-columns:1fr;gap:24px}
+  @media(min-width:768px){.pricing-grid{grid-template-columns:repeat(3,1fr)}}
+  .pricing-card{padding:40px 28px;border-radius:20px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);text-align:center;transition:all 0.4s;opacity:0;transform:translateY(20px)}
+  .pricing-card.visible{opacity:1;transform:translateY(0)}
+  .pricing-card:hover{border-color:rgba(255,255,255,0.12);transform:translateY(-4px)}
+  .pricing-card.popular{border-color:rgba(123,57,252,0.3);background:rgba(123,57,252,0.05)}
+  .pricing-plan-name{font-family:'Cabin',sans-serif;font-size:14px;font-weight:600;color:#7b39fc;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px}
+  .pricing-price{font-family:'Instrument Serif',serif;font-size:48px;color:#fff;margin-bottom:4px}
+  .pricing-price span{font-family:'Inter',sans-serif;font-size:16px;color:rgba(255,255,255,0.4)}
+  .pricing-desc{font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,0.4);margin-bottom:32px}
+  .pricing-features{list-style:none;text-align:left;margin-bottom:32px}
+  .pricing-features li{display:flex;align-items:center;gap:10px;padding:10px 0;font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,0.6);border-bottom:1px solid rgba(255,255,255,0.04)}
+  .pricing-features li svg{width:16px;height:16px;stroke:#7b39fc;fill:none;stroke-width:2;flex-shrink:0}
+  .pricing-btn{display:block;width:100%;padding:14px;border-radius:12px;font-family:'Cabin',sans-serif;font-size:15px;font-weight:600;cursor:pointer;border:none;transition:all 0.3s}
+  .pricing-btn-primary{background:#7b39fc;color:#fff}
+  .pricing-btn-primary:hover{background:#6a2fe0;box-shadow:0 0 20px rgba(123,57,252,0.3)}
+  .pricing-btn-outline{background:transparent;border:1px solid rgba(255,255,255,0.1);color:#fff}
+  .pricing-btn-outline:hover{border-color:rgba(255,255,255,0.2);background:rgba(255,255,255,0.04)}
+
+  /* ═══════════════════ CTA ═══════════════════ */
+  .cta-section{padding:120px 24px;text-align:center;background:#000;position:relative;overflow:hidden}
+  .cta-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:500px;height:300px;background:rgba(123,57,252,0.12);filter:blur(120px);border-radius:50%;pointer-events:none}
+  .cta-inner{position:relative;z-index:1;max-width:640px;margin:0 auto}
+  .cta-title{font-family:'Instrument Serif',serif;font-size:48px;color:#fff;margin-bottom:16px}
+  @media(min-width:768px){.cta-title{font-size:64px}}
+  .cta-subtitle{font-family:'Inter',sans-serif;font-size:18px;color:rgba(255,255,255,0.5);margin-bottom:40px}
+
+  /* ═══════════════════ FOOTER ═══════════════════ */
+  .footer{padding:40px 24px;border-top:1px solid rgba(255,255,255,0.05);background:#000}
+  .footer-inner{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px}
+  @media(min-width:768px){.footer-inner{flex-direction:row;justify-content:space-between}}
+  .footer-copy{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,0.3)}
+  .footer-links{display:flex;gap:24px}
+  .footer-links a{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,0.3);text-decoration:none;transition:color 0.3s}
+  .footer-links a:hover{color:rgba(255,255,255,0.6)}
+
+  /* ═══════════════════ ANIMATIONS ═══════════════════ */
+  @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════ NAVBAR ═══════════════════ -->
+<nav class="navbar">
+  <div class="navbar-logo">
+    <svg viewBox="0 0 32 32"><path d="M16 2L4 8v8c0 7.73 5.12 14.96 12 18 6.88-3.04 12-10.27 12-18V8L16 2zm0 4l8 4v6c0 5.82-3.42 11.24-8 13.93C11.42 27.24 8 21.82 8 16v-6l8-4z"/></svg>
+  </div>
+  <div class="navbar-links">
+    <a href="#">Home</a>
+    <a href="#">Services <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></a>
+    <a href="#">Reviews</a>
+    <a href="#">Contact us</a>
+  </div>
+  <div class="navbar-actions">
+    <button class="btn-signin">Sign In</button>
+    <button class="btn-getstarted">Get Started</button>
+  </div>
+  <button class="mobile-menu-btn"><svg viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+</nav>
+
+<!-- ═══════════════════ HERO ═══════════════════ -->
+<section class="hero">
+  <div class="hero-video">
+    <video autoplay muted loop playsinline>
+      <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260210_031346_d87182fb-b0af-4273-84d1-c6fd17d6bf0f.mp4" type="video/mp4">
+    </video>
+  </div>
+  <div class="hero-content">
+    <div class="hero-tagline">
+      <span class="hero-tagline-badge">New</span>
+      <span class="hero-tagline-text">Say Hello to Datacore v3.2</span>
+    </div>
+    <h1 class="hero-headline">Book your perfect stay instantly <em>and</em> hassle-free</h1>
+    <p class="hero-subtitle">Discover handpicked hotels, resorts, and stays across your favorite destinations. Enjoy exclusive deals, fast booking, and 24/7 support.</p>
+    <div class="hero-buttons">
+      <button class="btn-demo">Book a Free Demo</button>
+      <button class="btn-start">Get Started Now</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ FEATURES ═══════════════════ -->
+<section class="features" id="features">
+  <div class="features-inner">
+    <div class="features-header reveal">
+      <div class="features-badge">✨ Platform Features</div>
+      <h2 class="features-title">Built for modern travelers</h2>
+      <p class="features-subtitle">Everything you need to find, book, and enjoy your perfect stay.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card" data-delay="0">
+        <div class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+        <h3>Smart Search</h3>
+        <p>AI-powered search understands your preferences and finds the perfect accommodation in seconds.</p>
+      </div>
+      <div class="feature-card" data-delay="100">
+        <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+        <h3>Verified Properties</h3>
+        <p>Every listing is personally verified by our team to ensure quality, safety, and accuracy.</p>
+      </div>
+      <div class="feature-card" data-delay="200">
+        <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+        <h3>Instant Booking</h3>
+        <p>No waiting for confirmations. Book instantly with guaranteed availability at the best prices.</p>
+      </div>
+      <div class="feature-card" data-delay="300">
+        <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <h3>24/7 Concierge</h3>
+        <p>Our dedicated support team is available around the clock to assist with any request.</p>
+      </div>
+      <div class="feature-card" data-delay="400">
+        <div class="feature-icon"><svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>
+        <h3>Flexible Payments</h3>
+        <p>Pay how you want — credit card, crypto, or installments. Free cancellation on most bookings.</p>
+      </div>
+      <div class="feature-card" data-delay="500">
+        <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+        <h3>Local Experiences</h3>
+        <p>Curated local experiences and hidden gems recommended by locals at every destination.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ STATS ═══════════════════ -->
+<section class="stats">
+  <div class="stats-inner">
+    <div class="stat-item" data-delay="0"><div class="stat-number">10K+</div><div class="stat-label">Properties</div></div>
+    <div class="stat-item" data-delay="100"><div class="stat-number">98%</div><div class="stat-label">Satisfaction</div></div>
+    <div class="stat-item" data-delay="200"><div class="stat-number">150+</div><div class="stat-label">Destinations</div></div>
+    <div class="stat-item" data-delay="300"><div class="stat-number">500K+</div><div class="stat-label">Bookings</div></div>
+  </div>
+</section>
+
+<!-- ═══════════════════ TESTIMONIALS ═══════════════════ -->
+<section class="testimonials">
+  <div class="testimonials-inner">
+    <div class="testimonials-header reveal">
+      <h2 class="testimonials-title">What guests say</h2>
+    </div>
+    <div class="testimonials-grid">
+      <div class="testimonial-card" data-delay="0">
+        <p class="testimonial-text">"Found the perfect villa in Bali within minutes. The booking was seamless and the property exceeded every expectation. Will never use another platform."</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">JC</div>
+          <div><div class="testimonial-name">Julia Chen</div><div class="testimonial-role">Travel Blogger</div></div>
+        </div>
+      </div>
+      <div class="testimonial-card" data-delay="100">
+        <p class="testimonial-text">"The concierge service saved our trip when plans changed last minute. They reboked everything in under an hour. Incredible customer support."</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">RK</div>
+          <div><div class="testimonial-name">Robert Kim</div><div class="testimonial-role">Business Traveler</div></div>
+        </div>
+      </div>
+      <div class="testimonial-card" data-delay="200">
+        <p class="testimonial-text">"As a host, the platform makes management effortless. The AI pricing suggestions alone increased our revenue by 35% in the first quarter."</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">ML</div>
+          <div><div class="testimonial-name">Maria Lopez</div><div class="testimonial-role">Property Host</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ PRICING ═══════════════════ -->
+<section class="pricing" id="pricing">
+  <div class="pricing-inner">
+    <div class="pricing-header reveal">
+      <h2 class="pricing-title">Choose your plan</h2>
+      <p class="pricing-subtitle">From solo travelers to enterprise teams.</p>
+    </div>
+    <div class="pricing-grid">
+      <div class="pricing-card" data-delay="0">
+        <div class="pricing-plan-name">Explorer</div>
+        <div class="pricing-price">$0<span>/mo</span></div>
+        <p class="pricing-desc">For casual travelers</p>
+        <ul class="pricing-features">
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Basic search & booking</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Email support</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Trip history</li>
+        </ul>
+        <button class="pricing-btn pricing-btn-outline">Get Started Free</button>
+      </div>
+      <div class="pricing-card popular" data-delay="100">
+        <div class="pricing-plan-name">Voyager</div>
+        <div class="pricing-price">$19<span>/mo</span></div>
+        <p class="pricing-desc">For frequent travelers</p>
+        <ul class="pricing-features">
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Priority booking</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>24/7 concierge</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Exclusive deals</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Free cancellation</li>
+        </ul>
+        <button class="pricing-btn pricing-btn-primary">Start Free Trial</button>
+      </div>
+      <div class="pricing-card" data-delay="200">
+        <div class="pricing-plan-name">Enterprise</div>
+        <div class="pricing-price">$99<span>/mo</span></div>
+        <p class="pricing-desc">For corporate teams</p>
+        <ul class="pricing-features">
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Team management</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Expense reports</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>API access</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Dedicated manager</li>
+        </ul>
+        <button class="pricing-btn pricing-btn-outline">Contact Sales</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ CTA ═══════════════════ -->
+<section class="cta-section">
+  <div class="cta-glow"></div>
+  <div class="cta-inner reveal">
+    <h2 class="cta-title">Start your journey</h2>
+    <p class="cta-subtitle">Book your perfect stay today. No credit card required.</p>
+    <div class="hero-buttons" style="justify-content:center;opacity:1;animation:none">
+      <button class="btn-demo">Book a Free Demo</button>
+      <button class="btn-start">Get Started Now</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ FOOTER ═══════════════════ -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-copy">© 2026 Datacore. All rights reserved.</div>
+    <div class="footer-links"><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Contact</a></div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  const observer = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){
+        const delay = entry.target.dataset.delay || 0;
+        setTimeout(()=>{entry.target.classList.add('visible')}, parseInt(delay));
+        observer.unobserve(entry.target);
+      }
+    });
+  },{threshold:0.1,rootMargin:'-50px'});
+  document.querySelectorAll('.reveal,.feature-card,.testimonial-card,.stat-item,.pricing-card').forEach(el=>observer.observe(el));
+})();
+</script>
+</body>
+</html>
