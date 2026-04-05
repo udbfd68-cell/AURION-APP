@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
         model: model || 'gpt-4o',
         messages,
         stream,
-        max_tokens: 4096,
+        max_tokens: 128000,
       }),
     });
 

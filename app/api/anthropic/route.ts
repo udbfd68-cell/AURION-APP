@@ -92,15 +92,23 @@ export async function POST(req: NextRequest) {
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'output-128k-2025-02-19',
         },
         body: JSON.stringify({
           model,
-          max_tokens: 16384,
-          system: SYSTEM_PROMPT,
+          max_tokens: 128000,
+          temperature: 0.4,
+          system: [
+            {
+              type: 'text',
+              text: SYSTEM_PROMPT,
+              cache_control: { type: 'ephemeral' },
+            },
+          ],
           messages: anthropicMessages,
           stream: true,
         }),
-        signal: AbortSignal.timeout(120000),
+        signal: AbortSignal.timeout(300000),
       });
 
       if (res.ok) break;

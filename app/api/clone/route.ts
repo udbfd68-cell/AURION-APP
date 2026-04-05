@@ -167,8 +167,8 @@ async function streamClone(
         { role: 'user', content: userContent },
       ];
 
-      // Timeout escalation per attempt
-      const timeoutMs = 120000 + (attempt * 30000);
+      // Timeout escalation per attempt — generous for large output
+      const timeoutMs = 300000 + (attempt * 60000);
       const fetchTimeout = AbortSignal.timeout(timeoutMs);
 
       // Use resolved provider (Ollama Cloud primary, Gemini fallback)

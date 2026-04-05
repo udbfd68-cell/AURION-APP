@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
           { role: 'user', content: userPrompt },
         ],
         stream: true,
-        max_tokens: 16384,
+        max_tokens: 65536,
         temperature: 0.3,
       }),
       signal: AbortSignal.timeout(120000),

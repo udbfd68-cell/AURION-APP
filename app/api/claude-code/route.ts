@@ -235,15 +235,23 @@ async function streamViaMammoth(opts: {
       'Content-Type': 'application/json',
       'x-api-key': MAMMOTH_KEY,
       'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'output-128k-2025-02-19',
     },
     body: JSON.stringify({
       model: opts.model.startsWith('claude-') ? opts.model : 'claude-sonnet-4-20250514',
-      max_tokens: 16384,
+      max_tokens: 128000,
+      temperature: 0.4,
       stream: true,
-      system: opts.systemPrompt,
+      system: [
+        {
+          type: 'text',
+          text: opts.systemPrompt,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
       messages: merged,
     }),
-    signal: AbortSignal.timeout(120000),
+    signal: AbortSignal.timeout(300000),
   });
 
   if (!res.ok) {

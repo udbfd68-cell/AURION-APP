@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
             messages: groqMessages,
             stream: true,
             temperature: 0.7,
-            max_tokens: 32768,
+            max_tokens: 131072,
           }),
           signal: AbortSignal.timeout(120000),
         });

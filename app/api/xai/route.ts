@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
         model: modelId,
         messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
         stream: true,
-        max_tokens: 32768,
+        max_tokens: 131072,
         temperature: 0.7,
       }),
       signal: AbortSignal.timeout(120000),
