@@ -551,17 +551,6 @@ JS: window.addEventListener('scroll',()=>{const h=document.documentElement;const
 const PREMIUM_EFFECTS = `
 # PREMIUM VISUAL EFFECTS — From Real Component Libraries
 
-## Preloader (Typographic with Counter)
-\`\`\`css
-.preloader { position:fixed; inset:0; z-index:9999; background:#0a0a0a;
-  display:flex; align-items:center; justify-content:center;
-  transition:clip-path 1s cubic-bezier(0.76,0,0.24,1); }
-.preloader.done { clip-path:inset(0 0 100% 0); }
-.preloader .counter { font-family:var(--heading-font),sans-serif; font-size:clamp(3rem,8vw,6rem);
-  font-weight:800; color:#fff; }
-\`\`\`
-JS: let progress=0;const interval=setInterval(()=>{progress+=Math.random()*15;if(progress>=100){progress=100;clearInterval(interval);setTimeout(()=>document.querySelector('.preloader').classList.add('done'),400)}document.querySelector('.counter').textContent=Math.floor(progress)},80);
-
 ## Custom Cursor (Desktop Only)
 \`\`\`css
 .cursor-dot { width:8px; height:8px; border-radius:50%; background:#fff;
@@ -759,20 +748,6 @@ Not every site needs every technique — luxury sites need restraint, SaaS needs
    - If typography + spacing + color are perfect → even a site with ZERO animations looks premium
    - If these are mediocre → no amount of aurora + glass + film grain will save it
 
-## QUALITY CHECKLIST (context-adapted):
-1. ✅ Premium font pairing (VARIED — see FONT SELECTION table)
-2. ✅ clamp() fluid typography on ALL headings with proper tracking
-3. ✅ class="reveal" on sections for scroll fade-in (+ stagger delay per child)
-4. ✅ Generous section padding (80-120px vertical, consistent rhythm)
-5. ✅ Hero with ONE standout effect (video bg OR aurora OR particles — not all)
-6. ✅ Hover transitions on buttons/cards (ONE effect per element: scale OR glow OR tilt)
-7. ✅ Fully responsive layout tested at 375px, 768px, 1024px, 1440px
-8. ✅ Multi-column footer + social icons
-9. ✅ Consistent accent color from :root variable throughout
-10. ✅ Proper text hierarchy (not everything white — use opacity stacking)
-11. ✅ Micro-interactions: button hover lift (translateY(-2px)), link underline slide, focus rings
-12. ✅ Smooth transitions everywhere (0.3s cubic-bezier(0.16,1,0.3,1), NEVER instant)
-
 ## MICRO-INTERACTION POLISH (what separates 8/10 from 10/10):
 - Button hover: translateY(-2px) + box-shadow increase + slight brightness. Not just color change.
 - Card hover: translateY(-4px) + border-color brighten + shadow expand. Subtle, not dramatic.
@@ -884,16 +859,7 @@ Match the interaction style to the site's personality. If the last generation us
   display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.9rem; }
 \`\`\`
 Use for dashboards, analytics, finance trackers, skill displays — avoid heavyweight chart libraries for simple data.
-
-## SELF-REVIEW PATTERN (mentally audit your output BEFORE finishing):
-After generating all sections, do a quick mental check:
-1. Typography rhythm: Are there at least 3 distinct font-weight levels visible? Do numbers use a display font?
-2. Color coding: Do cards/badges each have a unique accent tint, or are they all identical?
-3. Spacing consistency: Is section padding 80-120px? Is gap consistent within card grids?
-4. Interactive states: Does every button/link/card have a hover transition? Is cursor:pointer on all clickable elements?
-5. Mobile: Will the flex/grid layouts stack properly below 768px? Are font sizes using clamp()?
-6. Completeness: Does the HTML start with <!DOCTYPE html> and end with </html>? Are all tags closed?
-If any check fails, fix it immediately — don't ship broken output.`;
+`;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 8B — CINEMATIC 3D SCROLL MODE (APPLE-STYLE)
@@ -947,14 +913,7 @@ gsap.from('.parallax-img',{scale:0.5,opacity:0,scrollTrigger:{trigger:'.parallax
 .card-3d-inner { transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1); backdrop-filter:blur(40px) saturate(180%); background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:24px; }
 Hover JS: el.addEventListener('mousemove',e=>{const r=el.getBoundingClientRect();const x=(e.clientX-r.left)/r.width-.5;const y=(e.clientY-r.top)/r.height-.5;el.querySelector('.card-3d-inner').style.transform='rotateY('+x*20+'deg) rotateX('+-y*20+'deg) scale3d(1.05,1.05,1.05)';});
 
-### SECTION 6: INFINITE MARQUEE (brand logos, scrolling text)
-.marquee { overflow:hidden; white-space:nowrap; }
-.marquee-track { display:flex; gap:4rem; animation:marquee 30s linear infinite; width:max-content; }
-.marquee-track:hover { animation-play-state:paused; }
-@keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-Double the items in HTML so the loop is seamless.
-
-### SECTION 7: TEXT COLOR REVEAL ON SCROLL (each word lights up)
+### SECTION 6: TEXT COLOR REVEAL ON SCROLL (each word lights up)
 .word-reveal span { color:rgba(255,255,255,0.15); transition:color 0.3s; }
 .word-reveal span.active { color:#fff; }
 JS: ScrollTrigger.create({trigger:'.word-reveal',start:'top 60%',end:'bottom 40%',onUpdate:self=>{const words=document.querySelectorAll('.word-reveal span');const progress=self.progress;words.forEach((w,i)=>{w.classList.toggle('active',i/words.length<progress)});}});
@@ -1166,7 +1125,7 @@ NEVER repeat the same layout, fonts, accent color, or effects combination.
 - Pick a DIFFERENT template from TEMPLATE_CATALOG as starting point each time
 - Mix hero from template A + nav from template B + cards from template C
 - Use DIFFERENT color palettes each time from UI-UX-PRO-MAX (19 palettes available)
-- DIFFERENT font pairing each time from the FONT SELECTION table
+- DIFFERENT font pairing each time from the FONT SELECTION table — never Inter alone
 - Alternate dark/light themes for the same category (portfolio dark → next portfolio light)
 - For PORTFOLIO requests: Use T12 (dark-portfolio), T10 (vortex-creative), or T17 (cinematic-aethera) as reference
 - For SAAS requests: Use T15 (stellar-ai), T18 (nexora-saas), or T06 (neuralyn) as reference
@@ -1186,7 +1145,6 @@ Every generation MUST include ALL of these — no exceptions:
 - Staggered fade-ups with rotateX on ALL content sections
 - Number counters on stats (ScrollTrigger once:true)
 - Footer reveal (sticky behind content)
-- Premium font pairing (VARIED from font library, never Inter alone)
 - clamp() fluid typography with proper tracking on all headings
 
 Additional effects budget by context:

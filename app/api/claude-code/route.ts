@@ -1,40 +1,25 @@
 /**
- * Claude Code Execution API Route v4.0 — REAL, Cleaned
+ * Claude Code API Route v5.0 — REAL only
  * 
- * What this does:
- * - Routes generation through best available model (Ollama → Mammoth → Gemini)
- * - Real subsystem calls: NotebookLM research + Stitch design (with timeouts)
- * - Smart prompt selection (buildSmartSystemPrompt, ~80K chars, not 550K)
- * - Quality gates that return real scores
- * - Auto-continue for truncated output
- * - HTML compression for context injection
- * 
- * What was REMOVED:
- * - 3 dead Swarm routes (swarm-decompose, swarm-route, swarm-status)
- * - Dead imports (buildSwarmPrompt, getPatternStats, AGENT_CAPABILITIES, etc.)
- * - "methodology" stub route
- * - enhanced-generate using the bloated 550K prompt (now uses smart prompt)
- * - Ruflo cosmetic context injection into system prompt
+ * 4 actions (all called by frontend):
+ * - jarvis-execute: Main generation with optional subsystem calls
+ * - jarvis-analyze: Pre-analyze prompt → detect subsystems
+ * - quality-check: Structural HTML validation
+ * - continue: Resume truncated output
  */
 
 export const runtime = 'edge';
 
 import {
-  classifyError,
   compressHtmlForPrompt,
   budgetPromptSections,
   runQualityChecks,
   HTML_QUALITY_CHECKS,
   buildContinuationPrompt,
-  analyzeRequest,
-  createPlan,
-  buildJarvisSystemContext,
-  formatJarvisStatus,
-  SUBSYSTEM_CAPABILITIES,
+  detectSubsystems,
 } from '@/lib/claude-code-engine';
-import type { SubSystem, JarvisContext, JarvisPlan } from '@/lib/claude-code-engine';
 
-import { buildSmartSystemPrompt, buildCloneSystemPrompt } from '@/lib/system-prompts';
+import { buildSmartSystemPrompt } from '@/lib/system-prompts';
 
 /* ── Input validation ── */
 interface ExecutionRequest {
@@ -43,13 +28,7 @@ interface ExecutionRequest {
   model?: string;
   code?: string;
   researchContext?: string;
-  maxTokens?: number;
-  qualityGates?: boolean;
   messages?: { role: string; content: string }[];
-  maxChars?: number;
-  error?: string;
-  jarvisContext?: Partial<JarvisContext>;
-  jarvisPlan?: JarvisPlan;
   images?: { data: string; type: string }[];
 }
 
@@ -62,7 +41,6 @@ function validatePrompt(prompt: unknown): prompt is string {
 }
 
 function sanitizeForPrompt(text: string): string {
-  // Strip potential prompt injection markers, but keep the content useful
   return text.replace(/<\/?system>/gi, '').replace(/<\/?human>/gi, '').replace(/<\/?assistant>/gi, '');
 }
 
@@ -76,33 +54,7 @@ export async function POST(req: Request) {
     }
 
     switch (action) {
-      /* ── Enhanced Generate: Research-backed code generation ── */
-      case 'enhanced-generate': {
-        const { prompt, code, researchContext, model = MAMMOTH_KEY ? 'claude-sonnet-4-20250514' : 'gemini-2.5-pro' } = body;
-        if (!validatePrompt(prompt)) {
-          return Response.json({ error: 'Missing or invalid prompt' }, { status: 400 });
-        }
-
-        // Use SMART prompt (not the 550K blob)
-        const systemPrompt = buildEnhancedSystemPrompt(sanitizeForPrompt(prompt!), researchContext);
-
-        const sections = [
-          { name: 'prompt', content: sanitizeForPrompt(prompt!), priority: 1 },
-          ...(researchContext ? [{ name: 'research', content: researchContext.slice(0, 12000), priority: 2 }] : []),
-          ...(code ? [{ name: 'existing_code', content: compressHtmlForPrompt(code, 4000), priority: 3 }] : []),
-        ];
-        const budgeted = budgetPromptSections(sections, 25000);
-        const userContent = Array.from(budgeted.values()).filter(Boolean).join('\n\n');
-
-        return await streamToModel({
-          model,
-          systemPrompt,
-          userContent,
-          messages: body.messages,
-        });
-      }
-
-      /* ── Quality Check: Validate generated code with real scores ── */
+      /* ── Quality Check: Structural HTML validation ── */
       case 'quality-check': {
         const { code } = body;
         if (!code) {
@@ -118,64 +70,23 @@ export async function POST(req: Request) {
         if (!code) {
           return Response.json({ error: 'Missing truncated code' }, { status: 400 });
         }
-        const continuationPrompt = buildContinuationPrompt(code);
         return await streamToModel({
           model,
           systemPrompt: buildSmartSystemPrompt('continue generation', 60000),
-          userContent: continuationPrompt,
+          userContent: buildContinuationPrompt(code),
         });
       }
 
-      /* ── Compress: Compress HTML for prompt injection ── */
-      case 'compress': {
-        const { code, maxChars = 5000 } = body;
-        if (!code) {
-          return Response.json({ error: 'Missing code' }, { status: 400 });
-        }
-        const compressed = compressHtmlForPrompt(code, Math.min(maxChars, 20000));
-        return Response.json({
-          success: true,
-          data: {
-            compressed,
-            originalLength: code.length,
-            compressedLength: compressed.length,
-            ratio: (compressed.length / code.length * 100).toFixed(1) + '%',
-          },
-        });
-      }
-
-      /* ── Classify Error: Smart error classification ── */
-      case 'classify-error': {
-        const { status, message } = body as unknown as { status: number; message: string };
-        if (!status || !message) {
-          return Response.json({ error: 'Missing status or message' }, { status: 400 });
-        }
-        const classification = classifyError(status, message);
-        return Response.json({ success: true, data: { classification } });
-      }
-
-      /* ═══════════════════════════════════════════════════════
-         ORCHESTRATOR ACTIONS
-         ═══════════════════════════════════════════════════════ */
-
-      /* ── Analyze: Detect subsystems needed ── */
+      /* ── Analyze: Detect which subsystems a prompt needs ── */
       case 'jarvis-analyze': {
-        const { prompt, jarvisContext } = body;
+        const { prompt } = body;
         if (!validatePrompt(prompt)) {
           return Response.json({ error: 'Missing prompt' }, { status: 400 });
         }
-        const analysis = analyzeRequest(prompt!, jarvisContext || {});
-        const plan = createPlan(prompt!, analysis);
+        const subsystems = detectSubsystems(prompt!);
         return Response.json({
           success: true,
-          data: {
-            analysis,
-            plan,
-            subsystemDetails: analysis.subsystems.map(s => ({
-              id: s,
-              ...SUBSYSTEM_CAPABILITIES[s],
-            })),
-          },
+          data: { subsystems },
         });
       }
 
@@ -186,136 +97,86 @@ export async function POST(req: Request) {
           code,
           researchContext,
           model = MAMMOTH_KEY ? 'claude-sonnet-4-20250514' : (OLLAMA_KEY ? 'qwen3-coder-480b' : 'gemini-2.5-pro'),
-          jarvisContext,
         } = body;
         if (!validatePrompt(prompt)) {
           return Response.json({ error: 'Missing prompt' }, { status: 400 });
         }
 
         const safePrompt = sanitizeForPrompt(prompt!);
+        const subsystems = detectSubsystems(safePrompt);
 
-        // Step 1: Analyze which subsystems to activate
-        const analysis = analyzeRequest(safePrompt, jarvisContext || {});
-        const plan = createPlan(safePrompt, analysis);
-
-        // Step 2: ACTUALLY call subsystems in parallel (real fetch, real timeouts)
+        // Real subsystem calls in parallel (with timeouts)
         const subsystemResults: string[] = [];
-        const subsystemCalls: Promise<void>[] = [];
+        const calls: Promise<void>[] = [];
 
-        // NotebookLM research (real fetch, 15s timeout)
-        if (analysis.subsystems.includes('notebooklm') && !researchContext) {
-          subsystemCalls.push(
+        // NotebookLM research (15s timeout) — only if detected AND no existing research
+        if (subsystems.includes('notebooklm') && !researchContext) {
+          calls.push(
             (async () => {
               try {
-                const researchRes = await fetch(new URL('/api/notebooklm', req.url).href, {
+                const res = await fetch(new URL('/api/notebooklm', req.url).href, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ action: 'quick-research', query: safePrompt }),
                   signal: AbortSignal.timeout(15000),
                 });
-                if (researchRes.ok) {
-                  const data = await researchRes.json();
-                  if (data?.data?.result) {
-                    const result = typeof data.data.result === 'string' ? data.data.result : JSON.stringify(data.data.result);
-                    subsystemResults.push(`[RESEARCH]\n${result.slice(0, 8000)}\n[/RESEARCH]`);
+                if (res.ok) {
+                  const data = await res.json();
+                  const result = data?.data?.result;
+                  if (result) {
+                    const text = typeof result === 'string' ? result : JSON.stringify(result);
+                    subsystemResults.push(`[RESEARCH]\n${text.slice(0, 8000)}\n[/RESEARCH]`);
                   }
                 }
-              } catch (e) {
-                console.warn('[Subsystem] NotebookLM failed:', e instanceof Error ? e.message : 'timeout');
-              }
+              } catch { /* timeout or unavailable — continue without */ }
             })()
           );
         }
 
-        // Stitch design generation (real fetch, 20s timeout)
-        if (analysis.subsystems.includes('stitch') && (GOOGLE_KEY || process.env.STITCH_API_KEY)) {
-          subsystemCalls.push(
+        // Stitch design (20s timeout) — ONLY if STITCH_API_KEY is set
+        if (subsystems.includes('stitch') && process.env.STITCH_API_KEY) {
+          calls.push(
             (async () => {
               try {
-                const stitchRes = await fetch(new URL('/api/stitch', req.url).href, {
+                const res = await fetch(new URL('/api/stitch', req.url).href, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ action: 'generate', prompt: `UI design for: ${safePrompt.slice(0, 500)}`, mode: 'ui' }),
                   signal: AbortSignal.timeout(20000),
                 });
-                if (stitchRes.ok) {
-                  const data = await stitchRes.json();
-                  const stitchHtml = data?.data?.html || data?.data?.result || '';
-                  if (typeof stitchHtml === 'string' && stitchHtml.length > 100) {
-                    subsystemResults.push(`[STITCH DESIGN]\n${stitchHtml.slice(0, 6000)}\n[/STITCH DESIGN]`);
+                if (res.ok) {
+                  const data = await res.json();
+                  const html = data?.data?.html || data?.data?.result || '';
+                  if (typeof html === 'string' && html.length > 100) {
+                    subsystemResults.push(`[STITCH DESIGN]\n${html.slice(0, 6000)}\n[/STITCH DESIGN]`);
                   }
                 }
-              } catch (e) {
-                console.warn('[Subsystem] Stitch failed:', e instanceof Error ? e.message : 'timeout');
-              }
+              } catch { /* timeout or unavailable — continue without */ }
             })()
           );
         }
 
-        // Execute subsystem calls in parallel
-        if (subsystemCalls.length > 0) {
-          await Promise.allSettled(subsystemCalls);
-        }
+        if (calls.length > 0) await Promise.allSettled(calls);
 
-        // Step 3: Build smart system prompt (80K max, not the 550K blob)
-        const basePrompt = buildSmartSystemPrompt(safePrompt, 80000);
-        const orchestratorContext = buildJarvisSystemContext(analysis.subsystems, plan);
-        const subsystemData = subsystemResults.length > 0 ? '\n\n' + subsystemResults.join('\n\n') : '';
-        const systemPrompt = `${basePrompt}\n\n${orchestratorContext}${subsystemData}`;
+        // Build system prompt (80K budget)
+        const systemPrompt = buildSmartSystemPrompt(safePrompt, 80000)
+          + (subsystemResults.length > 0 ? '\n\n' + subsystemResults.join('\n\n') : '');
 
-        // Step 4: Build user message with context budget
+        // Build user content with budget
         const sections = [
           { name: 'prompt', content: safePrompt, priority: 1 },
           ...(researchContext ? [{ name: 'research', content: researchContext.slice(0, 12000), priority: 2 }] : []),
           ...(code ? [{ name: 'existing_code', content: compressHtmlForPrompt(code, 4000), priority: 3 }] : []),
         ];
         const budgeted = budgetPromptSections(sections, 25000);
-        let userContent = Array.from(budgeted.values()).filter(Boolean).join('\n\n');
+        const userContent = Array.from(budgeted.values()).filter(Boolean).join('\n\n');
 
-        // Inject plan context
-        userContent = `[PLAN]\n${analysis.reasoning}\nSteps: ${analysis.suggestedPlan.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nSubsystem data: ${subsystemResults.length} results\n[/PLAN]\n\n${userContent}`;
-
-        // Quality gate instruction
-        if (analysis.subsystems.includes('quality-gates')) {
-          userContent += `\n\n[QUALITY GATES]\nBefore outputting, verify:\n1. HTML: <!DOCTYPE html> → </html>\n2. All sections complete\n3. No placeholder text\n4. Responsive: 768px, 1024px breakpoints\n5. Real image URLs or SVG placeholders\n6. Scroll animations + hover transitions\n7. Accessibility: alt text, aria labels, semantic HTML\n[/QUALITY GATES]`;
-        }
-
-        // Step 5: Stream via best model
         return await streamToModel({
           model,
           systemPrompt,
           userContent,
           messages: body.messages,
           images: body.images,
-        });
-      }
-
-      /* ── Subsystem Status ── */
-      case 'jarvis-status': {
-        const allSystems = Object.entries(SUBSYSTEM_CAPABILITIES).map(([id, cap]) => ({
-          id,
-          ...cap,
-          available: checkSubsystemAvailability(id as SubSystem),
-        }));
-        return Response.json({
-          success: true,
-          data: {
-            totalSubsystems: allSystems.length,
-            available: allSystems.filter(s => s.available).length,
-            subsystems: allSystems,
-          },
-        });
-      }
-
-      /* ── Plan Status ── */
-      case 'jarvis-plan-status': {
-        const { jarvisPlan } = body;
-        if (!jarvisPlan) {
-          return Response.json({ error: 'Missing jarvisPlan' }, { status: 400 });
-        }
-        return Response.json({
-          success: true,
-          data: { formatted: formatJarvisStatus(jarvisPlan) },
         });
       }
 
@@ -631,34 +492,4 @@ function mergeConsecutiveMessages(messages: { role: string; content: string }[])
   return merged;
 }
 
-function buildEnhancedSystemPrompt(prompt: string, researchContext?: string): string {
-  const base = buildSmartSystemPrompt(prompt, 80000);
-
-  return `${base}${researchContext ? `
-
-[RESEARCH CONTEXT]
-${researchContext.slice(0, 12000)}
-[/RESEARCH CONTEXT]` : ''}
-
-[QUALITY REQUIREMENTS]
-1. HTML complete (DOCTYPE → closing tags)
-2. All sections fully rendered
-3. Animations + interactions included
-4. Responsive with mobile breakpoints
-5. Accessibility attributes present
-[/QUALITY REQUIREMENTS]`;
-}
-
-function checkSubsystemAvailability(system: SubSystem): boolean {
-  switch (system) {
-    case 'anthropic': return !!(process.env.MAMMOTH_API_KEY || process.env.ANTHROPIC_API_KEY);
-    case 'gemini': return !!(process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_AI_STUDIO_KEY);
-    case 'groq': return !!process.env.GROQ_API_KEY;
-    case 'openai': return !!process.env.OPENAI_API_KEY;
-    case 'stitch': return !!process.env.STITCH_API_KEY;
-    case 'firecrawl': return !!process.env.FIRECRAWL_API_KEY;
-    case 'vercel': return !!process.env.VERCEL_TOKEN;
-    case 'github': return !!process.env.GITHUB_TOKEN;
-    default: return true; // Built-in libraries
-  }
-}
+/* (end of file) */

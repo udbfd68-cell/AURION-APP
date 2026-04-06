@@ -175,8 +175,7 @@ export default function HomePage() {
   const [researchError, setResearchError] = useState<string | null>(null);
   const [showResearchPanel, setShowResearchPanel] = useState(false);
   const [researchContext, setResearchContext] = useState<string>('');
-  const [claudeCodeMode, setClaudeCodeMode] = useState(true); // Always ON — full orchestration by default
-  const [jarvisPlan, setJarvisPlan] = useState<{ id: string; goal: string; tasks: { id: string; name: string; description: string; status: string }[]; status: string; completedTasks: number; totalTasks: number } | null>(null);
+  const [claudeCodeMode, setClaudeCodeMode] = useState(true);
   const [jarvisSubsystems, setJarvisSubsystems] = useState<string[]>([]);
 
   // Perform NotebookLM research
@@ -3988,20 +3987,9 @@ ${code}
       parts.push('Adapt layout patterns, component structure, and visual approach from these Stitch designs.');
       parts.push('[/STITCH DESIGN REFERENCE]');
     }
-    // Inject Claude Code mode
-    if (claudeCodeMode) {
-      parts.push('');
-      parts.push('[JARVIS MODE: ACTIVE — Central Brain Orchestrating All Subsystems]');
-      parts.push('You are Jarvis — the God-level orchestrator of Aurion with access to 19 subsystems.');
-      parts.push('Apply iterative development: error-first thinking, parallel awareness, context management.');
-      parts.push('Use smart retry patterns, quality gates, and output recovery for production-grade code.');
-      parts.push('You can leverage: Claude + Gemini + Groq + OpenAI for AI, Stitch for UI design, NotebookLM for research,');
-      parts.push('ReactBits for 135+ components, 21st.dev for premium effects, MotionSite for video assets,');
-      parts.push('67 UI styles, 96 palettes, 57 font pairings, 22 premium templates.');
-      if (jarvisSubsystems.length > 0) {
-        parts.push(`Active subsystems: ${jarvisSubsystems.join(', ')}`);
-      }
-      parts.push('[/JARVIS MODE]');
+    // Workspace context (no theater prompt injection)
+    if (claudeCodeMode && jarvisSubsystems.length > 0) {
+      parts.push(`[Active subsystems: ${jarvisSubsystems.join(', ')}]`);
     }
     parts.push('[/WORKSPACE STATE]');
     return parts.join('\n');
@@ -4032,12 +4020,6 @@ ${code}
       messages: allMessages.slice(0, -1),
       model: useModel,
       researchContext: effectiveResearch,
-      jarvisContext: {
-        activeTab,
-        currentHtml: previewHtml?.slice(0, 2000),
-        integrationKeys: Object.fromEntries(Object.entries(integrationKeys).map(([k]) => [k, '***'])),
-        deviceMode,
-      },
       ...(images?.length ? { images } : {}),
     };
 
@@ -4058,6 +4040,7 @@ ${code}
     const decoder = new TextDecoder();
     if (!reader) throw new Error('No response stream');
 
+    let accumulatedText = '';
     let buffer = '';
     while (true) {
       const { done, value } = await reader.read();
@@ -4076,6 +4059,7 @@ ${code}
           throw new Error(clean);
         }
         if (data.text) {
+          accumulatedText += data.text;
           setStreamingChars(prev => prev + data.text.length);
           setMessages((prev) =>
             prev.map((m) => (m.id === assistantMsgId ? { ...m, content: m.content + data.text } : m))
@@ -4083,6 +4067,7 @@ ${code}
         }
       }
     }
+    return accumulatedText;
   }, [claudeCodeMode, researchContext]);
 
   // Extract generation metadata from AI output for memory
@@ -4185,7 +4170,7 @@ ${code}
           const res = await fetchWithRetry(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'jarvis-execute', prompt: allMessages[allMessages.length - 1]?.content || '', messages: allMessages.slice(0, -1), model: abModelB, jarvisContext: { activeTab, deviceMode }, ...(imgs?.length ? { images: imgs } : {}) }),
+            body: JSON.stringify({ action: 'jarvis-execute', prompt: allMessages[allMessages.length - 1]?.content || '', messages: allMessages.slice(0, -1), model: abModelB, ...(imgs?.length ? { images: imgs } : {}) }),
             signal: abController.signal,
             timeout: 300000,
           }, 2);
@@ -4216,8 +4201,7 @@ ${code}
     }
 
     try {
-      // ── Jarvis Brain: ALWAYS analyze + plan before streaming ──
-      // All generations go through the full orchestration pipeline
+      // Pre-analyze: detect which subsystems the prompt needs
       try {
         const analyzeRes = await fetch('/api/claude-code', {
           method: 'POST',
@@ -4225,24 +4209,20 @@ ${code}
           body: JSON.stringify({
             action: 'jarvis-analyze',
             prompt: text,
-            jarvisContext: { activeTab, deviceMode },
           }),
         });
         if (analyzeRes.ok) {
           const { data } = await analyzeRes.json();
-          if (data?.plan) setJarvisPlan(data.plan);
-          if (data?.analysis?.subsystems) setJarvisSubsystems(data.analysis.subsystems);
+          if (data?.subsystems) setJarvisSubsystems(data.subsystems);
         }
-      } catch { /* non-blocking — continue even if analyze fails */ }
+      } catch { /* non-blocking */ }
 
-      await streamToAssistant(allMessages, assistantMsg.id, useModelId, controller.signal, imgs, directResearchResult);
+      const generatedOutput = await streamToAssistant(allMessages, assistantMsg.id, useModelId, controller.signal, imgs, directResearchResult);
 
       // ── Quality Gates + Auto-Continue (REAL post-generation validation) ──
-      // Check if the output is truncated or incomplete, and auto-fix
-      const finalMessages = messages.concat([userMsg, assistantMsg]);
-      const lastMsg = finalMessages.find(m => m.id === assistantMsg.id);
-      if (lastMsg?.content && lastMsg.content.length > 200) {
-        const output = lastMsg.content;
+      // generatedOutput is the REAL accumulated text from streaming, not stale closure
+      if (generatedOutput && generatedOutput.length > 200) {
+        const output = generatedOutput;
         const hasDoctype = /<!DOCTYPE\s+html/i.test(output);
         const hasClosingHtml = /<\/html\s*>/i.test(output);
         const hasBody = /<body[^>]*>/i.test(output);
@@ -4347,9 +4327,7 @@ ${code}
       abortRef.current = null;
       autoFixInFlightRef.current = false;
       // Mark Jarvis plan as completed on success
-      if (jarvisPlan) {
-        setJarvisPlan(prev => prev ? { ...prev, status: 'completed', completedTasks: prev.totalTasks, tasks: prev.tasks.map(t => ({ ...t, status: 'completed' })) } : null);
-      }
+      // (no-op — plan display removed, was always showing 0/N theater)
       // Record generation metadata for memory
       setMessages(prev => {
         const last = prev.find(m => m.id === assistantMsg.id);
@@ -4357,7 +4335,7 @@ ${code}
         return prev;
       });
     }
-  }, [isStreaming, messages, model, streamToAssistant, buildWorkspaceContext, abMode, abModelB, outputFramework, recordGeneration, claudeCodeMode, jarvisPlan, activeTab, deviceMode]);
+  }, [isStreaming, messages, model, streamToAssistant, buildWorkspaceContext, abMode, abModelB, outputFramework, recordGeneration, claudeCodeMode, activeTab, deviceMode]);
 
   const sendMessage = useCallback(() => {
     const text = input.trim();
@@ -5045,7 +5023,6 @@ ${code}
           action: 'jarvis-execute',
           prompt: userMsg,
           model: optimalModel,
-          jarvisContext: { activeTab, deviceMode },
         }),
         timeout: 60000,
       }, 2);
@@ -9074,7 +9051,7 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                           <div className="p-3 rounded-lg bg-gradient-to-br from-orange-500/5 to-red-500/5 border border-orange-500/20">
                             <div className="flex items-center gap-2 mb-2">
                               <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
-                              <span className="text-[11px] text-orange-400 font-medium">🧠 Jarvis Active — 19 Subsystems</span>
+                              <span className="text-[11px] text-orange-400 font-medium">🧠 Jarvis Active{jarvisSubsystems.length > 0 ? ` — ${jarvisSubsystems.join(', ')}` : ''}</span>
                             </div>
                             <ul className="space-y-1 text-[10px] text-[#888]">
                               <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> AI Models: Claude, Gemini, Groq, OpenAI</li>
@@ -9087,31 +9064,6 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                               <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Clone: Firecrawl + design token extraction</li>
                             </ul>
                           </div>
-
-                          {/* Active Jarvis Plan */}
-                          {jarvisPlan && (
-                            <div className="p-3 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-[10px] font-medium text-white">Current Plan</span>
-                                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400">
-                                  {jarvisPlan.completedTasks}/{jarvisPlan.totalTasks}
-                                </span>
-                              </div>
-                              <p className="text-[10px] text-[#888] mb-2">{jarvisPlan.goal.slice(0, 80)}</p>
-                              <div className="space-y-1">
-                                {jarvisPlan.tasks.slice(0, 5).map((task) => (
-                                  <div key={task.id} className="flex items-center gap-1.5 text-[9px]">
-                                    <span>{task.status === 'completed' ? '✅' : task.status === 'running' ? '⚡' : task.status === 'failed' ? '❌' : '○'}</span>
-                                    <span className={task.status === 'completed' ? 'text-[#555] line-through' : task.status === 'running' ? 'text-orange-400' : 'text-[#888]'}>{task.description.slice(0, 50)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                              {/* Progress bar */}
-                              <div className="mt-2 h-1 rounded-full bg-[#222] overflow-hidden">
-                                <div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-red-500 transition-all" style={{ width: `${jarvisPlan.totalTasks > 0 ? (jarvisPlan.completedTasks / jarvisPlan.totalTasks) * 100 : 0}%` }} />
-                              </div>
-                            </div>
-                          )}
 
                           {/* Subsystem Quick Actions */}
                           <div className="grid grid-cols-3 gap-1.5">
@@ -9134,13 +9086,13 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                           </div>
                           <div className={`p-2 rounded-lg border text-center ${claudeCodeMode ? 'border-orange-500/30 bg-orange-500/5' : 'border-[#222] bg-[#1a1a1a]'}`}>
                             <div className={`text-[10px] font-medium ${claudeCodeMode ? 'text-orange-400' : 'text-[#555]'}`}>Jarvis Brain</div>
-                            <div className="text-[9px] text-[#666] mt-0.5">{claudeCodeMode ? '19 Systems' : 'Off'}</div>
+                            <div className="text-[9px] text-[#666] mt-0.5">{claudeCodeMode ? 'Active' : 'Off'}</div>
                           </div>
                         </div>
                         {researchMode && claudeCodeMode && (
                           <div className="p-2 rounded-lg bg-gradient-to-r from-violet-500/10 to-orange-500/10 border border-[#333] text-center">
                             <span className="text-[10px] font-medium bg-gradient-to-r from-violet-400 to-orange-400 bg-clip-text text-transparent">🧠 JARVIS GOD MODE</span>
-                            <p className="text-[9px] text-[#666] mt-0.5">Research-enhanced + 19 subsystem orchestration</p>
+                            <p className="text-[9px] text-[#666] mt-0.5">Research-enhanced orchestration</p>
                           </div>
                         )}
                       </div>
