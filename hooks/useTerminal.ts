@@ -515,11 +515,127 @@ export function useTerminal(options: UseTerminalOptions) {
     setTerminalLines(prev => [...prev, `${cmd.split(' ')[0]}: command not found. Type 'help' for available commands.`]);
   }, [installedPackages, gitStaged, gitCommits, integrationKeys, projectFiles, webContainer, scaffoldFrameworkProject, runAICodeReview, selectedFile, dbActiveConnection, setDbSqlInput, setDbViewMode, setShowBackendGenerator, setActiveTab, setProjectFiles, setSelectedFile, setOpenTabs, terminalHistory]);
 
+  // ── Claude Code Terminal Mode ──
+  const [claudeCodeMode, setClaudeCodeMode] = useState(false);
+  const [isClaudeCodeStreaming, setIsClaudeCodeStreaming] = useState(false);
+
+  const runClaudeCodeCommand = useCallback(async (cmd: string) => {
+    if (!cmd.trim()) return;
+    setTerminalHistory(prev => [...prev, cmd]);
+    setHistoryIdx(-1);
+    setTerminalInput('');
+    setTerminalLines(prev => [...prev, '⚡ ' + cmd]);
+    setTerminalLines(prev => [...prev, '🧠 Analyzing...']);
+    setIsClaudeCodeStreaming(true);
+
+    try {
+      const res = await fetch('/api/claude-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'claude-code-terminal',
+          prompt: cmd,
+          projectFiles: Object.fromEntries(
+            Object.entries(projectFiles).slice(0, 30).map(([k, v]) => [k, typeof v === 'string' ? v : (v as { content: string }).content || ''])
+          ),
+          terminalHistory: terminalHistory.slice(-10),
+        }),
+        signal: AbortSignal.timeout(120000),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Request failed' }));
+        setTerminalLines(prev => [...prev, `❌ ${data.error || 'Request failed'}`]);
+        return;
+      }
+
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) { setTerminalLines(prev => [...prev, '❌ No response stream']); return; }
+
+      let fullResponse = '';
+      let buffer = '';
+      setTerminalLines(prev => prev.filter(l => l !== '🧠 Analyzing...'));
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6);
+          if (payload === '[DONE]') break;
+          try {
+            const data = JSON.parse(payload);
+            if (data.text) fullResponse += data.text;
+          } catch { continue; }
+        }
+      }
+
+      // Process Claude Code response — extract actions
+      if (fullResponse) {
+        // Extract <<EXPLAIN>> blocks for terminal output
+        const explainRegex = /<<EXPLAIN>>([\s\S]*?)<<\/EXPLAIN>>/g;
+        let match;
+        while ((match = explainRegex.exec(fullResponse)) !== null) {
+          const explanation = match[1].trim();
+          for (const line of explanation.split('\n')) {
+            setTerminalLines(prev => [...prev, `  ${line}`]);
+          }
+        }
+
+        // Extract <<FILE:path>> blocks → create files in project
+        const fileRegex = /<<FILE:([^>]+)>>([\s\S]*?)<<\/FILE>>/g;
+        let fileCount = 0;
+        while ((match = fileRegex.exec(fullResponse)) !== null) {
+          const filePath = match[1].trim();
+          const content = match[2];
+          setProjectFiles(prev => ({
+            ...prev,
+            [filePath]: { content, language: detectLanguage(filePath) },
+          }));
+          setTerminalLines(prev => [...prev, `  📄 Created: ${filePath}`]);
+          fileCount++;
+        }
+
+        // Extract <<TERMINAL:cmd>> blocks → execute commands
+        const termRegex = /<<TERMINAL:([^>]+)>>/g;
+        while ((match = termRegex.exec(fullResponse)) !== null) {
+          const termCmd = match[1].trim();
+          setTerminalLines(prev => [...prev, `  ▶ Executing: ${termCmd}`]);
+          // Execute the command through the normal terminal pipeline
+          runTerminalCommand(termCmd);
+        }
+
+        if (fileCount > 0) {
+          setTerminalLines(prev => [...prev, `✅ ${fileCount} file(s) created/updated`]);
+        }
+
+        // If no structured actions found, display the raw response
+        if (!fullResponse.includes('<<FILE:') && !fullResponse.includes('<<EXPLAIN>>') && !fullResponse.includes('<<TERMINAL:')) {
+          for (const line of fullResponse.split('\n').slice(0, 30)) {
+            setTerminalLines(prev => [...prev, `  ${line}`]);
+          }
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setTerminalLines(prev => [...prev, `❌ ${msg}`]);
+    } finally {
+      setIsClaudeCodeStreaming(false);
+    }
+  }, [projectFiles, terminalHistory, runTerminalCommand, setProjectFiles]);
+
   return {
     terminalInput, setTerminalInput,
     terminalHistory, historyIdx, setHistoryIdx,
     terminalEndRef, terminalInputRef,
     installedPackages, gitCommits, gitStaged,
     runTerminalCommand,
+    // Claude Code Mode
+    claudeCodeMode, setClaudeCodeMode,
+    isClaudeCodeStreaming, runClaudeCodeCommand,
   };
 }

@@ -31,7 +31,7 @@ export default function HomePage() {
   const {
     abMode, abModelB, abResultB, abStreaming, activeTab, attachedImages, autoFixEnabled, BREAKPOINT_SIZES,
     breakpointTestActive, breakpointTestIdx, browser21stInputRef, browser21stLoading, browser21stQuery,
-    browser21stResults, capturePreviewScreenshot, chatDragRef, chatEndRef, chatWidth, clonedHtml, cloneError,
+    browser21stResults, capturePreviewScreenshot, chatDragRef, chatEndRef, chatWidth, claudeCodeMode, clonedHtml, cloneError,
     cloneProgress, cloneUrl, cloneWebsite, closeTab, codeBlocks, collabRoomId, collabUsers, connectDatabase,
     copyPreviewAsImage, copyPreviewHtml, createNewFile, createProject, currentProjectId, dbActiveConnection,
     dbEngineRef, dbQueryHistory, dbQueryResult, dbQueryRunning, dbSchema, dbSchemaLoading, dbSqlInput, dbViewMode,
@@ -41,14 +41,14 @@ export default function HomePage() {
     buildFileTree, CodeBlock, gridFlexDebugActive, handleDragLeave, handleDragOver, handleDrop, handleImageSelect, hasContent, hasPreviewContent,
     historyIdx, hoveredImage, ideCountdown, ideError, ideLoading, ideServiceId, ideStatus, ideUrl, iframeRef,
     inject21stComponent, injecting21stComponent, input, integrationKeys, isCloning, isDeploying, isDragOver,
-    isEditMode, isExplaining, isFileModified, isLandscape, isRefining, isResearching, isStreaming, isStripeLoading,
+    isClaudeCodeStreaming, isEditMode, isExplaining, isFileModified, isLandscape, isRefining, isResearching, isStreaming, isStripeLoading,
     isSupabaseLoading, landingFileInputRef, landingInput, landingTextareaRef, layoutDebugActive, messages,
     minimapEnabled, model, monacoEditorRef, newConversation, newFileInputRef, newFileName, openFile, openPreviewNewTab,
     openTabs, outputFramework, performResearch, pickedColor, previewDarkMode, previewHtml, previewLoading, previewZoom,
     projectFiles, projects, refineClone, refineFeedback, refreshPreview, removeImage, renameInputRef, renameProjectId,
     renameProjectName, renameTarget, renameValue, researchContext, researchError, researchMode, researchQuery,
     researchResults, runA11yAudit, runDatabaseQuery, runPerfAudit, runSchemaTemplate, runSupabaseQuery,
-    runTerminalCommand, runtimeErrors, sandboxDb, sandboxDbTable, sandboxEmail, sandboxEmailForm, sandboxEmailLog,
+    runTerminalCommand, runClaudeCodeCommand, runtimeErrors, sandboxDb, sandboxDbTable, sandboxEmail, sandboxEmailForm, sandboxEmailLog,
     sandboxMsg, sandboxMsgForm, sandboxMsgLog, sandboxPay, saveIntegrationKey, search21stComponents, selectedFile,
     selectedModel, selectPromptData, selectPromptInput, selectPromptLoading, selectPromptRef, sendMessage, sendPrompt,
     sendRealEmail, sendRealMessage, sendToAI, setAbMode, setAbModelB, setAbResultB, setActiveTab, setAutoFixEnabled,
@@ -65,7 +65,7 @@ export default function HomePage() {
     setSeoOgImage, setSeoTitle, setShowBackendGenerator, setShowCloneModal, setShowModelMenu, setShowStitchPanel,
     setShowTemplates, setShowTestRunner, setSplitFile, setStripeBalance, setStripeError, setStripeProducts,
     setSupabaseError, setSupabaseResult, setSupabaseTable, setSupabaseUrl, setTabContextMenu, setTerminalInput,
-    setTerminalLines, setView, setWordWrapEnabled, shareProjectUrl, showChat, showCloneModal, showDiffView,
+    setClaudeCodeMode, setTerminalLines, setView, setWordWrapEnabled, shareProjectUrl, showChat, showCloneModal, showDiffView,
     showModelMenu, showStitchPanel, showToast, smartSuggestions, splitFile, stopClone, stopStream, streamingChars,
     streamStartTime, stripeBalance, stripeError, stripeProducts, submitSelectPrompt, supabaseError, supabaseResult,
     supabaseTable, supabaseUrl, switchProject, tabContextMenu, termDragRef, terminalEndRef, terminalHeight,
@@ -177,7 +177,7 @@ export default function HomePage() {
           </div>
 
           {/* Terminal */}
-          <TerminalSection {...{ terminalHeight, termDragRef, runtimeErrors, setRuntimeErrors, autoFixEnabled, setAutoFixEnabled, webContainer, outputFramework, setOutputFramework, setShowTestRunner, fixRuntimeError, isStreaming, terminalLines, setTerminalLines, terminalInput, setTerminalInput, runTerminalCommand, terminalHistory, historyIdx, setHistoryIdx, terminalInputRef, terminalEndRef }} />
+          <TerminalSection {...{ terminalHeight, termDragRef, runtimeErrors, setRuntimeErrors, autoFixEnabled, setAutoFixEnabled, webContainer, outputFramework, setOutputFramework, setShowTestRunner, fixRuntimeError, isStreaming, terminalLines, setTerminalLines, terminalInput, setTerminalInput, runTerminalCommand, terminalHistory, historyIdx, setHistoryIdx, terminalInputRef, terminalEndRef, claudeCodeMode, setClaudeCodeMode, runClaudeCodeCommand, isClaudeCodeStreaming }} />
         </div>
       </div>
 

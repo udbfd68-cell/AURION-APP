@@ -19,7 +19,8 @@ import {
   detectSubsystems,
 } from '@/lib/claude-code-engine';
 
-import { buildSmartSystemPrompt } from '@/lib/system-prompts';
+import { buildSmartSystemPrompt, buildBrainEnhancedPrompt } from '@/lib/system-prompts';
+import { buildTerminalModePrompt, analyzePrompt } from '@/lib/claude-code-brain';
 import { claudeCodeSchema } from '@/lib/api-schemas';
 import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
 import { RATE_LIMITS } from '@/lib/rate-limiter';
@@ -154,8 +155,8 @@ export async function POST(req: Request) {
 
         if (calls.length > 0) await Promise.allSettled(calls);
 
-        // Build system prompt (80K budget)
-        const systemPrompt = buildSmartSystemPrompt(safePrompt, 80000)
+        // Build system prompt with Claude Code Brain intelligence (80K budget)
+        const systemPrompt = buildBrainEnhancedPrompt(safePrompt, 80000)
           + (subsystemResults.length > 0 ? '\n\n' + subsystemResults.join('\n\n') : '');
 
         // Build user content with budget
@@ -173,6 +174,45 @@ export async function POST(req: Request) {
           userContent,
           messages: body.messages,
           images: body.images,
+        });
+      }
+
+      /* ── Brain Analyze: Pre-analyze prompt → return analysis + plan (no generation) ── */
+      case 'brain-analyze': {
+        const { prompt } = body;
+        if (!validatePrompt(prompt)) {
+          return Response.json({ error: 'Missing prompt' }, { status: 400 });
+        }
+        const analysis = analyzePrompt(sanitizeForPrompt(prompt!));
+        return Response.json({
+          success: true,
+          data: {
+            domains: analysis.domains.slice(0, 8),
+            complexity: analysis.complexity,
+            executionPlan: analysis.executionPlan,
+            qualityGates: analysis.qualityGates,
+          },
+        });
+      }
+
+      /* ── Claude Code Terminal: Natural language → actions ── */
+      case 'claude-code-terminal': {
+        const { prompt, model = MAMMOTH_KEY ? 'claude-sonnet-4-20250514' : 'gemini-2.5-pro' } = body;
+        if (!validatePrompt(prompt)) {
+          return Response.json({ error: 'Missing prompt' }, { status: 400 });
+        }
+
+        const safeTermPrompt = sanitizeForPrompt(prompt!);
+        const projectFiles = (body as unknown as Record<string, unknown>).projectFiles as Record<string, string> || {};
+        const terminalHistory = (body as unknown as Record<string, unknown>).terminalHistory as string[] || [];
+
+        const terminalSystemPrompt = buildTerminalModePrompt(projectFiles, terminalHistory);
+        const analysis = analyzePrompt(safeTermPrompt);
+
+        return await streamToModel({
+          model,
+          systemPrompt: terminalSystemPrompt + '\n\n' + analysis.skillContext.slice(0, 3000),
+          userContent: analysis.enhancedPrompt,
         });
       }
 

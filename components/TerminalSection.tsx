@@ -28,6 +28,10 @@ export interface TerminalSectionProps {
   setHistoryIdx: (v: number) => void;
   terminalInputRef: React.RefObject<HTMLInputElement | null>;
   terminalEndRef: React.RefObject<HTMLDivElement | null>;
+  claudeCodeMode?: boolean;
+  setClaudeCodeMode?: (v: boolean) => void;
+  runClaudeCodeCommand?: (cmd: string) => void;
+  isClaudeCodeStreaming?: boolean;
 }
 
 const TerminalSection = React.memo(function TerminalSection(props: TerminalSectionProps) {
@@ -40,6 +44,7 @@ const TerminalSection = React.memo(function TerminalSection(props: TerminalSecti
     terminalLines, setTerminalLines, terminalInput, setTerminalInput,
     runTerminalCommand, terminalHistory, historyIdx, setHistoryIdx,
     terminalInputRef, terminalEndRef,
+    claudeCodeMode, setClaudeCodeMode, runClaudeCodeCommand, isClaudeCodeStreaming,
   } = props;
 
   return (
@@ -89,6 +94,10 @@ const TerminalSection = React.memo(function TerminalSection(props: TerminalSecti
             setHistoryIdx={setHistoryIdx}
             terminalInputRef={terminalInputRef}
             terminalEndRef={terminalEndRef}
+            claudeCodeMode={claudeCodeMode}
+            setClaudeCodeMode={setClaudeCodeMode}
+            runClaudeCodeCommand={runClaudeCodeCommand}
+            isClaudeCodeStreaming={isClaudeCodeStreaming}
           />
         )}
       </div>

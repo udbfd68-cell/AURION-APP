@@ -23,6 +23,7 @@ import { MOTIONSITE_LIBRARY } from './motionsite-templates';
 import { UX_GUIDELINES } from './ui-ux-pro-max';
 import { AWWWARDS_SYSTEM_PROMPT, LOTTIE_AND_RIVE, ADVANCED_GLSL_TECHNIQUES } from './awwwards-engine';
 import { CREATIVE_STUDIO_TOOLKIT_PROMPT } from './creative-studio-toolkit';
+import { analyzePrompt } from './claude-code-brain';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1 — CORE IDENTITY & ACTION SYSTEM
@@ -2325,6 +2326,35 @@ export function buildSmartSystemPrompt(userPrompt: string, maxChars: number = 80
   }
 
   return parts.join('\n');
+}
+
+/**
+ * Build a BRAIN-ENHANCED system prompt — Claude Code intelligence layer.
+ * Detects domains from user prompt → injects relevant skill knowledge → adds quality gates.
+ * This is what makes Aurion's output Claude Code-quality.
+ */
+export function buildBrainEnhancedPrompt(userPrompt: string, maxChars: number = 80000): string {
+  const analysis = analyzePrompt(userPrompt);
+
+  // Start with the smart system prompt
+  const basePrompt = buildSmartSystemPrompt(userPrompt, maxChars - 4000);
+
+  // Add Claude Code brain layer
+  const brainLayer = [
+    '\n# CLAUDE CODE BRAIN — ACTIVE',
+    `Complexity: ${analysis.complexity} | Domains: ${analysis.domains.slice(0, 5).map((d: { domain: string }) => d.domain).join(', ')}`,
+    '',
+    '## EXECUTION PLAN',
+    analysis.executionPlan,
+    '',
+    '## QUALITY GATES (must ALL pass)',
+    ...analysis.qualityGates.map((g: string) => `✓ ${g}`),
+    '',
+    '## SKILL KNOWLEDGE (applied best practices)',
+    analysis.skillContext.slice(0, 3000),
+  ].join('\n');
+
+  return basePrompt + brainLayer;
 }
 
 /**

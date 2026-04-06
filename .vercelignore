@@ -1,0 +1,8 @@
+# Exclude from Vercel deployment
+.agents/
+_backup/
+clone_debug.txt
+clone_debug2.txt
+test_result.txt
+claude_code_zai_env.sh
+*.log

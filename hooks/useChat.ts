@@ -71,6 +71,15 @@ export function useChat(options: UseChatOptions) {
   // Attached images
   const [attachedImages, setAttachedImages] = useState<{ data: string; type: string; name: string }[]>([]);
 
+  // Claude Code Brain analysis state
+  const [brainAnalysis, setBrainAnalysis] = useState<{
+    domains: { domain: string; confidence: number }[];
+    complexity: string;
+    executionPlan: string;
+    qualityGates: string[];
+  } | null>(null);
+  const [brainAnalyzing, setBrainAnalyzing] = useState(false);
+
   const extractGenMetadata = useCallback((html: string): { font?: string; accent?: string; template?: string } => {
     const meta: { font?: string; accent?: string; template?: string } = {};
     const fontImport = html.match(/fonts\.googleapis\.com\/css2?\?family=([^&"']+)/);
@@ -193,6 +202,22 @@ export function useChat(options: UseChatOptions) {
 
     const controller = new AbortController();
     abortRef.current = controller;
+
+    // Claude Code Brain: Pre-analyze the prompt (non-blocking, fast)
+    setBrainAnalyzing(true);
+    try {
+      const brainRes = await fetch('/api/claude-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'brain-analyze', prompt: text.trim() }),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (brainRes.ok) {
+        const brainData = await brainRes.json();
+        if (brainData?.data) setBrainAnalysis(brainData.data);
+      }
+    } catch { /* non-blocking — brain analysis is optional */ }
+    setBrainAnalyzing(false);
 
     const ctx = buildWorkspaceContext();
     let directResearchResult: string | undefined;
@@ -379,6 +404,8 @@ export function useChat(options: UseChatOptions) {
     streamingChars, streamStartTime,
     // Images
     attachedImages, setAttachedImages,
+    // Claude Code Brain
+    brainAnalysis, brainAnalyzing,
     // Refs
     autoFixInFlightRef,
     // Actions
