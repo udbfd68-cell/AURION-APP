@@ -175,8 +175,6 @@ export default function HomePage() {
   const [researchError, setResearchError] = useState<string | null>(null);
   const [showResearchPanel, setShowResearchPanel] = useState(false);
   const [researchContext, setResearchContext] = useState<string>('');
-  const [claudeCodeMode, setClaudeCodeMode] = useState(true);
-  const [jarvisSubsystems, setJarvisSubsystems] = useState<string[]>([]);
 
   // Perform NotebookLM research
   const performResearch = useCallback(async (query: string, urls: string[] = []) => {
@@ -3987,13 +3985,9 @@ ${code}
       parts.push('Adapt layout patterns, component structure, and visual approach from these Stitch designs.');
       parts.push('[/STITCH DESIGN REFERENCE]');
     }
-    // Workspace context (no theater prompt injection)
-    if (claudeCodeMode && jarvisSubsystems.length > 0) {
-      parts.push(`[Active subsystems: ${jarvisSubsystems.join(', ')}]`);
-    }
     parts.push('[/WORKSPACE STATE]');
     return parts.join('\n');
-  }, [activeTab, previewHtml, clonedHtml, cloneUrl, codeBlocks, selectedModel, showTerminal, terminalLines, integrationKeys, projectFiles, selectedFile, deviceMode, runtimeErrors, outputFramework, researchMode, researchContext, claudeCodeMode, jarvisSubsystems, generationHistory, stitchScreens]);
+  }, [activeTab, previewHtml, clonedHtml, cloneUrl, codeBlocks, selectedModel, showTerminal, terminalLines, integrationKeys, projectFiles, selectedFile, deviceMode, runtimeErrors, outputFramework, researchMode, researchContext, generationHistory, stitchScreens]);
 
   /* ── Send message & stream response ── */
   const streamToAssistant = useCallback(async (
@@ -4068,7 +4062,7 @@ ${code}
       }
     }
     return accumulatedText;
-  }, [claudeCodeMode, researchContext]);
+  }, [researchContext]);
 
   // Extract generation metadata from AI output for memory
   const extractGenMetadata = useCallback((html: string): { font?: string; accent?: string; template?: string } => {
@@ -4201,22 +4195,6 @@ ${code}
     }
 
     try {
-      // Pre-analyze: detect which subsystems the prompt needs
-      try {
-        const analyzeRes = await fetch('/api/claude-code', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'jarvis-analyze',
-            prompt: text,
-          }),
-        });
-        if (analyzeRes.ok) {
-          const { data } = await analyzeRes.json();
-          if (data?.subsystems) setJarvisSubsystems(data.subsystems);
-        }
-      } catch { /* non-blocking */ }
-
       const generatedOutput = await streamToAssistant(allMessages, assistantMsg.id, useModelId, controller.signal, imgs, directResearchResult);
 
       // ── Quality Gates + Auto-Continue (REAL post-generation validation) ──
@@ -4335,7 +4313,7 @@ ${code}
         return prev;
       });
     }
-  }, [isStreaming, messages, model, streamToAssistant, buildWorkspaceContext, abMode, abModelB, outputFramework, recordGeneration, claudeCodeMode, activeTab, deviceMode]);
+  }, [isStreaming, messages, model, streamToAssistant, buildWorkspaceContext, abMode, abModelB, outputFramework, recordGeneration, activeTab, deviceMode]);
 
   const sendMessage = useCallback(() => {
     const text = input.trim();
@@ -7154,13 +7132,11 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                           <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
                         </button>
                       )}
-                      {claudeCodeMode && (
-                        <button onClick={() => setShowResearchPanel(true)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/30 text-[10px] text-orange-400 hover:bg-orange-500/20 transition-all" title="Jarvis Brain Active — Click for Status">
+                      <button onClick={() => setShowResearchPanel(true)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/30 text-[10px] text-orange-400 hover:bg-orange-500/20 transition-all" title="Jarvis Brain Active — Click for Status">
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/><circle cx="12" cy="15" r="2"/></svg>
                           <span className="font-medium">JARVIS</span>
                           <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
                         </button>
-                      )}
                     </div>
                     <div className="flex items-center gap-1.5">
                       <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
@@ -7620,11 +7596,6 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
                         <span>NotebookLM Research</span>
                         {researchMode && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />}
-                      </button>
-                      <button onClick={() => { setClaudeCodeMode(p => !p); setShowMoreToolsMenu(false); }} className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors ${claudeCodeMode ? 'text-orange-400' : 'text-[#999]'}`}>
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/><circle cx="12" cy="15" r="2"/></svg>
-                        <span>Jarvis Brain {claudeCodeMode ? '(Active)' : ''}</span>
-                        {claudeCodeMode && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />}
                       </button>
                       <div className="h-px bg-[#222] my-1" />
                       <button onClick={() => { setShowFeedbackPanel(true); setShowMoreToolsMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#222] transition-colors text-[#999]">
@@ -8960,9 +8931,7 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-orange-400"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/><circle cx="12" cy="15" r="2"/></svg>
                           <span className="text-[11px] text-[#ccc]">Jarvis Brain</span>
                         </div>
-                        <button onClick={() => setClaudeCodeMode(!claudeCodeMode)} className={`w-8 h-4 rounded-full transition-all relative ${claudeCodeMode ? 'bg-orange-500' : 'bg-[#333]'}`}>
-                          <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${claudeCodeMode ? 'left-[18px]' : 'left-0.5'}`} />
-                        </button>
+                        <span className="text-[9px] text-orange-400 font-medium">Active</span>
                       </div>
                     </div>
 
@@ -9045,23 +9014,19 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                       )}
 
                       {/* Jarvis Brain Status */}
-                      {claudeCodeMode && (
                         <div className="mt-4 space-y-2">
-                          <span className="text-[10px] font-medium text-[#888] uppercase tracking-wider">Jarvis Brain — Central Orchestrator</span>
+                          <span className="text-[10px] font-medium text-[#888] uppercase tracking-wider">Orchestrator Status</span>
                           <div className="p-3 rounded-lg bg-gradient-to-br from-orange-500/5 to-red-500/5 border border-orange-500/20">
                             <div className="flex items-center gap-2 mb-2">
                               <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
-                              <span className="text-[11px] text-orange-400 font-medium">🧠 Jarvis Active{jarvisSubsystems.length > 0 ? ` — ${jarvisSubsystems.join(', ')}` : ''}</span>
+                              <span className="text-[11px] text-orange-400 font-medium">🧠 Jarvis Active</span>
                             </div>
                             <ul className="space-y-1 text-[10px] text-[#888]">
-                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> AI Models: Claude, Gemini, Groq, OpenAI</li>
-                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Design: Stitch, 21st.dev, 67 styles, 96 palettes</li>
-                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Components: ReactBits 135+, templates 22+</li>
-                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Research: NotebookLM deep analysis</li>
-                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Media: LTX Video, Gemini Images</li>
-                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Quality: 9 gates, smart retry, 128K output</li>
-                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Deploy: Vercel, GitHub, Terminal</li>
-                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Clone: Firecrawl + design token extraction</li>
+                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Multi-model routing (auto-fallback)</li>
+                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Quality gate + post-processing</li>
+                              <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Auto-continue on truncation</li>
+                              <li className="flex items-center gap-1.5"><span className={researchMode ? 'text-emerald-400' : 'text-[#555]'}>{researchMode ? '✓' : '○'}</span> NotebookLM research {researchMode ? '' : '(off)'}</li>
+                              <li className="flex items-center gap-1.5"><span className={Object.keys(integrationKeys).length > 0 ? 'text-emerald-400' : 'text-[#555]'}>{Object.keys(integrationKeys).length > 0 ? '✓' : '○'}</span> Integrations ({Object.keys(integrationKeys).length} configured)</li>
                             </ul>
                           </div>
 
@@ -9074,7 +9039,6 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                             ))}
                           </div>
                         </div>
-                      )}
 
                       {/* Integration Status */}
                       <div className="mt-4 space-y-2">
@@ -9084,12 +9048,12 @@ Task: Convert this component to pure HTML with Tailwind CDN classes (no JSX, no 
                             <div className={`text-[10px] font-medium ${researchMode ? 'text-violet-400' : 'text-[#555]'}`}>NotebookLM</div>
                             <div className="text-[9px] text-[#666] mt-0.5">{researchMode ? 'Active' : 'Off'}</div>
                           </div>
-                          <div className={`p-2 rounded-lg border text-center ${claudeCodeMode ? 'border-orange-500/30 bg-orange-500/5' : 'border-[#222] bg-[#1a1a1a]'}`}>
-                            <div className={`text-[10px] font-medium ${claudeCodeMode ? 'text-orange-400' : 'text-[#555]'}`}>Jarvis Brain</div>
-                            <div className="text-[9px] text-[#666] mt-0.5">{claudeCodeMode ? 'Active' : 'Off'}</div>
+                          <div className="p-2 rounded-lg border text-center border-orange-500/30 bg-orange-500/5">
+                            <div className="text-[10px] font-medium text-orange-400">Jarvis Brain</div>
+                            <div className="text-[9px] text-[#666] mt-0.5">Active</div>
                           </div>
                         </div>
-                        {researchMode && claudeCodeMode && (
+                        {researchMode && (
                           <div className="p-2 rounded-lg bg-gradient-to-r from-violet-500/10 to-orange-500/10 border border-[#333] text-center">
                             <span className="text-[10px] font-medium bg-gradient-to-r from-violet-400 to-orange-400 bg-clip-text text-transparent">🧠 JARVIS GOD MODE</span>
                             <p className="text-[9px] text-[#666] mt-0.5">Research-enhanced orchestration</p>

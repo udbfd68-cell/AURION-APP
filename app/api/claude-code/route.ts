@@ -77,19 +77,6 @@ export async function POST(req: Request) {
         });
       }
 
-      /* ── Analyze: Detect which subsystems a prompt needs ── */
-      case 'jarvis-analyze': {
-        const { prompt } = body;
-        if (!validatePrompt(prompt)) {
-          return Response.json({ error: 'Missing prompt' }, { status: 400 });
-        }
-        const subsystems = detectSubsystems(prompt!);
-        return Response.json({
-          success: true,
-          data: { subsystems },
-        });
-      }
-
       /* ── Execute: Full generation with real subsystem calls ── */
       case 'jarvis-execute': {
         const {

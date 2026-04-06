@@ -1,23 +1,15 @@
 ﻿/**
- * Claude Code Intelligence Engine v4.0 — REAL, No Theater
+ * Claude Code Intelligence Engine v4.2 — REAL, No Theater
  * 
- * What this file does (honestly):
+ * What this file does:
  * - Error classification + smart retry with exponential backoff
- * - Parallel execution with error isolation
+ * - Parallel execution with error isolation (used by research-orchestrator)
  * - HTML compression for prompt injection
  * - Prompt budget management
- * - Output quality validation with REAL checks + severity scores
+ * - Output quality validation with 14 real checks + severity scores
  * - Post-processing pipeline (auto-fix broken HTML)
- * - Request analysis via keyword matching (honest: it's regex, not AI)
- * - Subsystem capability registry
+ * - Subsystem detection (notebooklm, stitch)
  * - Continuation prompt for truncated output
- * 
- * What was REMOVED (was dead code / theater):
- * - Ruflo Swarm (~600 lines): executeSwarm, calculateConsensus, runCheckpoint, 
- *   buildSwarmPrompt, patternMemory, recordPattern — NEVER CALLED from any route
- * - 10 "virtual agents" — were JSON objects injected as text, not separate LLM calls
- * - "Q-Learning routing" — was if/else on keyword counts
- * - "Pattern memory" — in-memory array, always empty on serverless cold starts
  */
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -458,7 +450,8 @@ export function detectSubsystems(prompt: string): ActiveSubsystem[] {
     result.push('notebooklm');
   }
 
-  if (/design|ui|ux|layout|wireframe|mockup|prototype|screen/i.test(lower)) {
+  // Only trigger Stitch on explicit requests — "design" and "ui" are too broad
+  if (/stitch|wireframe|mockup|prototype|design.?system|figma/i.test(lower)) {
     result.push('stitch');
   }
 

@@ -2423,19 +2423,6 @@ RESEARCH INTEGRATION RULES:
 [/NOTEBOOKLM RESEARCH CONTEXT]`;
 }
 
-export const PRE_DELIVERY_CHECKLIST = `
-## Pre-Delivery Checklist
-[ ] Colors match exactly (hex values from tokens)
-[ ] Fonts loaded (Google Fonts @import, correct weights)
-[ ] Spacing consistent (section padding, margins, gaps)
-[ ] All hover/focus/active states with 200-300ms transitions
-[ ] Responsive: 375px/768px/1024px/1440px
-[ ] No broken images, links work, navigation functional
-[ ] Semantic HTML5 + ARIA attributes + alt text
-[ ] Custom scrollbar + ::selection color
-[ ] Film grain overlay + scroll progress bar
-`;
-
 // Re-export clone prompt builder for backward compat
 export interface ClonePromptData {
   url: string;
