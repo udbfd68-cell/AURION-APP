@@ -1,5 +1,4 @@
 # Exclude from Vercel deployment
-.agents/
 _backup/
 clone_debug.txt
 clone_debug2.txt

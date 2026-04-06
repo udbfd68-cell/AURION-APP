@@ -1,5 +1,5 @@
-﻿/**
- * Scrape API Route — Firecrawl v2 with basic fetch fallback
+/**
+ * Scrape API Route Ã¢â‚¬â€ Firecrawl v2 with basic fetch fallback
  * If Firecrawl fails or is not configured, falls back to a direct fetch.
  *
  * Enhanced with Claude Code patterns:
@@ -47,7 +47,7 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 export const runtime = 'nodejs';
 export const maxDuration = 45;
 
-/** Fallback: fetch HTML directly when Firecrawl is unavailable — with smart retry */
+/** Fallback: fetch HTML directly when Firecrawl is unavailable Ã¢â‚¬â€ with smart retry */
 async function basicFetch(url: string): Promise<string> {
   return withSmartRetry(
     async () => {
@@ -67,7 +67,7 @@ async function basicFetch(url: string): Promise<string> {
   );
 }
 
-/** Jina Reader: renders JS-heavy pages — with smart retry */
+/** Jina Reader: renders JS-heavy pages Ã¢â‚¬â€ with smart retry */
 async function jinaFetch(url: string): Promise<string> {
   return withSmartRetry(
     async () => {
@@ -87,7 +87,7 @@ async function jinaFetch(url: string): Promise<string> {
   );
 }
 
-/** Jina Reader in markdown mode — with smart retry */
+/** Jina Reader in markdown mode Ã¢â‚¬â€ with smart retry */
 async function jinaMarkdownFetch(url: string): Promise<string> {
   return withSmartRetry(
     async () => {
@@ -126,8 +126,8 @@ function buildFallbackResponse(html: string, url: string) {
   const iconLibraries = detectIconLibrary(html);
   const animationLibraries = detectAnimationLibraries(html);
 
-  // ─── Claude Code pattern: Parallel extraction with error isolation ────
-  // Each extractor runs independently — one failure doesn't break others
+  // --- Claude Code pattern: Parallel extraction with error isolation ----
+  // Each extractor runs independently Ã¢â‚¬â€ one failure doesn't break others
   let interactionModels = {} as ReturnType<typeof extractInteractionModels>;
   let layeredAssets = {} as ReturnType<typeof extractLayeredAssets>;
   let multiStateContent = {} as ReturnType<typeof extractMultiStateContent>;
@@ -149,7 +149,7 @@ function buildFallbackResponse(html: string, url: string) {
   try { hoverTransitions = extractHoverTransitions(styleBlocks); } catch { /* isolated */ }
   try { responsiveBreakpoints = extractResponsiveBreakpoints(styleBlocks); } catch { /* isolated */ }
 
-  // ─── Phase 3: Component specs + design system card (ai-website-cloner pipeline) ────
+  // --- Phase 3: Component specs + design system card (ai-website-cloner pipeline) ----
   let componentSpecs = '';
   let designSystemCard = '';
   try {
@@ -168,7 +168,7 @@ function buildFallbackResponse(html: string, url: string) {
       componentSpecs = buildComponentSpecPrompt(specs);
     }
     designSystemCard = buildDesignSystemCard(tokens, fontArray, bpArray);
-  } catch { /* isolated — never break scrape for spec generation */ }
+  } catch { /* isolated Ã¢â‚¬â€ never break scrape for spec generation */ }
 
   return {
     html: cleaned.slice(0, 300000),
@@ -204,15 +204,15 @@ function buildFallbackResponse(html: string, url: string) {
 }
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // -- Security: Origin validation + Rate limiting --
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.heavy);
   if (rateLimitError) return rateLimitError;
 
-  let body: { url: string; light?: boolean };
+  let body: ReturnType<typeof scrapeSchema.parse>;
   try {
-    body = await req.json();
+    body = scrapeSchema.parse(await req.json());
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid request body' }), {
       status: 400,
@@ -265,7 +265,7 @@ export async function POST(req: NextRequest) {
 
   const apiKey = process.env.FIRECRAWL_API_KEY;
 
-  // â”€â”€ No Firecrawl key â†’ basic fetch + Jina Reader fallback â”€â”€
+  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ No Firecrawl key ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ basic fetch + Jina Reader fallback ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
   // No Firecrawl key: MULTI-STRATEGY parallel fetch
   // Always run basicFetch + Jina HTML + Jina Markdown in parallel
   // This ensures the BEST content for ANY site type (SSR, SPA, static)
@@ -397,7 +397,7 @@ export async function POST(req: NextRequest) {
     ]);
 
     if (scrapeResult.status === 'rejected') {
-      // Firecrawl failed â†’ try basic fetch + Jina enrichment
+      // Firecrawl failed ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ try basic fetch + Jina enrichment
       let html = '';
       try { html = await basicFetch(url); } catch { /* basic fetch failed */ }
       if (getVisibleTextLength(html) < 500) {
@@ -458,7 +458,7 @@ export async function POST(req: NextRequest) {
       }
     } catch { /* continue with inline styles */ }
 
-    // ─── Claude Code pattern: Parallel advanced extraction with error isolation ────
+    // --- Claude Code pattern: Parallel advanced extraction with error isolation ----
     const extractionTasks = [
       { name: 'interactionModels', fn: () => extractInteractionModels(rawSource, enrichedStyleBlocks), critical: false },
       { name: 'layeredAssets', fn: () => extractLayeredAssets(rawSource), critical: false },
@@ -487,7 +487,7 @@ export async function POST(req: NextRequest) {
     const hoverTransitions = extractionMap.get('hoverTransitions')?.value ?? [];
     const responsiveBreakpoints = extractionMap.get('responsiveBreakpoints')?.value ?? [];
 
-    // ─── Phase 3: Component specs + design system card (ai-website-cloner pipeline) ────
+    // --- Phase 3: Component specs + design system card (ai-website-cloner pipeline) ----
     let componentSpecs = '';
     let designSystemCard = '';
     try {

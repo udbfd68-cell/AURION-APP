@@ -5,14 +5,14 @@ import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-uti
 import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const body = await req.json();
+    const body = reactbitsSchema.parse(await req.json());
     const { action, query, name, category } = body;
 
     switch (action) {

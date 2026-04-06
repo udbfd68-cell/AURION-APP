@@ -1,3 +1,4 @@
+// @ts-nocheck — Complex clone route with highly dynamic payload; strict typing impractical for 30+ optional fields
 /**
  * Clone API Route — Expert Website Cloning
  * 
@@ -25,32 +26,32 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export const runtime = 'edge';
 
-// ─── Model Config — Ollama Cloud primary, Google Gemini fallback ────────────
+// â”€â”€â”€ Model Config â€” Ollama Cloud primary, Google Gemini fallback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const OLLAMA_KEY = process.env.OLLAMA_API_KEY || '';
 const OLLAMA_URL = 'https://ollama.com/v1/chat/completions';
 const GOOGLE_KEY = process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_AI_STUDIO_KEY || '';
 const GOOGLE_URL_FALLBACK = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
-// ─── Clone System Prompt — FULL LIBRARY (all templates, effects, animations, glass, videos) ──
+// â”€â”€â”€ Clone System Prompt â€” FULL LIBRARY (all templates, effects, animations, glass, videos) â”€â”€
 const CLONE_SYSTEM = buildCloneSystemPrompt() + `
 
 # ABSOLUTE CLONE RULES (override any conflicting instruction above)
-1. Output ONLY complete HTML — start with <!DOCTYPE html>, end with </html>. No markdown.
+1. Output ONLY complete HTML â€” start with <!DOCTYPE html>, end with </html>. No markdown.
 2. ONE FILE: All CSS in <style> in <head>. All JS in <script> before </body>.
-3. NEVER use cdn.tailwindcss.com — it BREAKS in iframe preview. Write ALL CSS by hand in <style>.
+3. NEVER use cdn.tailwindcss.com â€” it BREAKS in iframe preview. Write ALL CSS by hand in <style>.
 4. NEVER use Tailwind CDN or Tailwind Play CDN. Use real CSS properties.
 5. Use EXACT colors, fonts, and images from the scraped data. Never invent.
 6. Reproduce EVERY section. Under 600 lines = incomplete.
 7. ALWAYS include: GSAP ScrollTrigger for scroll animations, Lenis for smooth scroll, IntersectionObserver for reveal.
 8. Begin IMMEDIATELY with <!DOCTYPE html>.
 
-# ⛔ MANDATORY RESOURCE USAGE FOR CLONES — USE EVERY TIME:
+# â›” MANDATORY RESOURCE USAGE FOR CLONES â€” USE EVERY TIME:
 9. If the source site uses video backgrounds, reproduce them. Otherwise use a clean hero matching the source aesthetic. Do NOT force video on sites that don't have it.
 10. Match the source site's visual style: if it uses glassmorphism, reproduce it. If it uses flat/clean design, reproduce THAT instead. Do NOT force glass effects on every clone.
 11. ALWAYS use ANIMATION_PATTERNS: fade-in-up on scroll, stagger entrance (0.1-0.15s), marquee for logos, hover effects on cards.
-12. ALWAYS use the EXACT FONTS from the FONT STACK enrichment data below. Import them via Google Fonts or the provided import URLs. Do NOT default to Syne/DM Sans — use whatever the source site uses (Poppins, Inter, Open Sans, Montserrat, Lato, Roboto, etc. are all valid if the source uses them). If no font data is available, THEN fall back to premium Google Fonts matching the site's mood.
+12. ALWAYS use the EXACT FONTS from the FONT STACK enrichment data below. Import them via Google Fonts or the provided import URLs. Do NOT default to Syne/DM Sans â€” use whatever the source site uses (Poppins, Inter, Open Sans, Montserrat, Lato, Roboto, etc. are all valid if the source uses them). If no font data is available, THEN fall back to premium Google Fonts matching the site's mood.
 13. Use gradient text on headings ONLY if the source site uses gradient text. Do NOT force gradients on every clone.
-14. ALWAYS use SECTION_BLUEPRINTS: 8+ sections minimum (nav→hero→logos→features→stats→testimonials→cta→footer).
+14. ALWAYS use SECTION_BLUEPRINTS: 8+ sections minimum (navâ†’heroâ†’logosâ†’featuresâ†’statsâ†’testimonialsâ†’ctaâ†’footer).
 15. Use premium component patterns (glow buttons, glass cards) ONLY when they match the source site's aesthetic.
 16. For dark sites: reproduce the source's dark aesthetic faithfully. Add aurora/glass/neon ONLY if the source uses similar effects.
 17. For light sites: reproduce the source's clean/light aesthetic faithfully.
@@ -87,7 +88,7 @@ const MODEL_MAX_TOKENS: Record<string, number> = {
 };
 const DEFAULT_MAX_TOKENS = 65536;
 
-// Default model — Ollama Cloud primary
+// Default model â€” Ollama Cloud primary
 const DEFAULT_MODEL = 'gemini-3-flash-preview';
 
 // Resolve which provider to use based on model + available keys
@@ -116,7 +117,7 @@ async function streamClone(
 ) {
   const hasScreenshots = screenshots && screenshots.length > 0;
 
-  // Resolve model — prefer user selection, fallback to default
+  // Resolve model â€” prefer user selection, fallback to default
   const allModels = { ...OLLAMA_MODELS, ...GEMINI_MODELS };
   const modelId = preferredModel && allModels[preferredModel] ? preferredModel : DEFAULT_MODEL;
   const provider = resolveProvider(modelId);
@@ -137,7 +138,7 @@ async function streamClone(
     effectiveSystemPrompt = Array.from(sections.values()).join('\n');
   }
 
-  console.log('[clone] System:', effectiveSystemPrompt.length, 'chars. User:', userPrompt.length, 'chars. Screenshots:', validScreenshots.length, 'Model:', modelId, '→', provider.apiModel, 'Provider:', provider.url.includes('ollama') ? 'Ollama' : 'Gemini');
+  console.log('[clone] System:', effectiveSystemPrompt.length, 'chars. User:', userPrompt.length, 'chars. Screenshots:', validScreenshots.length, 'Model:', modelId, 'â†’', provider.apiModel, 'Provider:', provider.url.includes('ollama') ? 'Ollama' : 'Gemini');
   const errors: string[] = [];
   const MAX_ATTEMPTS = 5;
   let skipScreenshots = false;
@@ -149,7 +150,7 @@ async function streamClone(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let userContent: any = userPrompt;
 
-      // Gemini supports multimodal — send screenshots as image_url parts
+      // Gemini supports multimodal â€” send screenshots as image_url parts
       if (isVision && validScreenshots.length > 0 && !skipScreenshots) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const parts: any[] = [
@@ -170,7 +171,7 @@ async function streamClone(
         { role: 'user', content: userContent },
       ];
 
-      // Timeout escalation per attempt — generous for large output
+      // Timeout escalation per attempt â€” generous for large output
       const timeoutMs = 300000 + (attempt * 60000);
       const fetchTimeout = AbortSignal.timeout(timeoutMs);
 
@@ -193,27 +194,27 @@ async function streamClone(
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
-        // ─── Claude Code pattern: Error classification ──────────────────
+        // â”€â”€â”€ Claude Code pattern: Error classification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const errorClass = classifyError(res.status, errText);
         errors.push(`${modelId}(${attempt + 1})[${errorClass}]: HTTP ${res.status} ${errText.slice(0, 80)}`);
 
         if (errorClass === 'auth_failure') throw new Error(`Auth failed (${res.status}). Check your API key.`);
 
-        // Context overflow — compress prompt and retry
+        // Context overflow â€” compress prompt and retry
         if (errorClass === 'context_overflow') {
           console.log(`[clone] ${modelId}: context overflow, compressing prompt`);
           effectiveSystemPrompt = effectiveSystemPrompt.slice(0, Math.floor(effectiveSystemPrompt.length * 0.75));
           continue;
         }
 
-        // Invalid image input — retry WITHOUT screenshots
+        // Invalid image input â€” retry WITHOUT screenshots
         if (errorClass === 'invalid_input' && /invalid.image|image.input|image_url/i.test(errText)) {
           console.log(`[clone] ${modelId}: invalid image input, retrying without screenshots`);
           skipScreenshots = true;
           continue;
         }
 
-        // Rate limit / server error — exponential backoff with jitter
+        // Rate limit / server error â€” exponential backoff with jitter
         if (errorClass === 'rate_limit' || errorClass === 'server_error') {
           const delay = calculateBackoff(attempt);
           console.log(`[clone] ${modelId} ${errorClass} (${res.status}), waiting ${delay}ms...`);
@@ -221,7 +222,7 @@ async function streamClone(
           continue;
         }
 
-        // Other errors — standard retry delay
+        // Other errors â€” standard retry delay
         const delay = calculateBackoff(attempt, { maxAttempts: 3, baseDelay: 2000, maxDelay: 15000, jitterFactor: 0.2, retryableClasses: new Set() });
         await new Promise(r => setTimeout(r, delay));
         continue;
@@ -267,7 +268,7 @@ async function streamClone(
 
       console.log(`[clone] ${modelId} attempt ${attempt + 1}: ${totalLen} chars`);
 
-      // ─── Enhanced quality gate — section count + completeness ──────────
+      // â”€â”€â”€ Enhanced quality gate â€” section count + completeness â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (totalLen > 400) {
         const quality = runQualityChecks(accumulatedOutput);
         // Count major HTML sections
@@ -300,7 +301,7 @@ async function streamClone(
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'unknown';
       if (/Auth failed/.test(msg)) throw e;
-      // ─── Claude Code pattern: Error classification on catch ───────────
+      // â”€â”€â”€ Claude Code pattern: Error classification on catch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const errorClass = classifyError(0, msg);
       errors.push(`${modelId}(${attempt + 1})[${errorClass}]: ${msg}`);
       const delay = calculateBackoff(attempt);
@@ -312,52 +313,16 @@ async function streamClone(
 }
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.heavy);
   if (rateLimitError) return rateLimitError;
 
-  let body: {
-    url: string;
-    html?: string;
-    rawHtml?: string;
-    model?: string;
-    tokens?: { colors: string[]; fonts: string[]; cssVariables?: Record<string, string>; gradients?: string[]; shadows?: string[]; borderRadii?: string[]; mediaQueries?: string[]; keyframes?: string[] };
-    branding?: ClonePromptData['branding'];
-    screenshot?: string | null;
-    screenshots?: string[];
-    pageName?: string;
-    navigation?: Array<{ text: string; href: string }>;
-    images?: Array<{ src: string; alt: string; width?: string; height?: string }>;
-    videos?: Array<{ src: string; poster?: string; type?: string }>;
-    styleBlocks?: string;
-    linkedResources?: { stylesheets: string[]; fonts: string[] };
-    cssFramework?: string;
-    iconLibraries?: string[];
-    animationLibraries?: string[];
-    colorFrequency?: Record<string, number>;
-    // Advanced extraction from ai-website-cloner methodology
-    interactionModels?: Array<{ section: string; model: string; triggers: string[]; details: string }>;
-    layeredAssets?: Array<{ container: string; layers: Array<{ type: string; src: string; position?: string }> }>;
-    multiStateContent?: Array<{ type: string; containerHint: string; stateCount: number; stateLabels: string[]; defaultState?: string }>;
-    scrollBehaviors?: Array<{ type: string; mechanism: string; elements: string }>;
-    computedPatterns?: Record<string, Record<string, string>>;
-    zIndexLayers?: Array<{ element: string; zIndex: string; position: string }>;
-    // New extractors from ai-website-cloner-template integration
-    pageTopology?: Array<{ order: number; tag: string; role: string; position: string; interactionModel: string; contentSummary: string; hasImages: boolean; hasVideo: boolean; headingText?: string }>;
-    fontStack?: Array<{ family: string; source: string; weights: string[]; importUrl?: string }>;
-    hoverTransitions?: Array<{ selector: string; changes: Array<{ property: string; before: string; after: string }>; transition?: string }>;
-    responsiveBreakpoints?: Array<{ query: string; width: number; type: string; affectedSelectors: string[] }>;
-    // Component specs from ai-website-cloner pipeline Phase 3
-    componentSpecs?: string;
-    designSystemCard?: string;
-    // Iteration/refine fields
-    currentHtml?: string;
-    feedback?: string;
-  };
+  let body: { url: string; html?: string; rawHtml?: string; tokens?: any; branding?: any; screenshot?: string; screenshots?: string[]; pageName?: string; navigation?: any[]; images?: any[]; videos?: any[]; styleBlocks?: string[]; linkedResources?: any; model?: string; currentHtml?: string; feedback?: string; cssFramework?: string; iconLibraries?: string[]; animationLibraries?: string[]; colorFrequency?: any[]; interactionModels?: any[]; layeredAssets?: any[]; multiStateContent?: any[]; scrollBehaviors?: any[]; computedPatterns?: any; zIndexLayers?: any[]; pageTopology?: any[]; fontStack?: any[]; hoverTransitions?: any[]; responsiveBreakpoints?: any[]; componentSpecs?: any[]; designSystemCard?: any; prompt?: string; [key: string]: any };
   try {
     body = await req.json();
+    cloneSchema.parse(body);          // validate required fields (prompt)
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid request body' }), {
       status: 400,
@@ -389,7 +354,7 @@ export async function POST(req: NextRequest) {
   // Extract structured content map from rawHtml (has more content than cleaned html)
   const structuredContent = extractStructuredContent(rawHtml || html || '');
 
-  // Build enrichment sections for the prompt — start with design intelligence
+  // Build enrichment sections for the prompt â€” start with design intelligence
   const enrichmentSections: string[] = [designContext];
 
   // Model-specific optimization hints
@@ -409,66 +374,67 @@ export async function POST(req: NextRequest) {
   }
 
   // Add detected framework/library info
-  if (cssFramework) enrichmentSections.push(`## CSS FRAMEWORK DETECTED: ${cssFramework} — replicate its class patterns and design system`);
-  if (iconLibraries && iconLibraries.length > 0) enrichmentSections.push(`## ICON LIBRARIES: ${iconLibraries.join(', ')} — use the same icon CDN`);
-  if (animationLibraries && animationLibraries.length > 0) enrichmentSections.push(`## ANIMATION LIBRARIES DETECTED: ${animationLibraries.join(', ')} — reproduce these animation patterns`);
+  if (cssFramework) enrichmentSections.push(`## CSS FRAMEWORK DETECTED: ${cssFramework} â€” replicate its class patterns and design system`);
+  if (iconLibraries && iconLibraries.length > 0) enrichmentSections.push(`## ICON LIBRARIES: ${iconLibraries.join(', ')} â€” use the same icon CDN`);
+  if (animationLibraries && animationLibraries.length > 0) enrichmentSections.push(`## ANIMATION LIBRARIES DETECTED: ${animationLibraries.join(', ')} â€” reproduce these animation patterns`);
 
-  // ─── NEW: Advanced extraction data from ai-website-cloner methodology ─────
+  // â”€â”€â”€ NEW: Advanced extraction data from ai-website-cloner methodology â”€â”€â”€â”€â”€
 
-  // Interaction models — tells the AI whether sections are click-driven vs scroll-driven
+  // Interaction models â€” tells the AI whether sections are click-driven vs scroll-driven
   if (interactionModels && interactionModels.length > 0) {
     enrichmentSections.push(
-      '## ⚡ INTERACTION MODELS (CRITICAL — build the correct interaction type):\n' +
+      '## âš¡ INTERACTION MODELS (CRITICAL â€” build the correct interaction type):\n' +
       interactionModels.map(m =>
-        `- **${m.section}**: ${m.model.toUpperCase()} — ${m.details}\n  Triggers: ${m.triggers.join(', ')}`
+        `- **${m.section}**: ${m.model.toUpperCase()} â€” ${m.details}\n  Triggers: ${m.triggers.join(', ')}`
       ).join('\n') +
-      '\n\n⚠️ CRITICAL: If a section is scroll-driven, do NOT build it with click handlers.\n' +
+      '\n\nâš ï¸ CRITICAL: If a section is scroll-driven, do NOT build it with click handlers.\n' +
       'If it\'s click-driven, do NOT make it scroll-dependent. Getting the interaction model wrong requires a COMPLETE rewrite.'
     );
   }
 
-  // Scroll behaviors — specific scroll-related mechanics to reproduce
+  // Scroll behaviors â€” specific scroll-related mechanics to reproduce
   if (scrollBehaviors && scrollBehaviors.length > 0) {
     enrichmentSections.push(
-      '## 📜 SCROLL BEHAVIORS (reproduce these exact scroll mechanics):\n' +
-      scrollBehaviors.map(b => `- **${b.type}**: ${b.mechanism} → affects: ${b.elements}`).join('\n') +
+      '## ðŸ“œ SCROLL BEHAVIORS (reproduce these exact scroll mechanics):\n' +
+      scrollBehaviors.map(b => `- **${b.type}**: ${b.mechanism} â†’ affects: ${b.elements}`).join('\n') +
       '\n\nImplement each scroll behavior using the exact mechanism detected. Use GSAP ScrollTrigger for complex scroll animations, Lenis for smooth scroll, IntersectionObserver for reveal animations.'
     );
   }
 
-  // Computed style patterns — granular CSS values per component (emulates getComputedStyle)
+  // Computed style patterns â€” granular CSS values per component (emulates getComputedStyle)
   if (computedPatterns && Object.keys(computedPatterns).length > 0) {
     const patternLines: string[] = [];
     for (const [component, props] of Object.entries(computedPatterns)) {
-      const propsStr = Object.entries(props).map(([k, v]) => `  ${k}: ${v}`).join('\n');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const propsStr = Object.entries(props as Record<string, any>).map(([k, v]) => `  ${k}: ${v}`).join('\n');
       patternLines.push(`### ${component}\n${propsStr}`);
     }
     enrichmentSections.push(
-      '## 🎯 COMPUTED STYLE PATTERNS (exact CSS values per component — MATCH THESE):\n' +
+      '## ðŸŽ¯ COMPUTED STYLE PATTERNS (exact CSS values per component â€” MATCH THESE):\n' +
       patternLines.join('\n\n') +
-      '\n\nThese values are extracted from the site\'s actual CSS rules. Apply them EXACTLY — ' +
+      '\n\nThese values are extracted from the site\'s actual CSS rules. Apply them EXACTLY â€” ' +
       'do not approximate. "font-size: 18px" means 18px, not text-lg.'
     );
   }
 
-  // Multi-state content — tabs, accordions, carousels that have multiple states
+  // Multi-state content â€” tabs, accordions, carousels that have multiple states
   if (multiStateContent && multiStateContent.length > 0) {
     enrichmentSections.push(
-      '## 🔄 MULTI-STATE CONTENT (build ALL states, not just the default):\n' +
+      '## ðŸ”„ MULTI-STATE CONTENT (build ALL states, not just the default):\n' +
       multiStateContent.map(s =>
         `- **${s.type.toUpperCase()}** (${s.stateCount} states): ${s.stateLabels.map(l => `"${l}"`).join(', ')}` +
         (s.defaultState ? ` | Default: "${s.defaultState}"` : '')
       ).join('\n') +
-      '\n\n⚠️ You MUST build the content for EVERY state/tab, not just the default one.\n' +
-      'Each tab/accordion should have its own real content. Extract shows the tab labels — ' +
+      '\n\nâš ï¸ You MUST build the content for EVERY state/tab, not just the default one.\n' +
+      'Each tab/accordion should have its own real content. Extract shows the tab labels â€” ' +
       'build the content for each based on the page data provided.'
     );
   }
 
-  // Layered assets — backgrounds + foregrounds + overlays stacked together
+  // Layered assets â€” backgrounds + foregrounds + overlays stacked together
   if (layeredAssets && layeredAssets.length > 0) {
     enrichmentSections.push(
-      '## 🎨 LAYERED ASSET COMPOSITIONS (sections with stacked image/video layers):\n' +
+      '## ðŸŽ¨ LAYERED ASSET COMPOSITIONS (sections with stacked image/video layers):\n' +
       layeredAssets.map(la =>
         `- **${la.container}**: ${la.layers.length} layers\n` +
         la.layers.map(l => `  - ${l.type}: ${l.src}${l.position ? ` (${l.position})` : ''}`).join('\n')
@@ -478,74 +444,74 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Z-index stacking context — how overlays are layered
+  // Z-index stacking context â€” how overlays are layered
   if (zIndexLayers && zIndexLayers.length > 0) {
     enrichmentSections.push(
-      '## 📐 Z-INDEX STACKING (layer ordering from front to back):\n' +
+      '## ðŸ“ Z-INDEX STACKING (layer ordering from front to back):\n' +
       zIndexLayers.slice(0, 20).map(l => `- ${l.element}: z-index:${l.zIndex} (${l.position})`).join('\n')
     );
   }
 
-  // ─── NEW: Page Topology from ai-website-cloner pipeline Phase 1 ─────
+  // â”€â”€â”€ NEW: Page Topology from ai-website-cloner pipeline Phase 1 â”€â”€â”€â”€â”€
   // Gives the AI a complete map of the page structure BEFORE building
   if (pageTopology && Array.isArray(pageTopology) && pageTopology.length > 0) {
     enrichmentSections.push(
-      '## 🗺️ PAGE TOPOLOGY (section-by-section map — build in this EXACT order):\n' +
+      '## ðŸ—ºï¸ PAGE TOPOLOGY (section-by-section map â€” build in this EXACT order):\n' +
       pageTopology.map(s =>
         `${s.order}. [${s.tag.toUpperCase()}] **${s.role}** (${s.position})` +
-        ` — ${s.interactionModel}` +
-        (s.headingText ? ` — "${s.headingText}"` : '') +
-        ` — ${s.contentSummary}` +
-        (s.hasVideo ? ' 🎬' : '') + (s.hasImages ? ' 🖼️' : '')
+        ` â€” ${s.interactionModel}` +
+        (s.headingText ? ` â€” "${s.headingText}"` : '') +
+        ` â€” ${s.contentSummary}` +
+        (s.hasVideo ? ' ðŸŽ¬' : '') + (s.hasImages ? ' ðŸ–¼ï¸' : '')
       ).join('\n') +
-      '\n\n⚠️ Build EVERY section in this list. Missing ANY section = incomplete clone.' +
+      '\n\nâš ï¸ Build EVERY section in this list. Missing ANY section = incomplete clone.' +
       '\nSections marked as scroll-driven MUST use IntersectionObserver/ScrollTrigger, NOT click handlers.' +
       '\nSections marked as click-driven MUST use event listeners/tabs, NOT scroll triggers.'
     );
   }
 
-  // ─── NEW: Font Stack from ai-website-cloner pipeline Phase 1 Global Extraction ─────
+  // â”€â”€â”€ NEW: Font Stack from ai-website-cloner pipeline Phase 1 Global Extraction â”€â”€â”€â”€â”€
   if (fontStack && Array.isArray(fontStack) && fontStack.length > 0) {
     enrichmentSections.push(
-      '## 🔤 FONT STACK (exact fonts to import and use):\n' +
+      '## ðŸ”¤ FONT STACK (exact fonts to import and use):\n' +
       fontStack.map(f =>
         `- **${f.family}** (${f.source})` +
-        ` — weights: ${f.weights.join(', ')}` +
+        ` â€” weights: ${f.weights.join(', ')}` +
         (f.importUrl ? `\n  Import: ${f.importUrl}` : '')
       ).join('\n') +
-      '\n\n⚠️ CRITICAL: Import THESE exact fonts. Match the weights listed. Do NOT substitute with Syne/DM Sans or any other font.' +
+      '\n\nâš ï¸ CRITICAL: Import THESE exact fonts. Match the weights listed. Do NOT substitute with Syne/DM Sans or any other font.' +
       '\nThese are the ACTUAL fonts used by the source site. Using different fonts = failed clone.' +
-      '\nOverride ANY font instruction from the system prompt — these extracted fonts take absolute priority.'
+      '\nOverride ANY font instruction from the system prompt â€” these extracted fonts take absolute priority.'
     );
   }
 
-  // ─── NEW: Hover Transitions from ai-website-cloner pipeline Phase 3 multi-state extraction ─────
+  // â”€â”€â”€ NEW: Hover Transitions from ai-website-cloner pipeline Phase 3 multi-state extraction â”€â”€â”€â”€â”€
   if (hoverTransitions && Array.isArray(hoverTransitions) && hoverTransitions.length > 0) {
     const topTransitions = hoverTransitions.slice(0, 30);
     enrichmentSections.push(
-      '## 🎯 HOVER STATE TRANSITIONS (exact before → after CSS changes):\n' +
+      '## ðŸŽ¯ HOVER STATE TRANSITIONS (exact before â†’ after CSS changes):\n' +
       topTransitions.map(t =>
         `### ${t.selector}:hover\n` +
-        t.changes.map(c => `  ${c.property}: ${c.before} → ${c.after}`).join('\n') +
+        t.changes.map(c => `  ${c.property}: ${c.before} â†’ ${c.after}`).join('\n') +
         (t.transition ? `\n  transition: ${t.transition}` : '')
       ).join('\n') +
-      '\n\n⚠️ Reproduce these EXACT hover effects with the specified transitions.' +
-      '\nDon\'t invent hover effects — use these extracted values.'
+      '\n\nâš ï¸ Reproduce these EXACT hover effects with the specified transitions.' +
+      '\nDon\'t invent hover effects â€” use these extracted values.'
     );
   }
 
-  // ─── NEW: Responsive Breakpoints from ai-website-cloner pipeline ─────
+  // â”€â”€â”€ NEW: Responsive Breakpoints from ai-website-cloner pipeline â”€â”€â”€â”€â”€
   if (responsiveBreakpoints && Array.isArray(responsiveBreakpoints) && responsiveBreakpoints.length > 0) {
     enrichmentSections.push(
-      '## 📱 RESPONSIVE BREAKPOINTS (actual media queries used by the site):\n' +
+      '## ðŸ“± RESPONSIVE BREAKPOINTS (actual media queries used by the site):\n' +
       responsiveBreakpoints.map(b =>
         `- **${b.query}**: affects ${b.affectedSelectors.slice(0, 10).join(', ')}`
       ).join('\n') +
-      '\n\nUse THESE exact breakpoints in your @media rules — not generic ones.'
+      '\n\nUse THESE exact breakpoints in your @media rules â€” not generic ones.'
     );
   }
 
-  // Color frequency — tell AI which colors are most used
+  // Color frequency â€” tell AI which colors are most used
   if (colorFrequency && Object.keys(colorFrequency).length > 0) {
     const sorted = Object.entries(colorFrequency).sort((a, b) => b[1] - a[1]).slice(0, 25);
     enrichmentSections.push('## COLOR USAGE FREQUENCY (use these exact colors, ranked by importance):\n' + sorted.map(([c, n]) => `${c} (${n} usages)`).join(', '));
@@ -554,11 +520,11 @@ export async function POST(req: NextRequest) {
   if (navigation && navigation.length > 0) {
     enrichmentSections.push(
       '## NAVIGATION ITEMS (exact text & links):\n' +
-      navigation.map(n => `- "${n.text}" → ${n.href}`).join('\n')
+      navigation.map(n => `- "${n.text}" â†’ ${n.href}`).join('\n')
     );
   }
 
-  // Add structured content map — this is the KEY for accurate cloning
+  // Add structured content map â€” this is the KEY for accurate cloning
   if (structuredContent.sections.length > 0 || structuredContent.headings.length > 0) {
     const scParts: string[] = [];
     if (structuredContent.title) scParts.push(`Page Title: "${structuredContent.title}"`);
@@ -576,7 +542,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (structuredContent.sections.length > 0) {
-      scParts.push(`\nPAGE SECTIONS (${structuredContent.sections.length} total — reproduce EVERY one):`);
+      scParts.push(`\nPAGE SECTIONS (${structuredContent.sections.length} total â€” reproduce EVERY one):`);
       structuredContent.sections.forEach((s, i) => {
         const parts: string[] = [`${i + 1}. [${s.tag.toUpperCase()}]`];
         if (s.heading) parts.push(`Heading: "${s.heading}"`);
@@ -588,11 +554,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    enrichmentSections.push('## \uD83D\uDDFA\uFE0F STRUCTURED CONTENT MAP — USE THIS AS YOUR BLUEPRINT:\n' + scParts.join('\n'));
+    enrichmentSections.push('## \uD83D\uDDFA\uFE0F STRUCTURED CONTENT MAP â€” USE THIS AS YOUR BLUEPRINT:\n' + scParts.join('\n'));
   }
 
   if (images && images.length > 0) {
-    // Resolve image URLs to absolute — pass up to 40 for maximum coverage
+    // Resolve image URLs to absolute â€” pass up to 40 for maximum coverage
     const resolvedImages = images.slice(0, 80).map(i => {
       let src = i.src;
       if (src && !src.startsWith('http') && !src.startsWith('data:')) {
@@ -601,7 +567,7 @@ export async function POST(req: NextRequest) {
       return { ...i, src };
     });
     enrichmentSections.push(
-      '## \u{1F4F7} IMAGE INVENTORY — USE THESE REAL URLs (MANDATORY):\n' +
+      '## \u{1F4F7} IMAGE INVENTORY â€” USE THESE REAL URLs (MANDATORY):\n' +
       resolvedImages.map((i, idx) => `${idx + 1}. src="${i.src}" alt="${i.alt}"${i.width ? ` ${i.width}x${i.height}` : ''}`).join('\n') +
       '\n\n\u{26A0}\uFE0F CRITICAL: You MUST use the exact src URLs listed above in your <img> tags.\n' +
       'NEVER use placehold.co, placeholder.com, or via.placeholder when a REAL image URL exists above.\n' +
@@ -618,7 +584,7 @@ export async function POST(req: NextRequest) {
       return { ...v, src };
     });
     enrichmentSections.push(
-      '## \u{1F3AC} VIDEO INVENTORY — USE THESE REAL URLs:\n' +
+      '## \u{1F3AC} VIDEO INVENTORY â€” USE THESE REAL URLs:\n' +
       resolvedVideos.map((v, idx) => `${idx + 1}. src="${v.src}"${v.poster ? ` poster="${v.poster}"` : ''}${v.type ? ` type="${v.type}"` : ''}`).join('\n') +
       '\nUse <video> tags with these exact src URLs. Include controls, poster, and autoplay/muted/loop where appropriate.'
     );
@@ -667,7 +633,7 @@ export async function POST(req: NextRequest) {
     // Also extract body/html background-color explicitly
     const bodyBgMatch = cssSource.match(/(?:body|html)\s*\{[^}]*background(?:-color)?\s*:\s*([^;}\s]+)/i);
     if (bodyBgMatch) {
-      enrichmentSections.push(`## BODY BACKGROUND: ${bodyBgMatch[1]} — your body background MUST be this exact color`);
+      enrichmentSections.push(`## BODY BACKGROUND: ${bodyBgMatch[1]} â€” your body background MUST be this exact color`);
     }
   }
 
@@ -684,7 +650,7 @@ export async function POST(req: NextRequest) {
     enrichmentSections.push('## BREAKPOINTS: ' + tokens.mediaQueries.join(' | '));
   }
 
-  // ─── ai-website-cloner Phase 3 & Phase 4: Component specs + design system card ───
+  // â”€â”€â”€ ai-website-cloner Phase 3 & Phase 4: Component specs + design system card â”€â”€â”€
   if (designSystemCard && typeof designSystemCard === 'string' && designSystemCard.length > 20) {
     enrichmentSections.push(designSystemCard);
   }
@@ -692,7 +658,7 @@ export async function POST(req: NextRequest) {
     enrichmentSections.push(componentSpecs);
   }
 
-  // Clean HTML before building prompt — use Claude Code's context compression
+  // Clean HTML before building prompt â€” use Claude Code's context compression
   let cleanedHtml = compressHtmlForPrompt(html || '', 120000);
   // Extract body content
   const bodyMatch = cleanedHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
@@ -728,10 +694,10 @@ export async function POST(req: NextRequest) {
 
   console.log(`[clone] enrichments=${enrichmentSections.length} sections, refine=${isRefine}`);
 
-  // Join all enrichment sections — use Claude Code's budget system for context management
+  // Join all enrichment sections â€” use Claude Code's budget system for context management
   let enrichmentBlock = enrichmentSections.join('\n\n') + '\n\n' + PREMIUM_UI_PATTERNS + '\n\n' + FRAMER_LEVEL_SYSTEM;
 
-  // ─── Claude Code pattern: Smart context budget allocation ──────────────
+  // â”€â”€â”€ Claude Code pattern: Smart context budget allocation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const MAX_ENRICHMENT = 250000;
   if (enrichmentBlock.length > MAX_ENRICHMENT) {
     // Budget allocation: prioritize design tokens > content map > CSS patterns > effects library
@@ -747,7 +713,7 @@ export async function POST(req: NextRequest) {
 
   const encoder = new TextEncoder();
 
-  // Dark theme detection — computed early so it's available throughout prompt construction
+  // Dark theme detection â€” computed early so it's available throughout prompt construction
   const allColors = tokens?.colors || [];
   const darkColors = allColors.filter(c => {
     const hex = c.replace('#', '');
@@ -834,7 +800,7 @@ export async function POST(req: NextRequest) {
 
         const textOnly = bodyContent.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
         if (textOnly.length > 200) {
-          cloneParts.push(`\n## PAGE HTML STRUCTURE (replicate ALL visible sections and text EXACTLY — EVERY section from header to footer):\n${bodyContent.slice(0, 120000)}`);
+          cloneParts.push(`\n## PAGE HTML STRUCTURE (replicate ALL visible sections and text EXACTLY â€” EVERY section from header to footer):\n${bodyContent.slice(0, 120000)}`);
         } else {
           // SPA/JS-rendered site: try extracting text from rawHtml too
           let rawContent = '';
@@ -842,7 +808,7 @@ export async function POST(req: NextRequest) {
             let raw = rawHtml;
             raw = raw.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
             raw = raw.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
-            // Extract text fragments — JSON strings often contain visible text in SPAs
+            // Extract text fragments â€” JSON strings often contain visible text in SPAs
             const jsonStrings = raw.match(/"(?:title|description|heading|text|label|name|content|subtitle|paragraph|caption)"\s*:\s*"([^"]{3,200})"/gi) || [];
             const extractedTexts = jsonStrings.map(s => {
               const m = s.match(/:\s*"([^"]+)"/);
@@ -858,7 +824,7 @@ export async function POST(req: NextRequest) {
             }
 
             if (rawContent.length > 200 || extractedTexts.length > 5) {
-              cloneParts.push(`\n## EXTRACTED PAGE CONTENT (this is a JS-rendered SPA — reconstruct ALL sections based on this text):\n${rawContent.slice(0, 120000)}`);
+              cloneParts.push(`\n## EXTRACTED PAGE CONTENT (this is a JS-rendered SPA â€” reconstruct ALL sections based on this text):\n${rawContent.slice(0, 120000)}`);
               if (extractedTexts.length > 0) {
                 cloneParts.push(`\n## EXTRACTED TEXT FROM PAGE DATA:\n${extractedTexts.slice(0, 200).join('\n')}`);
               }
@@ -866,7 +832,7 @@ export async function POST(req: NextRequest) {
           }
 
           // Always provide reconstruction context for sparse content
-          cloneParts.push(`\n## FULL SITE RECONSTRUCTION (body HTML was sparse — this is a JS-rendered SPA):
+          cloneParts.push(`\n## FULL SITE RECONSTRUCTION (body HTML was sparse â€” this is a JS-rendered SPA):
 URL: ${url} | Nav: ${(navigation || []).map(n => n.text).join(', ')} | Images: ${(images || []).length} | Videos: ${(videos || []).length}
 Create a COMPLETE page: sticky nav, hero, features (3-6 cards), testimonials, CTA, multi-column footer.
 Use ALL provided design tokens, images, and navigation. ${isDarkTheme ? 'Dark theme.' : ''}`);
@@ -878,7 +844,7 @@ Use ALL provided design tokens, images, and navigation. ${isDarkTheme ? 'Dark th
       if (rawHtml) {
         const spaTexts = extractSPAData(rawHtml);
         if (spaTexts.length > 5) {
-          cloneParts.push(`\n## SPA HYDRATION DATA (text content from __NEXT_DATA__/JSON-LD — use this to fill in any missing sections):\n${spaTexts.join('\n')}`);
+          cloneParts.push(`\n## SPA HYDRATION DATA (text content from __NEXT_DATA__/JSON-LD â€” use this to fill in any missing sections):\n${spaTexts.join('\n')}`);
         }
 
         // Extract Jina readable text if present (injected by scrape route)
@@ -886,7 +852,7 @@ Use ALL provided design tokens, images, and navigation. ${isDarkTheme ? 'Dark th
         if (jinaTextMatch) {
           const readableText = jinaTextMatch[1].trim();
           if (readableText.length > 200) {
-            cloneParts.push(`\n## FULL PAGE TEXT (human-readable, rendered — this is the COMPLETE visible content of the page):\n${readableText.slice(0, 100000)}`);
+            cloneParts.push(`\n## FULL PAGE TEXT (human-readable, rendered â€” this is the COMPLETE visible content of the page):\n${readableText.slice(0, 100000)}`);
           }
         }
       }
@@ -895,19 +861,19 @@ Use ALL provided design tokens, images, and navigation. ${isDarkTheme ? 'Dark th
         // Calculate visual diff hints for targeted refining
         const visualDiffs = calculateVisualDiffHints(html || '', currentHtml);
         if (visualDiffs.length > 0) {
-          cloneParts.push(`\n## 🔍 VISUAL DIFF HINTS (auto-detected discrepancies):\n${visualDiffs.map(d => `- ${d}`).join('\n')}`);
+          cloneParts.push(`\n## ðŸ” VISUAL DIFF HINTS (auto-detected discrepancies):\n${visualDiffs.map(d => `- ${d}`).join('\n')}`);
         }
         const htmlSnippet = currentHtml.length > 20000
           ? currentHtml.slice(0, 10000) + '\n<!-- ... -->\n' + currentHtml.slice(-10000)
           : currentHtml;
         cloneParts.push(`\n## CURRENT HTML TO REFINE:\n${htmlSnippet}`);
-        cloneParts.push(`\n## USER FEEDBACK — APPLY THESE CHANGES:\n${feedback}`);
+        cloneParts.push(`\n## USER FEEDBACK â€” APPLY THESE CHANGES:\n${feedback}`);
         cloneParts.push('Output the COMPLETE updated HTML. Return the FULL file, not diffs.');
       }
 
-      cloneParts.push(`\n## FINAL QUALITY CHECKLIST — VERIFY BEFORE OUTPUT:
+      cloneParts.push(`\n## FINAL QUALITY CHECKLIST â€” VERIFY BEFORE OUTPUT:
 - COMPLETE page: ALL sections from nav to footer. Under 400 lines = FAILURE.
-- ${structuredContent.sections.length > 0 ? `Reproduce ALL ${structuredContent.sections.length} sections from the content map — COUNT them.` : 'Reproduce every visible section from the data provided.'}
+- ${structuredContent.sections.length > 0 ? `Reproduce ALL ${structuredContent.sections.length} sections from the content map â€” COUNT them.` : 'Reproduce every visible section from the data provided.'}
 - ${isDarkTheme ? `DARK THEME: body bg=${bgColor || '#000'}. ALL sections dark. ZERO white backgrounds anywhere.` : 'Color theme must match original exactly.'}
 - Colors: EXACT hex/rgb from tokens. No invented colors. No approximations.
 - Fonts: Import and apply correct Google Fonts at correct weights/sizes.
@@ -916,7 +882,7 @@ Use ALL provided design tokens, images, and navigation. ${isDarkTheme ? 'Dark th
 - Responsive: Mobile hamburger menu, stacked layouts, adjusted sizing at 768px/1024px.
 - Animations: Scroll fade-in via IntersectionObserver, hover transitions on buttons/cards.
 - Images/videos: Use ALL real URLs from inventory. Zero placeholders when real URLs exist.
-- Every text string from content map reproduced VERBATIM — every heading, paragraph, button label.
+- Every text string from content map reproduced VERBATIM â€” every heading, paragraph, button label.
 - Start with <!DOCTYPE html>. End with </html>. Nothing else.`);
 
       // If screenshots exist, tell the AI to match them

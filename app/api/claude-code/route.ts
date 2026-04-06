@@ -1,9 +1,9 @@
 /**
- * Claude Code API Route v5.0 — REAL only
+ * Claude Code API Route v5.0 â€” REAL only
  * 
  * 4 actions (all called by frontend):
  * - jarvis-execute: Main generation with optional subsystem calls
- * - jarvis-analyze: Pre-analyze prompt → detect subsystems
+ * - jarvis-analyze: Pre-analyze prompt â†’ detect subsystems
  * - quality-check: Structural HTML validation
  * - continue: Resume truncated output
  */
@@ -25,7 +25,7 @@ import { claudeCodeSchema } from '@/lib/api-schemas';
 import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
 import { RATE_LIMITS } from '@/lib/rate-limiter';
 
-/* ── Input validation ── */
+/* â”€â”€ Input validation â”€â”€ */
 interface ExecutionRequest {
   action: string;
   prompt?: string;
@@ -49,14 +49,14 @@ function sanitizeForPrompt(text: string): string {
 }
 
 export async function POST(req: Request) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const body: ExecutionRequest = await req.json();
+    const body = claudeCodeSchema.parse(await req.json()) as ExecutionRequest;
     const { action } = body;
 
     if (!validateAction(action)) {
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
     }
 
     switch (action) {
-      /* ── Quality Check: Structural HTML validation ── */
+      /* â”€â”€ Quality Check: Structural HTML validation â”€â”€ */
       case 'quality-check': {
         const { code } = body;
         if (!code) {
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
         return Response.json({ success: true, data: result });
       }
 
-      /* ── Continue: Resume truncated output ── */
+      /* â”€â”€ Continue: Resume truncated output â”€â”€ */
       case 'continue': {
         const { code, model = MAMMOTH_KEY ? 'claude-sonnet-4-20250514' : 'gemini-2.5-pro' } = body;
         if (!code) {
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
         });
       }
 
-      /* ── Execute: Full generation with real subsystem calls ── */
+      /* â”€â”€ Execute: Full generation with real subsystem calls â”€â”€ */
       case 'jarvis-execute': {
         const {
           prompt,
@@ -106,7 +106,7 @@ export async function POST(req: Request) {
         const subsystemResults: string[] = [];
         const calls: Promise<void>[] = [];
 
-        // NotebookLM research (15s timeout) — only if detected AND no existing research
+        // NotebookLM research (15s timeout) â€” only if detected AND no existing research
         if (subsystems.includes('notebooklm') && !researchContext) {
           calls.push(
             (async () => {
@@ -125,12 +125,12 @@ export async function POST(req: Request) {
                     subsystemResults.push(`[RESEARCH]\n${text.slice(0, 8000)}\n[/RESEARCH]`);
                   }
                 }
-              } catch { /* timeout or unavailable — continue without */ }
+              } catch { /* timeout or unavailable â€” continue without */ }
             })()
           );
         }
 
-        // Stitch design (20s timeout) — ONLY if STITCH_API_KEY is set
+        // Stitch design (20s timeout) â€” ONLY if STITCH_API_KEY is set
         if (subsystems.includes('stitch') && process.env.STITCH_API_KEY) {
           calls.push(
             (async () => {
@@ -148,7 +148,7 @@ export async function POST(req: Request) {
                     subsystemResults.push(`[STITCH DESIGN]\n${html.slice(0, 6000)}\n[/STITCH DESIGN]`);
                   }
                 }
-              } catch { /* timeout or unavailable — continue without */ }
+              } catch { /* timeout or unavailable â€” continue without */ }
             })()
           );
         }
@@ -177,7 +177,7 @@ export async function POST(req: Request) {
         });
       }
 
-      /* ── Brain Analyze: Pre-analyze prompt → return analysis + plan (no generation) ── */
+      /* â”€â”€ Brain Analyze: Pre-analyze prompt â†’ return analysis + plan (no generation) â”€â”€ */
       case 'brain-analyze': {
         const { prompt } = body;
         if (!validatePrompt(prompt)) {
@@ -195,7 +195,7 @@ export async function POST(req: Request) {
         });
       }
 
-      /* ── Claude Code Terminal: Natural language → actions ── */
+      /* â”€â”€ Claude Code Terminal: Natural language â†’ actions â”€â”€ */
       case 'claude-code-terminal': {
         const { prompt, model = MAMMOTH_KEY ? 'claude-sonnet-4-20250514' : 'gemini-2.5-pro' } = body;
         if (!validatePrompt(prompt)) {
@@ -226,7 +226,7 @@ export async function POST(req: Request) {
   }
 }
 
-/* ── Model Routing ── */
+/* â”€â”€ Model Routing â”€â”€ */
 
 const MAMMOTH_KEY = process.env.MAMMOTH_API_KEY || '';
 const MAMMOTH_URL = process.env.MAMMOTH_API_URL || 'https://api.mammoth.ai/v1';
@@ -281,7 +281,7 @@ async function streamToModel(opts: {
   return await streamViaGemini(opts);
 }
 
-/* ── Ollama Cloud ── */
+/* â”€â”€ Ollama Cloud â”€â”€ */
 async function streamViaOllama(opts: {
   model: string;
   systemPrompt: string;
@@ -340,7 +340,7 @@ async function streamViaOllama(opts: {
     const errText = await res.text().catch(() => '');
     console.error('[Ollama API Error]', res.status, errText.slice(0, 300));
     if (GOOGLE_KEY) {
-      console.log('[Fallback] Ollama → Gemini');
+      console.log('[Fallback] Ollama â†’ Gemini');
       return streamViaGemini(opts);
     }
     return Response.json({ error: `Ollama API error ${res.status}: ${errText.slice(0, 200)}` }, { status: res.status });
@@ -349,7 +349,7 @@ async function streamViaOllama(opts: {
   return createSSEResponse(res, (data) => data?.choices?.[0]?.delta?.content, opts.model);
 }
 
-/* ── Mammoth (Anthropic) ── */
+/* â”€â”€ Mammoth (Anthropic) â”€â”€ */
 async function streamViaMammoth(opts: {
   model: string;
   systemPrompt: string;
@@ -388,13 +388,13 @@ async function streamViaMammoth(opts: {
     const errText = await res.text().catch(() => '');
     console.error('[Mammoth API Error]', res.status, errText.slice(0, 300));
     if (GOOGLE_KEY) {
-      console.log('[Fallback] Mammoth → Gemini');
+      console.log('[Fallback] Mammoth â†’ Gemini');
       return streamViaGemini(opts);
     }
     return Response.json({ error: `Mammoth API error ${res.status}: ${errText.slice(0, 200)}` }, { status: res.status });
   }
 
-  // Parse Anthropic SSE → our format
+  // Parse Anthropic SSE â†’ our format
   return createSSEResponse(res, (data) => {
     if (data.type === 'content_block_delta' && data.delta?.text) return data.delta.text;
     if (data.choices?.[0]?.delta?.content) return data.choices[0].delta.content;
@@ -402,7 +402,7 @@ async function streamViaMammoth(opts: {
   }, undefined, (data) => data.type === 'message_stop');
 }
 
-/* ── Gemini (fallback) ── */
+/* â”€â”€ Gemini (fallback) â”€â”€ */
 async function streamViaGemini(opts: {
   model: string;
   systemPrompt: string;
@@ -448,7 +448,7 @@ async function streamViaGemini(opts: {
   return createSSEResponse(res, (data) => data?.choices?.[0]?.delta?.content);
 }
 
-/* ── Shared SSE stream helper ── */
+/* â”€â”€ Shared SSE stream helper â”€â”€ */
 function createSSEResponse(
   res: Response,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -514,7 +514,7 @@ function createSSEResponse(
   });
 }
 
-/* ── Helpers ── */
+/* â”€â”€ Helpers â”€â”€ */
 
 function mergeConsecutiveMessages(messages: { role: string; content: string }[]): { role: string; content: string }[] {
   const merged: { role: string; content: string }[] = [];

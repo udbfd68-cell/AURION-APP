@@ -1,5 +1,5 @@
 /**
- * SendGrid Proxy Route — Send emails via SendGrid v3 API
+ * SendGrid Proxy Route â€” Send emails via SendGrid v3 API
  * https://docs.sendgrid.com/api-reference/mail-send/mail-send
  */
 
@@ -11,14 +11,16 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { apiKey, from, to, subject, html, text } = await req.json();
+    const result = await parseBody(req, sendgridSchema);
+    if ('error' in result) return result.error;
+    const { apiKey, from, to, subject, html, text } = result.data;
 
     if (!apiKey) {
       return NextResponse.json({ error: 'Missing SendGrid API key' }, { status: 400 });

@@ -1,6 +1,6 @@
-// ═══════════════════════════════════════════════════════════════
-// Cinematic 3D Scroll Builder — Image Generation (Google Imagen 3)
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// Cinematic 3D Scroll Builder â€” Image Generation (Google Imagen 3)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 export const runtime = 'edge';
 
 import { IMAGE_PROVIDERS, resolveGoogleKey } from '@/lib/cinematic/config';
@@ -9,18 +9,15 @@ import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-uti
 import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export async function POST(req: Request) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
   if (rateLimitError) return rateLimitError;
 
   let body;
-  try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
+  try { body = cinematicImageSchema.parse(await req.json()); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
   const { prompt, width = 1920, height = 1080 } = body;
-  if (!prompt || typeof prompt !== 'string') {
-    return Response.json({ error: 'Missing prompt' }, { status: 400 });
-  }
 
   for (const provider of IMAGE_PROVIDERS) {
     const apiKey = resolveGoogleKey();

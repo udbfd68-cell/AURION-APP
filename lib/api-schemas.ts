@@ -25,6 +25,8 @@ export const anthropicSchema = z.object({
 export const geminiSchema = z.object({
   messages: z.array(messageSchema).min(1).max(200),
   model: z.string().max(100).optional(),
+  images: z.array(imageSchema).max(10).optional(),
+  researchContext: z.string().max(100_000).optional(),
 });
 
 export const groqSchema = z.object({
@@ -70,6 +72,7 @@ export const cloneSchema = z.object({
 export const scrapeSchema = z.object({
   url: z.string().url().max(2000),
   advanced: z.boolean().optional(),
+  light: z.boolean().optional(),
 });
 
 // ─── Deploy ────────────────────────────────
@@ -228,14 +231,23 @@ export const upstashSchema = z.object({
 });
 
 export const figmaSchema = z.object({
-  figmaToken: z.string().min(1).max(200),
-  fileKey: z.string().min(1).max(100),
+  url: z.string().min(1).max(2000).optional(),
+  token: z.string().max(200).optional(),
+  mode: z.string().max(50).optional(),
+  figmaToken: z.string().max(200).optional(),
+  fileKey: z.string().max(100).optional(),
   nodeIds: z.array(z.string().max(100)).max(50).optional(),
 });
 
 // ─── Generation Routes ────────────────────────────
 export const huggingfaceSchema = z.object({
   prompt: z.string().min(1).max(10_000),
+});
+
+export const ollamaSchema = z.object({
+  messages: z.array(messageSchema).min(1).max(200),
+  model: z.string().max(100).optional(),
+  images: z.array(imageSchema).max(10).optional(),
 });
 
 export const deepaiSchema = z.object({
@@ -292,6 +304,15 @@ export const collabSchema = z.object({
   roomId: z.string().max(200).optional(),
   userId: z.string().max(200).optional(),
   userName: z.string().max(200).optional(),
+  userColor: z.string().max(50).optional(),
+  to: z.string().max(200).optional(),
+  signalType: z.string().max(100).optional(),
+  signalData: z.unknown().optional(),
+  cursor: z.object({ file: z.string(), line: z.number(), col: z.number() }).optional(),
+  since: z.number().optional(),
+  path: z.string().max(1000).optional(),
+  content: z.string().max(5_000_000).optional(),
+  language: z.string().max(100).optional(),
 });
 
 export const context7Schema = z.object({
@@ -319,6 +340,8 @@ export const reactbitsSchema = z.object({
 export const renderSchema = z.object({
   action: z.string().min(1).max(50),
   name: z.string().max(200).optional(),
+  projectName: z.string().max(200).optional(),
+  files: z.record(z.string(), z.object({ content: z.string().max(5_000_000) })).optional(),
 });
 
 export const stitchSchema = z.object({
@@ -329,13 +352,32 @@ export const stitchSchema = z.object({
   screenId: z.string().max(200).optional(),
   deviceType: z.string().max(50).optional(),
   variantCount: z.number().int().min(1).max(20).optional(),
+  designSystem: z.string().max(100_000).optional(),
+  pages: z.array(z.object({
+    prompt: z.string().max(50_000),
+    name: z.string().max(200).optional(),
+    deviceType: z.string().max(50).optional(),
+  })).max(50).optional(),
 });
 
 export const notebooklmSchema = z.object({
   action: z.string().min(1).max(50),
   url: z.string().url().max(2000).optional(),
+  urls: z.array(z.string().max(2000)).max(50).optional(),
   query: z.string().max(10_000).optional(),
   sources: z.array(z.string().max(2000)).max(20).optional(),
   topic: z.string().max(500).optional(),
   depth: z.string().max(50).optional(),
+  tool: z.string().max(100).optional(),
+  prompt: z.string().max(50_000).optional(),
+  currentContext: z.string().max(100_000).optional(),
+  type: z.string().max(100).optional(),
+  existingCode: z.string().max(500_000).optional(),
+  researchTemplate: z.string().max(10_000).optional(),
+  customQuestions: z.array(z.string().max(2000)).max(50).optional(),
+  question: z.string().max(10_000).optional(),
+  notebookId: z.string().max(200).optional(),
+  analysis: z.string().max(500_000).optional(),
+  compact: z.boolean().optional(),
+  maxChars: z.number().int().max(10_000_000).optional(),
 });

@@ -1,5 +1,5 @@
 /**
- * Algolia Proxy Route — Search via Algolia REST API
+ * Algolia Proxy Route â€” Search via Algolia REST API
  * https://www.algolia.com/doc/rest-api/search/
  */
 
@@ -11,14 +11,16 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { appId, apiKey, indexName, query, filters, hitsPerPage, page, action } = await req.json();
+    const result = await parseBody(req, algoliaSchema);
+    if ('error' in result) return result.error;
+    const { appId, apiKey, indexName, query, filters, hitsPerPage, page, action } = result.data;
 
     if (!appId || !apiKey) {
       return NextResponse.json({ error: 'Missing Algolia appId and apiKey' }, { status: 400 });

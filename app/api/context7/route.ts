@@ -6,14 +6,14 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 const CONTEXT7_API = 'https://context7.com/api/v1';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const body = await req.json();
+    const body = context7Schema.parse(await req.json());
     const { action, libraryName, libraryId, topic, tokens } = body;
 
     switch (action) {

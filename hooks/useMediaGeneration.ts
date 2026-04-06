@@ -82,7 +82,7 @@ export function useMediaGeneration({ setTerminalLines, setProjectFiles, setMedia
     pendingImageRef.current++;
     setTerminalLines(prev => [...prev, `$ 🎨 Generating image "${imageId}"...`]);
     try {
-      const res = await fetchWithRetry('/api/deepai', {
+      const res = await fetchWithRetry('/api/pexels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt }),

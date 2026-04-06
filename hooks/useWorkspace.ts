@@ -457,7 +457,7 @@ Be concise and actionable. Use markdown formatting.
 ${code}
 \`\`\``;
 
-      const res = await fetch('/api/huggingface', {
+      const res = await fetch('/api/ollama', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: [{ role: 'user', content: reviewPrompt }], model: model }),

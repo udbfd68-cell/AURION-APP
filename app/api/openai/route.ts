@@ -1,6 +1,6 @@
 /**
- * OpenAI Proxy Route — Streaming chat completions via user's API key
- * Pure fetch against api.openai.com — no SDK needed.
+ * OpenAI Proxy Route â€” Streaming chat completions via user's API key
+ * Pure fetch against api.openai.com â€” no SDK needed.
  */
 
 import { NextRequest } from 'next/server';
@@ -11,14 +11,16 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { apiKey, messages, model, stream = true } = await req.json();
+    const result = await parseBody(req, openaiSchema);
+    if ('error' in result) return result.error;
+    const { apiKey, messages, model, stream = true } = result.data;
 
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'Missing OpenAI API key' }), { status: 400, headers: { 'Content-Type': 'application/json' } });

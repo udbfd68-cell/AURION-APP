@@ -1,5 +1,5 @@
 /**
- * LTX Video API Route — AI Video Generation for Aurion Sites
+ * LTX Video API Route â€” AI Video Generation for Aurion Sites
  * 
  * Generates videos via LTX API (text-to-video, image-to-video)
  * Used to create video backgrounds, hero videos, and visual assets
@@ -19,7 +19,7 @@ export const runtime = 'edge';
 const LTX_API_BASE = 'https://api.ltx.video/v1';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.heavy);
@@ -33,20 +33,10 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  let body: {
-    prompt: string;
-    mode?: 'text-to-video' | 'image-to-video';
-    image_uri?: string;
-    model?: string;
-    duration?: number;
-    resolution?: string;
-    fps?: number;
-    camera_motion?: string;
-    generate_audio?: boolean;
-  };
+  let body: ReturnType<typeof ltxSchema.parse>;
 
   try {
-    body = await req.json();
+    body = ltxSchema.parse(await req.json());
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid request body' }), {
       status: 400,
@@ -121,8 +111,8 @@ export async function POST(req: NextRequest) {
           placeholder: true,
           prompt: sanitizedPrompt,
           note: response.status === 402
-            ? 'LTX credits required — placeholder generated'
-            : `LTX API returned ${response.status} — placeholder generated`,
+            ? 'LTX credits required â€” placeholder generated'
+            : `LTX API returned ${response.status} â€” placeholder generated`,
         }), {
           status: 200,
           headers: {
@@ -147,7 +137,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // LTX returns MP4 binary directly — stream it to frontend as binary
+    // LTX returns MP4 binary directly â€” stream it to frontend as binary
     const requestId = response.headers.get('x-request-id') || '';
 
     return new Response(response.body, {

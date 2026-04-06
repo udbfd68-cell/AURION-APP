@@ -16,7 +16,7 @@ const ALLOWED_COMMANDS = [
   'LPUSH', 'RPUSH', 'LPOP', 'RPOP', 'LRANGE', 'LLEN',
   'SADD', 'SREM', 'SMEMBERS', 'SCARD',
   'ZADD', 'ZREM', 'ZRANGE', 'ZREVRANGE', 'ZSCORE', 'ZCARD',
-  'PING', 'DBSIZE', 'INFO', 'FLUSHDB',
+  'PING', 'DBSIZE', 'INFO',
 ];
 
 export async function POST(req: NextRequest) {
@@ -27,7 +27,9 @@ export async function POST(req: NextRequest) {
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { url, token, command, args } = await req.json();
+    const result = await parseBody(req, upstashSchema);
+    if ('error' in result) return result.error;
+    const { url, token, command, args } = result.data;
 
     if (!url || !token) {
       return NextResponse.json({ error: 'Missing Upstash REST URL and token' }, { status: 400 });
@@ -49,7 +51,7 @@ export async function POST(req: NextRequest) {
 
     const cleanUrl = url.replace(/\/+$/, '');
     const cmdParts = [cmd, ...(Array.isArray(args) ? args : [])];
-    const endpoint = `${cleanUrl}/${cmdParts.map(encodeURIComponent).join('/')}`;
+    const endpoint = `${cleanUrl}/${cmdParts.map((p) => encodeURIComponent(String(p))).join('/')}`;
 
     const resp = await fetch(endpoint, {
       headers: { 'Authorization': `Bearer ${token}` },

@@ -1,5 +1,5 @@
 /**
- * Live Database Query Route — Aurion App Builder
+ * Live Database Query Route â€” Aurion App Builder
  * Executes SQL queries against Supabase, Neon, and other providers
  */
 
@@ -11,14 +11,16 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { provider, url, apiKey, sql } = await req.json();
+    const result = await parseBody(req, databaseSchema);
+    if ('error' in result) return result.error;
+    const { provider, url, apiKey, sql } = result.data;
 
     if (!sql || typeof sql !== 'string') {
       return NextResponse.json({ error: 'SQL query required' }, { status: 400 });

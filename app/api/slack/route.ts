@@ -1,5 +1,5 @@
 /**
- * Slack Proxy Route — Post messages to Slack via Incoming Webhooks
+ * Slack Proxy Route â€” Post messages to Slack via Incoming Webhooks
  * https://api.slack.com/messaging/webhooks
  * Also supports Slack Web API for channels/users listing.
  */
@@ -12,16 +12,18 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { token, webhookUrl, text, channel, action } = await req.json();
+    const result = await parseBody(req, slackSchema);
+    if ('error' in result) return result.error;
+    const { token, webhookUrl, text, channel, action } = result.data;
 
-    // Webhook mode — simple message posting
+    // Webhook mode â€” simple message posting
     if (webhookUrl) {
       if (!webhookUrl.startsWith('https://hooks.slack.com/')) {
         return NextResponse.json({ error: 'Invalid Slack webhook URL' }, { status: 400 });
@@ -48,7 +50,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Slack webhook error: ${errText}` }, { status: resp.status });
     }
 
-    // Bot token mode — Slack Web API
+    // Bot token mode â€” Slack Web API
     if (!token) {
       return NextResponse.json({ error: 'Missing Slack bot token or webhook URL' }, { status: 400 });
     }

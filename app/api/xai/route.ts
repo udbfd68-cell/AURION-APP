@@ -1,5 +1,5 @@
 /**
- * xAI (Grok) API Route — OpenAI-compatible endpoint
+ * xAI (Grok) API Route â€” OpenAI-compatible endpoint
  * 
  * Uses xAI's API with Grok models for code generation.
  * Requires XAI_API_KEY env var (from console.x.ai).
@@ -19,14 +19,16 @@ const XAI_KEY = process.env.XAI_API_KEY || '';
 const SYSTEM_PROMPT = buildSystemPrompt();
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { messages, model } = await req.json();
+    const result = await parseBody(req, xaiSchema);
+    if ('error' in result) return result.error;
+    const { messages, model } = result.data;
     if (!messages?.length) return Response.json({ error: 'No messages' }, { status: 400 });
     if (!XAI_KEY) return Response.json({ error: 'XAI_API_KEY not configured' }, { status: 500 });
 

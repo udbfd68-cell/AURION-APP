@@ -9,7 +9,7 @@ const BASE_URL = 'https://21st.dev';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
@@ -19,9 +19,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'TWENTY_FIRST_API_KEY not configured' }, { status: 500 });
   }
 
-  let body: { query?: string; action?: string; slug?: string; username?: string };
+  let body: ReturnType<typeof magic21stSchema.parse>;
   try {
-    body = await req.json();
+    body = magic21stSchema.parse(await req.json());
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(data);
     }
 
-    // Magic — AI-driven component suggestion
+    // Magic â€” AI-driven component suggestion
     if (action === 'magic') {
       if (!query || typeof query !== 'string') {
         return NextResponse.json({ error: 'Missing query for magic' }, { status: 400 });

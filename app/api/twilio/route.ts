@@ -1,5 +1,5 @@
 /**
- * Twilio Proxy Route — Send SMS via Twilio REST API
+ * Twilio Proxy Route â€” Send SMS via Twilio REST API
  * https://www.twilio.com/docs/sms/api/message-resource
  */
 
@@ -11,14 +11,16 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { accountSid, authToken, from, to, body: messageBody, action } = await req.json();
+    const result = await parseBody(req, twilioSchema);
+    if ('error' in result) return result.error;
+    const { accountSid, authToken, from, to, body: messageBody, action } = result.data;
 
     if (!accountSid || !authToken) {
       return NextResponse.json({ error: 'Missing accountSid and authToken' }, { status: 400 });

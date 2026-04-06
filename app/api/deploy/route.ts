@@ -1,5 +1,5 @@
 /**
- * Deploy API Route — Auto-deploy to Vercel
+ * Deploy API Route â€” Auto-deploy to Vercel
  * 
  * Uses the server-side VERCEL_TOKEN to deploy generated HTML
  * to the owner's Vercel account. Users don't need their own token.
@@ -22,7 +22,7 @@ interface DeployFile {
 }
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.deploy);
@@ -36,9 +36,9 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  let body: { html?: string; files?: Record<string, string>; projectName?: string };
+  let body: ReturnType<typeof deploySchema.parse>;
   try {
-    body = await req.json();
+    body = deploySchema.parse(await req.json());
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid request body' }), {
       status: 400,
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     .slice(0, 50);
 
   try {
-    // Build file list — support both single HTML and multi-file projects
+    // Build file list â€” support both single HTML and multi-file projects
     const deployFiles: DeployFile[] = [];
 
     if (files && Object.keys(files).length > 0) {
@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
         signal: AbortSignal.timeout(20000),
       });
     } catch {
-      // Non-blocking — deploy still succeeded even if protection toggle fails
+      // Non-blocking â€” deploy still succeeded even if protection toggle fails
     }
 
     return new Response(JSON.stringify({

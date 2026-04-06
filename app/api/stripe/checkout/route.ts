@@ -1,6 +1,6 @@
-/* ════════════════════════════════════════════
-   Stripe Checkout API — Create Payment Session
-   ════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Stripe Checkout API â€” Create Payment Session
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { stripeCheckoutSchema } from '@/lib/api-schemas';
@@ -10,7 +10,7 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
@@ -24,7 +24,9 @@ export async function POST(req: NextRequest) {
 
     const stripe = new Stripe(stripeKey, { apiVersion: '2025-12-18.acacia' as Stripe.LatestApiVersion });
 
-    const { priceId, userId, email } = await req.json();
+    const result = await parseBody(req, stripeCheckoutSchema);
+    if ('error' in result) return result.error;
+    const { priceId, userId, email } = result.data;
 
     if (!priceId || !userId) {
       return NextResponse.json({ error: 'Missing priceId or userId' }, { status: 400 });

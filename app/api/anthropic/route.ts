@@ -18,7 +18,7 @@ const SYSTEM_PROMPT = buildSystemPrompt();
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
@@ -32,9 +32,9 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  let body: { messages: { role: string; content: string }[]; model?: string; images?: { data: string; type: string }[] };
+  let body: ReturnType<typeof anthropicSchema.parse>;
   try {
-    body = await req.json();
+    body = anthropicSchema.parse(await req.json());
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid request body' }), {
       status: 400,
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Convert to Anthropic format — merge consecutive same-role messages
+  // Convert to Anthropic format â€” merge consecutive same-role messages
   const anthropicMessages: { role: 'user' | 'assistant'; content: string | { type: string; source?: { type: string; media_type: string; data: string }; text?: string }[] }[] = [];
   for (const msg of messages) {
     const role = msg.role === 'assistant' ? 'assistant' as const : 'user' as const;
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
     anthropicMessages.shift();
   }
 
-  // ─── Claude Code pattern: Smart retry with error classification ────
+  // â”€â”€â”€ Claude Code pattern: Smart retry with error classification â”€â”€â”€â”€
   const MAX_ATTEMPTS = 5;
   let lastError = '';
   let res: Response | null = null;
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
 
       // Context overflow: trim messages and retry once
       if (errorClass === 'context_overflow' && attempt === 0) {
-        console.log(`[anthropic] context overflow — trimming messages`);
+        console.log(`[anthropic] context overflow â€” trimming messages`);
         // Keep last 5 messages, generous content per message
         const trimmed = anthropicMessages.slice(-5).map(m => ({
           ...m,

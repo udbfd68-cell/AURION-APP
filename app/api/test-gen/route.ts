@@ -19,7 +19,7 @@ const OLLAMA_KEY = process.env.OLLAMA_API_KEY || '';
 const TEST_SYSTEM_PROMPT = `You are an expert test engineer. Generate comprehensive, production-quality tests for the given code.
 
 # Rules:
-- Generate COMPLETE, runnable test files — never truncate or leave TODOs
+- Generate COMPLETE, runnable test files â€” never truncate or leave TODOs
 - Use the specified test framework (Vitest, Playwright, or vanilla JS)
 - Cover: happy path, edge cases, error handling, boundary conditions
 - Use descriptive test names that explain the expected behavior
@@ -37,14 +37,16 @@ Return ONLY the test code wrapped in a single code block. No explanations before
 \`\`\``;
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { code, fileName, framework, language } = await req.json();
+    const result = await parseBody(req, testGenSchema);
+    if ('error' in result) return result.error;
+    const { code, fileName, framework, language } = result.data;
 
     if (!code || typeof code !== 'string') {
       return Response.json({ error: 'Missing source code' }, { status: 400 });

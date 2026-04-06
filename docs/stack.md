@@ -31,8 +31,8 @@
 | OpenAI | /api/openai | GPT-4o, GPT-4o-mini |
 | xAI | /api/xai | Grok |
 | Mistral | /api/mistral | Mistral Large |
-| DeepAI | /api/deepai | Image generation |
-| HuggingFace | /api/huggingface | Various |
+| Pexels | /api/pexels | Stock photos |
+| Ollama | /api/ollama | AI chat (free) |
 
 ## Browser APIs
 | API | Usage |

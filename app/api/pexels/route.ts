@@ -1,5 +1,5 @@
 /**
- * Image API Route — Pexels Stock Photos
+ * Image API Route â€” Pexels Stock Photos
  *
  * Uses Pexels API for high-quality, free stock images matching the prompt.
  * Falls back to a styled SVG placeholder if Pexels is unavailable.
@@ -15,7 +15,7 @@ export const runtime = 'edge';
 const PEXELS_URL = 'https://api.pexels.com/v1/search';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
@@ -23,9 +23,9 @@ export async function POST(req: NextRequest) {
 
   const pexelsKey = process.env.PEXELS_API_KEY;
 
-  let body: { prompt: string };
+  let body: ReturnType<typeof deepaiSchema.parse>;
   try {
-    body = await req.json();
+    body = deepaiSchema.parse(await req.json());
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid request body' }), {
       status: 400,

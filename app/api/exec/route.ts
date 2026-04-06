@@ -1,18 +1,20 @@
 import { execSchema } from '@/lib/api-schemas';
-import { applyRateLimit, validateOrigin, errors } from '@/lib/api-utils';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
 import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export const runtime = 'edge';
 
 export async function POST(req: Request) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req as any);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req as any, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { code, timeout = 15000 } = await req.json();
+    const result = await parseBody(req, execSchema);
+    if ('error' in result) return result.error;
+    const { code, timeout = 15000 } = result.data;
 
     if (!code || typeof code !== 'string') {
       return Response.json({ error: 'Missing code' }, { status: 400 });
@@ -25,7 +27,7 @@ export async function POST(req: Request) {
     // Normalize code for pattern checking (collapse whitespace, lowercase for some checks)
     const normalized = code.replace(/\s+/g, ' ');
 
-    // Block dangerous patterns — comprehensive list to prevent sandbox escape
+    // Block dangerous patterns â€” comprehensive list to prevent sandbox escape
     const blocked = [
       /\bfetch\b/i,
       /\bimport\b/i,
@@ -61,7 +63,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // Execute in a tightly constrained scope — shadow all dangerous globals
+    // Execute in a tightly constrained scope â€” shadow all dangerous globals
     const wrappedCode = `
       'use strict';
       const console = {

@@ -1,8 +1,8 @@
 /**
- * Stripe Proxy Route — Execute real Stripe API calls
+ * Stripe Proxy Route â€” Execute real Stripe API calls
  * 
  * Proxies requests to the Stripe REST API using the user's secret key.
- * No packages needed — pure fetch against api.stripe.com.
+ * No packages needed â€” pure fetch against api.stripe.com.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -28,14 +28,16 @@ const ALLOWED_ENDPOINTS = [
 ];
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { stripeKey, endpoint, method, params } = await req.json();
+    const result = await parseBody(req, stripeSchema);
+    if ('error' in result) return result.error;
+    const { stripeKey, endpoint, method, params } = result.data;
 
     if (!stripeKey) {
       return NextResponse.json({ error: 'Missing stripeKey' }, { status: 400 });

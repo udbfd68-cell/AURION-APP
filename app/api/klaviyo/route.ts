@@ -1,5 +1,5 @@
 /**
- * Klaviyo Proxy Route — Email & SMS marketing via Klaviyo API
+ * Klaviyo Proxy Route â€” Email & SMS marketing via Klaviyo API
  * https://developers.klaviyo.com/en/reference/api-overview
  */
 
@@ -16,14 +16,16 @@ const ALLOWED_ENDPOINTS = [
 ];
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { apiKey, endpoint, method, body: reqBody } = await req.json();
+    const result = await parseBody(req, klaviyoSchema);
+    if ('error' in result) return result.error;
+    const { apiKey, endpoint, method, body: reqBody } = result.data;
 
     if (!apiKey) {
       return NextResponse.json({ error: 'Missing Klaviyo API key' }, { status: 400 });

@@ -1,5 +1,5 @@
 /**
- * Resend Proxy Route — Send real emails via Resend REST API
+ * Resend Proxy Route â€” Send real emails via Resend REST API
  * https://resend.com/docs/api-reference/emails/send-email
  */
 
@@ -11,14 +11,16 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { apiKey, from, to, subject, html, text, replyTo } = await req.json();
+    const result = await parseBody(req, resendSchema);
+    if ('error' in result) return result.error;
+    const { apiKey, from, to, subject, html, text, replyTo } = result.data;
 
     if (!apiKey) {
       return NextResponse.json({ error: 'Missing Resend API key' }, { status: 400 });

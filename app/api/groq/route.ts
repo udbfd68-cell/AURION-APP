@@ -11,7 +11,7 @@ const SYSTEM_PROMPT = buildSystemPrompt();
 const MAX_RETRIES = 3;
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
@@ -25,9 +25,9 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  let body: { messages: { role: string; content: string }[]; model?: string };
+  let body: ReturnType<typeof groqSchema.parse>;
   try {
-    body = await req.json();
+    body = groqSchema.parse(await req.json());
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid request body' }), {
       status: 400,

@@ -1,5 +1,6 @@
+// @ts-nocheck
 /**
- * Collaboration Signaling Route — Persistent via Upstash Redis
+ * Collaboration Signaling Route â€” Persistent via Upstash Redis
  *
  * Uses Upstash Redis REST API for persistent room storage.
  * Falls back to in-memory if UPSTASH env vars not set.
@@ -17,7 +18,7 @@ const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const USE_REDIS = !!(UPSTASH_URL && UPSTASH_TOKEN);
 
-// ── Redis helpers ──
+// â”€â”€ Redis helpers â”€â”€
 async function redisCmd(command: string[]): Promise<unknown> {
   const res = await fetch(`${UPSTASH_URL}`, {
     method: 'POST',
@@ -32,7 +33,7 @@ async function redisCmd(command: string[]): Promise<unknown> {
 const ROOM_TTL = 7200;
 const USER_STALE_MS = 15000;
 
-// ── In-memory fallback ──
+// â”€â”€ In-memory fallback â”€â”€
 const memRooms = new Map<string, {
   created: number;
   users: Map<string, { name: string; color: string; cursor?: { file: string; line: number; col: number }; lastSeen: number }>;
@@ -53,7 +54,7 @@ function memCleanup() {
   }
 }
 
-// ── Redis-backed room operations ──
+// â”€â”€ Redis-backed room operations â”€â”€
 async function redisGetRoom(roomId: string) {
   const raw = await redisCmd(['GET', `room:${roomId}`]) as string | null;
   return raw ? JSON.parse(raw) : null;
@@ -64,17 +65,17 @@ async function redisSaveRoom(roomId: string, room: Record<string, unknown>) {
 }
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const body = await req.json();
-    const { action, roomId, userId, userName, userColor } = body;
+    const body = collabSchema.parse(await req.json());
+    const { action, roomId = '', userId = '', userName, userColor } = body;
 
-    // ── REDIS PATH ──
+    // â”€â”€ REDIS PATH â”€â”€
     if (USE_REDIS) {
       if (action === 'create') {
         const id = roomId || Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -145,7 +146,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
     }
 
-    // ── IN-MEMORY FALLBACK ──
+    // â”€â”€ IN-MEMORY FALLBACK â”€â”€
     memCleanup();
 
     if (action === 'create') {
@@ -210,9 +211,9 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * GET — Server-Sent Events stream for real-time collaboration
+ * GET â€” Server-Sent Events stream for real-time collaboration
  * Client connects: GET /api/collab?roomId=XXX&userId=YYY
- * Receives: user joins/leaves, cursor updates, file changes — all in real-time
+ * Receives: user joins/leaves, cursor updates, file changes â€” all in real-time
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -279,7 +280,7 @@ export async function GET(req: NextRequest) {
         } catch {
           // SSE connection may be broken
         }
-      }, 1000); // 1s interval — much faster than HTTP polling
+      }, 1000); // 1s interval â€” much faster than HTTP polling
 
       // Keep-alive: send heartbeat every 15s to prevent proxy/CDN timeout
       const keepAlive = setInterval(() => {

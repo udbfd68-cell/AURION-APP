@@ -1,5 +1,5 @@
 /**
- * Neon Proxy Route — Execute SQL via Neon Serverless HTTP API
+ * Neon Proxy Route â€” Execute SQL via Neon Serverless HTTP API
  * https://neon.tech/docs/serverless/serverless-driver#use-the-neon-http-api
  */
 
@@ -11,14 +11,16 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { connectionString, sql, params } = await req.json();
+    const result = await parseBody(req, neonSchema);
+    if ('error' in result) return result.error;
+    const { connectionString, sql, params } = result.data;
 
     if (!connectionString) {
       return NextResponse.json({ error: 'Missing Neon connection string' }, { status: 400 });

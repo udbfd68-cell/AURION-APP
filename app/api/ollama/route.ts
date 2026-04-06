@@ -1,7 +1,7 @@
 /**
  * Ollama Cloud Chat API Route
  * 
- * Uses Ollama Cloud (ollama.com) with the best coding AI models — FREE & UNLIMITED.
+ * Uses Ollama Cloud (ollama.com) with the best coding AI models â€” FREE & UNLIMITED.
  * OpenAI-compatible endpoint at https://ollama.com/v1/chat/completions
  *
  * System prompt imported from centralized lib/system-prompts.ts
@@ -9,13 +9,13 @@
 
 import { NextRequest } from 'next/server';
 import { buildSystemPrompt, buildImageAnalysisPrompt } from '@/lib/system-prompts';
-import { huggingfaceSchema } from '@/lib/api-schemas';
+import { ollamaSchema } from '@/lib/api-schemas';
 import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
 import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export const runtime = 'edge';
 
-// ─── Ollama Cloud Config ────────────────────────────────────────────────────
+// â”€â”€â”€ Ollama Cloud Config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const OLLAMA_URL = 'https://ollama.com/v1/chat/completions';
 const OLLAMA_KEY = process.env.OLLAMA_API_KEY || '';
 
@@ -48,11 +48,11 @@ const VISION_MODELS = new Set([
 // Default model when none specified
 const DEFAULT_CHAT_MODEL = 'gemini-3-flash-preview';
 
-// ─── System Prompt — from centralized lib ────────────────────────────────────
+// â”€â”€â”€ System Prompt â€” from centralized lib â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const SYSTEM_PROMPT = buildSystemPrompt();
 
 
-// ─── Ollama Cloud SSE Stream ────────────────────────────────────────────────
+// â”€â”€â”€ Ollama Cloud SSE Stream â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function streamWithOllama(
   modelId: string,
@@ -112,19 +112,15 @@ async function streamWithOllama(
 }
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
   if (rateLimitError) return rateLimitError;
 
-  let body: {
-    messages: Array<{ role: string; content: string }>;
-    model?: string;
-    images?: Array<{ data: string; type: string }>;
-  };
+  let body: ReturnType<typeof ollamaSchema.parse>;
   try {
-    body = await req.json();
+    body = ollamaSchema.parse(await req.json());
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid request body' }), {
       status: 400,
@@ -141,7 +137,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Build system prompt — add image analysis instructions if images are attached
+  // Build system prompt â€” add image analysis instructions if images are attached
   let systemContent = SYSTEM_PROMPT;
   if (images && images.length > 0) {
     systemContent += buildImageAnalysisPrompt(images.length);
@@ -193,7 +189,7 @@ export async function POST(req: NextRequest) {
 
   const encoder = new TextEncoder();
 
-  // NO FALLBACK — use ONLY the user's selected model
+  // NO FALLBACK â€” use ONLY the user's selected model
   const modelId = OLLAMA_MODELS[model] ? model : DEFAULT_CHAT_MODEL;
   const apiModel = OLLAMA_MODELS[modelId];
 
@@ -212,7 +208,7 @@ export async function POST(req: NextRequest) {
         } catch (err) {
           lastError = err instanceof Error ? err.message : 'Unknown error';
           if (/401|auth/i.test(lastError)) break; // Don't retry auth errors
-          // Rate limited or transient — wait and retry SAME model
+          // Rate limited or transient â€” wait and retry SAME model
           const delay = Math.min(3000 * (attempt + 1), 30000);
           console.log(`[chat] ${modelId} attempt ${attempt + 1} failed: ${lastError.slice(0, 80)}, retrying in ${delay}ms...`);
           await new Promise(r => setTimeout(r, delay));

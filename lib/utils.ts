@@ -100,7 +100,7 @@ export function generateId(): string {
 
 /** Determine which API endpoint to use for a model */
 export function getApiEndpoint(_provider: string): string {
-  return '/api/huggingface';
+  return '/api/ollama';
 }
 
 /** Get the optimal model for the request (auto-switch to vision if images attached) */

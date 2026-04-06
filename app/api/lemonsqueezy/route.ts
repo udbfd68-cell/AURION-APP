@@ -1,5 +1,5 @@
 /**
- * Lemon Squeezy Proxy Route — Payments API for digital products
+ * Lemon Squeezy Proxy Route â€” Payments API for digital products
  * https://docs.lemonsqueezy.com/api
  */
 
@@ -17,14 +17,16 @@ const ALLOWED_ENDPOINTS = [
 ];
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { apiKey, endpoint, method, params } = await req.json();
+    const result = await parseBody(req, lemonSqueezySchema);
+    if ('error' in result) return result.error;
+    const { apiKey, endpoint, method, params } = result.data;
 
     if (!apiKey) {
       return NextResponse.json({ error: 'Missing Lemon Squeezy API key' }, { status: 400 });

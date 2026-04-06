@@ -1,8 +1,8 @@
 /**
- * Supabase Proxy Route — Execute real REST queries against Supabase
+ * Supabase Proxy Route â€” Execute real REST queries against Supabase
  * 
  * Proxies requests to the Supabase PostgREST API using the user's
- * project URL and API key. No packages needed — pure fetch.
+ * project URL and API key. No packages needed â€” pure fetch.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -13,20 +13,22 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { supabaseUrl, supabaseKey, query, table, method, body, select } = await req.json();
+    const result = await parseBody(req, supabaseSchema);
+    if ('error' in result) return result.error;
+    const { supabaseUrl, supabaseKey, query, table, method, body, select } = result.data;
 
     if (!supabaseUrl || !supabaseKey) {
       return NextResponse.json({ error: 'Missing supabaseUrl or supabaseKey' }, { status: 400 });
     }
 
-    // Sanitize URL — must be a valid Supabase project URL
+    // Sanitize URL â€” must be a valid Supabase project URL
     const url = supabaseUrl.replace(/\/+$/, '');
     if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url)) {
       return NextResponse.json({ error: 'Invalid Supabase URL format. Expected: https://xxxxx.supabase.co' }, { status: 400 });
@@ -50,7 +52,7 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Connection test mode — validate auth without needing a specific table
+    // Connection test mode â€” validate auth without needing a specific table
     if (!table || table === '_health_check' || table === '_test_connection') {
       const testResp = await fetch(`${url}/rest/v1/`, { headers });
       if (testResp.ok || testResp.status === 200) {

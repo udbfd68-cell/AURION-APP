@@ -42,7 +42,7 @@ async function getOwnerId(): Promise<string> {
   return owners[0].owner.id;
 }
 
-// GET — list IDE services or get a specific service status
+// GET â€” list IDE services or get a specific service status
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -80,16 +80,16 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST — create a new code-server IDE instance
+// POST â€” create a new code-server IDE instance
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.deploy);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const body = await req.json();
+    const body = renderSchema.parse(await req.json());
     const projectName = String(body.projectName || 'default').replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase().slice(0, 30);
     const suffix = Date.now().toString(36);
     const serviceName = `aurion-ide-${projectName}-${suffix}`;
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Node.js setup script: write project files then start code-server
-    // This runs as eval(process.env.NODE_SETUP) — no shell quoting needed
+    // This runs as eval(process.env.NODE_SETUP) â€” no shell quoting needed
     const nodeSetup = [
       'var fs=require("fs"),path=require("path"),cp=require("child_process");',
       'var dir="/home/coder/project";',
@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// DELETE — delete an IDE service
+// DELETE â€” delete an IDE service
 export async function DELETE(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);

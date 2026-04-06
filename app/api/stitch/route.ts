@@ -1,5 +1,5 @@
 /**
- * Google Stitch API Route — AI-powered UI/UX design generation
+ * Google Stitch API Route â€” AI-powered UI/UX design generation
  * Uses the official @google/stitch-sdk to:
  * - Create Stitch projects
  * - Generate high-fidelity screens from text prompts
@@ -17,7 +17,7 @@ import { stitchSchema } from '@/lib/api-schemas';
 import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
 import { RATE_LIMITS } from '@/lib/rate-limiter';
 
-// Server-only — cannot use edge runtime because SDK uses MCP protocol
+// Server-only â€” cannot use edge runtime because SDK uses MCP protocol
 export const runtime = 'nodejs';
 
 function getClient(): Stitch {
@@ -28,7 +28,7 @@ function getClient(): Stitch {
 }
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
@@ -39,20 +39,10 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'STITCH_API_KEY not configured. Add it in your .env.local file.' }, { status: 500 });
   }
 
-  let body: {
-    action: string;
-    projectId?: string;
-    title?: string;
-    prompt?: string;
-    screenId?: string;
-    deviceType?: string;
-    variantCount?: number;
-    pages?: { name: string; prompt: string }[];
-    designSystem?: string;
-  };
+  let body: ReturnType<typeof stitchSchema.parse>;
 
   try {
-    body = await req.json();
+    body = stitchSchema.parse(await req.json());
   } catch {
     return Response.json({ error: 'Invalid request body' }, { status: 400 });
   }
@@ -66,7 +56,7 @@ export async function POST(req: NextRequest) {
     const stitch = getClient();
 
     switch (action) {
-      // ─── List all projects ──────────────────────────────────
+      // â”€â”€â”€ List all projects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       case 'list_projects': {
         const projects = await stitch.projects();
         return Response.json({
@@ -77,7 +67,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // ─── Create a new project ──────────────────────────────
+      // â”€â”€â”€ Create a new project â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       case 'create_project': {
         if (!body.title) return Response.json({ error: 'Missing title' }, { status: 400 });
         const project = await stitch.createProject(body.title);
@@ -87,7 +77,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // ─── Generate a screen from text prompt ────────────────
+      // â”€â”€â”€ Generate a screen from text prompt â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       case 'generate_screen': {
         if (!body.projectId) return Response.json({ error: 'Missing projectId' }, { status: 400 });
         if (!body.prompt) return Response.json({ error: 'Missing prompt' }, { status: 400 });
@@ -109,7 +99,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // ─── Edit an existing screen ───────────────────────────
+      // â”€â”€â”€ Edit an existing screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       case 'edit_screen': {
         if (!body.projectId) return Response.json({ error: 'Missing projectId' }, { status: 400 });
         if (!body.screenId) return Response.json({ error: 'Missing screenId' }, { status: 400 });
@@ -132,7 +122,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // ─── Generate design variants ─────────────────────────
+      // â”€â”€â”€ Generate design variants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       case 'generate_variants': {
         if (!body.projectId) return Response.json({ error: 'Missing projectId' }, { status: 400 });
         if (!body.screenId) return Response.json({ error: 'Missing screenId' }, { status: 400 });
@@ -157,7 +147,7 @@ export async function POST(req: NextRequest) {
         return Response.json({ variants: results });
       }
 
-      // ─── List screens in a project ─────────────────────────
+      // â”€â”€â”€ List screens in a project â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       case 'list_screens': {
         if (!body.projectId) return Response.json({ error: 'Missing projectId' }, { status: 400 });
 
@@ -173,7 +163,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // ─── Get screen HTML ──────────────────────────────────
+      // â”€â”€â”€ Get screen HTML â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       case 'get_screen_html': {
         if (!body.projectId) return Response.json({ error: 'Missing projectId' }, { status: 400 });
         if (!body.screenId) return Response.json({ error: 'Missing screenId' }, { status: 400 });
@@ -189,14 +179,14 @@ export async function POST(req: NextRequest) {
         return Response.json({ html, htmlUrl });
       }
 
-      // ─── Enhance prompt (Stitch-optimized) ─────────────────
+      // â”€â”€â”€ Enhance prompt (Stitch-optimized) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       case 'enhance_prompt': {
         if (!body.prompt) return Response.json({ error: 'Missing prompt' }, { status: 400 });
         const enhanced = enhanceStitchPrompt(body.prompt, body.designSystem);
         return Response.json({ enhanced });
       }
 
-      // ─── Stitch Loop: generate multiple pages ─────────────
+      // â”€â”€â”€ Stitch Loop: generate multiple pages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       case 'stitch_loop': {
         if (!body.projectId && !body.title) return Response.json({ error: 'Missing projectId or title' }, { status: 400 });
         if (!body.pages || !Array.isArray(body.pages) || body.pages.length === 0) {
@@ -233,7 +223,7 @@ export async function POST(req: NextRequest) {
           } catch { /* HTML download optional */ }
 
           results.push({
-            page: page.name,
+            page: page.name || 'Untitled',
             screenId: screen.screenId,
             htmlUrl,
             imageUrl,
@@ -265,10 +255,10 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// ENHANCE PROMPT — Stitch-optimized prompt engineering
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ENHANCE PROMPT â€” Stitch-optimized prompt engineering
 // Based on google-labs-code/stitch-skills enhance-prompt skill
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 function enhanceStitchPrompt(rawPrompt: string, designSystem?: string): string {
   const parts: string[] = [];

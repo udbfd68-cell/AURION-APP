@@ -1,5 +1,5 @@
 /**
- * Figma → Code API Route
+ * Figma â†’ Code API Route
  *
  * Takes a Figma file/frame URL, fetches the design via Figma API,
  * and returns structured design data (layout, colors, typography, assets)
@@ -136,14 +136,16 @@ function flattenNodes(node: FigmaNode, depth = 0): Array<{ type: string; name: s
 }
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { url, token, mode } = await req.json();
+    const result = await parseBody(req, figmaSchema);
+    if ('error' in result) return result.error;
+    const { url, token, mode } = result.data;
 
     const figmaToken = token || process.env.FIGMA_ACCESS_TOKEN || '';
     if (!figmaToken) {
@@ -179,7 +181,7 @@ export async function POST(req: NextRequest) {
 
     const fileData = await fileResp.json();
 
-    // Mode: 'components' — extract all components from the file
+    // Mode: 'components' â€” extract all components from the file
     if (mode === 'components') {
       const components: Array<{ id: string; name: string; description: string; type: string }> = [];
       const extractComponents = (node: FigmaNode) => {
@@ -192,7 +194,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ components, fileName: fileData.name });
     }
 
-    // Mode: 'frames' — list all top-level frames/pages
+    // Mode: 'frames' â€” list all top-level frames/pages
     if (mode === 'frames') {
       const frames: Array<{ id: string; name: string; type: string; width: number; height: number; childCount: number }>[] = [];
       const pages = fileData.document.children || [];
@@ -325,9 +327,9 @@ function buildDesignPrompt(
   bounds?: { x: number; y: number; width: number; height: number } | null,
   components?: Array<{ name: string; type: string; count: number }>,
 ): string {
-  let prompt = `# Figma Design Import: "${fileName}" → Frame: "${frameName}"\n`;
+  let prompt = `# Figma Design Import: "${fileName}" â†’ Frame: "${frameName}"\n`;
   if (bounds) prompt += `Canvas: ${Math.round(bounds.width)}x${Math.round(bounds.height)}px\n`;
-  prompt += `\n## Color Palette (exact hex values — match these EXACTLY):\n${colors.join(', ')}\n`;
+  prompt += `\n## Color Palette (exact hex values â€” match these EXACTLY):\n${colors.join(', ')}\n`;
   prompt += `\n## Typography:\n- Fonts: ${fonts.join(', ')}\n- Size scale: ${fontSizes.join('px, ')}px\n`;
   prompt += `\n## Text Content (from design):\n`;
   for (const t of typography.slice(0, 25)) {
@@ -343,7 +345,7 @@ function buildDesignPrompt(
   for (const s of structure.slice(0, 80)) {
     const indent = '  '.repeat(s.depth);
     const sizeInfo = s.bounds ? ` [${s.bounds.w}x${s.bounds.h}]` : '';
-    const textInfo = s.text ? ` → "${s.text.slice(0, 100)}"` : '';
+    const textInfo = s.text ? ` â†’ "${s.text.slice(0, 100)}"` : '';
     const layoutInfo = s.layout ? ` (${s.layout})` : '';
     prompt += `${indent}${s.type}: ${s.name}${sizeInfo}${layoutInfo}${textInfo}\n`;
   }

@@ -1,5 +1,5 @@
 /**
- * Contentful Proxy Route — Fetch CMS content via Contentful Delivery API
+ * Contentful Proxy Route â€” Fetch CMS content via Contentful Delivery API
  * https://www.contentful.com/developers/docs/references/content-delivery-api/
  */
 
@@ -11,14 +11,16 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { accessToken, spaceId, environmentId, contentType, entryId, query } = await req.json();
+    const result = await parseBody(req, contentfulSchema);
+    if ('error' in result) return result.error;
+    const { accessToken, spaceId, environmentId, contentType, entryId, query } = result.data;
 
     if (!accessToken || !spaceId) {
       return NextResponse.json({ error: 'Missing accessToken and spaceId' }, { status: 400 });

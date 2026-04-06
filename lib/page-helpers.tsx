@@ -27,7 +27,7 @@ function getApiEndpoint(provider: string): string {
   // Route Anthropic models through the Claude Code endpoint for Mammoth AI
   if (provider === 'anthropic') return '/api/claude-code';
   // Route Ollama models through the HuggingFace endpoint (Ollama Cloud)
-  if (provider === 'ollama') return '/api/huggingface';
+  if (provider === 'ollama') return '/api/ollama';
   return '/api/gemini';
 }
 

@@ -1,5 +1,5 @@
 /**
- * Mistral API Route — OpenAI-compatible endpoint  
+ * Mistral API Route â€” OpenAI-compatible endpoint  
  *
  * Uses Mistral's API (codestral, mistral-large) for code generation.
  * Requires MISTRAL_API_KEY env var (from console.mistral.ai).
@@ -19,14 +19,16 @@ const MISTRAL_KEY = process.env.MISTRAL_API_KEY || '';
 const SYSTEM_PROMPT = buildSystemPrompt();
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { messages, model } = await req.json();
+    const result = await parseBody(req, mistralSchema);
+    if ('error' in result) return result.error;
+    const { messages, model } = result.data;
     if (!messages?.length) return Response.json({ error: 'No messages' }, { status: 400 });
     if (!MISTRAL_KEY) return Response.json({ error: 'MISTRAL_API_KEY not configured' }, { status: 500 });
 

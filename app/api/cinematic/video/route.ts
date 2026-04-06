@@ -1,6 +1,6 @@
-// ═══════════════════════════════════════════════════════════════
-// Cinematic 3D Scroll Builder — Video Generation (Google Veo 3)
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// Cinematic 3D Scroll Builder â€” Video Generation (Google Veo 3)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 export const runtime = 'edge';
 
 import { VIDEO_PROVIDERS, MAX_POLL_ATTEMPTS, POLL_INTERVAL_MS, resolveGoogleKey } from '@/lib/cinematic/config';
@@ -9,18 +9,15 @@ import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-uti
 import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export async function POST(req: Request) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.heavy);
   if (rateLimitError) return rateLimitError;
 
   let body;
-  try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
+  try { body = cinematicVideoSchema.parse(await req.json()); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
   const { prompt, imageUrl } = body;
-  if (!prompt || typeof prompt !== 'string') {
-    return Response.json({ error: 'Missing prompt' }, { status: 400 });
-  }
 
   for (const provider of VIDEO_PROVIDERS) {
     const apiKey = resolveGoogleKey();
@@ -40,7 +37,7 @@ export async function POST(req: Request) {
   return Response.json({ error: 'No video provider available. Set GOOGLE_API_KEY.' }, { status: 503 });
 }
 
-// ═══ Google Veo 3 ═══
+// â•â•â• Google Veo 3 â•â•â•
 async function generateWithVeo3(apiKey: string, prompt: string, imageUrl?: string): Promise<string | null> {
   const requestBody: Record<string, unknown> = {
     instances: [{ prompt }],

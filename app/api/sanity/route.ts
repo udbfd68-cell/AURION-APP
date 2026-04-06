@@ -1,5 +1,5 @@
 /**
- * Sanity Proxy Route — Fetch content from Sanity CMS via GROQ API
+ * Sanity Proxy Route â€” Fetch content from Sanity CMS via GROQ API
  * https://www.sanity.io/docs/http-query
  */
 
@@ -11,14 +11,16 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { projectId, dataset, token, query, mutations, action } = await req.json();
+    const result = await parseBody(req, sanitySchema);
+    if ('error' in result) return result.error;
+    const { projectId, dataset, token, query, mutations, action } = result.data;
 
     if (!projectId) {
       return NextResponse.json({ error: 'Missing Sanity projectId' }, { status: 400 });

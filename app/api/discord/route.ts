@@ -1,5 +1,5 @@
 /**
- * Discord Proxy Route — Post messages via Discord Webhooks & Bot API
+ * Discord Proxy Route â€” Post messages via Discord Webhooks & Bot API
  * https://discord.com/developers/docs/resources/webhook
  */
 
@@ -11,14 +11,16 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
   if (rateLimitError) return rateLimitError;
 
   try {
-    const { token, webhookUrl, content, username, embeds, action, channelId } = await req.json();
+    const result = await parseBody(req, discordSchema);
+    if ('error' in result) return result.error;
+    const { token, webhookUrl, content, username, embeds, action, channelId } = result.data;
 
     // Webhook mode
     if (webhookUrl) {

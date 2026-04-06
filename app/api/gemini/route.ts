@@ -1,5 +1,5 @@
 /**
- * Google Gemini API Route — ALL AI goes through Google AI
+ * Google Gemini API Route â€” ALL AI goes through Google AI
  * Uses Google's OpenAI-compatible endpoint at generativelanguage.googleapis.com
  * Requires GOOGLE_API_KEY env variable
  * 
@@ -57,7 +57,7 @@ async function streamWithGoogle(
 
   if (!res.ok) {
     const err = await res.text().catch(() => '');
-    // ─── Claude Code pattern: Attach status for error classification ────
+    // â”€â”€â”€ Claude Code pattern: Attach status for error classification â”€â”€â”€â”€
     const error = new Error(`Google API error ${res.status}: ${err.slice(0, 200)}`);
     (error as Error & { status: number }).status = res.status;
     throw error;
@@ -94,20 +94,15 @@ async function streamWithGoogle(
 }
 
 export async function POST(req: NextRequest) {
-  // ── Security: Origin validation + Rate limiting ──
+  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
   if (rateLimitError) return rateLimitError;
 
-  let body: {
-    messages: Array<{ role: string; content: string }>;
-    model?: string;
-    images?: Array<{ data: string; type: string }>;
-    researchContext?: string;
-  };
+  let body: ReturnType<typeof geminiSchema.parse>;
   try {
-    body = await req.json();
+    body = geminiSchema.parse(await req.json());
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid request body' }), {
       status: 400, headers: { 'Content-Type': 'application/json' },
@@ -173,7 +168,7 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      // ─── Claude Code pattern: Smart retry with error classification ────
+      // â”€â”€â”€ Claude Code pattern: Smart retry with error classification â”€â”€â”€â”€
       const MAX_ATTEMPTS = 5;
       let lastError = '';
       let lastErrorClass = 'unknown';
@@ -190,15 +185,15 @@ export async function POST(req: NextRequest) {
           const status = (err as Error & { status?: number }).status ?? 0;
           lastErrorClass = classifyError(status, lastError);
 
-          // ─── Non-retryable errors: break immediately ────
+          // â”€â”€â”€ Non-retryable errors: break immediately â”€â”€â”€â”€
           if (lastErrorClass === 'auth_failure' || lastErrorClass === 'invalid_input') {
             console.log(`[gemini] ${modelId} non-retryable error (${lastErrorClass}): ${lastError.slice(0, 100)}`);
             break;
           }
 
-          // ─── Context overflow: truncate messages and retry once ────
+          // â”€â”€â”€ Context overflow: truncate messages and retry once â”€â”€â”€â”€
           if (lastErrorClass === 'context_overflow' && attempt === 0) {
-            console.log(`[gemini] ${modelId} context overflow — truncating messages`);
+            console.log(`[gemini] ${modelId} context overflow â€” truncating messages`);
             // Keep system + last 3 messages, trim content
             const trimmed = fullMessages.slice(0, 1).concat(
               fullMessages.slice(Math.max(1, fullMessages.length - 3)).map(m => ({
@@ -211,7 +206,7 @@ export async function POST(req: NextRequest) {
             continue;
           }
 
-          // ─── Exponential backoff with jitter (Claude Code pattern) ────
+          // â”€â”€â”€ Exponential backoff with jitter (Claude Code pattern) â”€â”€â”€â”€
           const delay = calculateBackoff(attempt, {
             baseDelay: lastErrorClass === 'rate_limit' ? 5000 : 2000,
             maxDelay: 60000,
