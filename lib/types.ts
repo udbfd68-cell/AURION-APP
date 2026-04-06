@@ -2,6 +2,14 @@
    Shared Types — Aurion App Builder
    ════════════════════════════════════════════ */
 
+export type ActiveTab = 'app' | 'code' | 'database' | 'payments' | 'ide';
+export type DeviceMode = 'desktop' | 'tablet' | 'mobile';
+export type PreviewDarkMode = 'dark' | 'auto' | 'light';
+export type DbViewMode = 'templates' | 'query' | 'schema' | 'history';
+export type OutputFramework = 'html' | 'react' | 'nextjs' | 'vue' | 'svelte' | 'angular' | 'python' | 'fullstack';
+export type GitTab = 'commits' | 'branches' | 'remote' | 'stash';
+export type ToastType = 'success' | 'error' | 'info';
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';

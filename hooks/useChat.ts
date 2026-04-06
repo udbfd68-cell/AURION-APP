@@ -1,0 +1,388 @@
+'use client';
+import { useCallback, useRef, useState } from 'react';
+import { fetchWithRetry } from '@/lib/client-utils';
+import type { Message } from '@/lib/client-utils';
+import { MODELS, assemblePreview } from '@/lib/cdn-models';
+import { getOptimalModel, generateId, extractPreviewHtml, extractAllCodeBlocks } from '@/lib/page-helpers';
+import { postProcessOutput } from '@/lib/claude-code-engine';
+
+export interface UseChatOptions {
+  // Shared state passed in from parent
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  input: string;
+  setInput: React.Dispatch<React.SetStateAction<string>>;
+  isStreaming: boolean;
+  setIsStreaming: React.Dispatch<React.SetStateAction<boolean>>;
+  model: string;
+  setModel: React.Dispatch<React.SetStateAction<string>>;
+  showModelMenu: boolean;
+  setShowModelMenu: (v: boolean) => void;
+  error: string | null;
+  setError: React.Dispatch<React.SetStateAction<string | null>>;
+  setClonedHtml: React.Dispatch<React.SetStateAction<string | null>>;
+  setCloneError: React.Dispatch<React.SetStateAction<string | null>>;
+  generationHistory: { font?: string; accent?: string; template?: string; ts: number }[];
+  setGenerationHistory: React.Dispatch<React.SetStateAction<{ font?: string; accent?: string; template?: string; ts: number }[]>>;
+  // Dependencies
+  buildWorkspaceContext: () => string;
+  researchMode: boolean;
+  researchContext: string;
+  setResearchContext: (ctx: string) => void;
+  enhanceWithResearch: (tool: string, prompt: string) => Promise<string>;
+  outputFramework: string;
+  activeTab: string;
+  deviceMode: string;
+}
+
+export function useChat(options: UseChatOptions) {
+  const {
+    messages, setMessages,
+    input, setInput,
+    isStreaming, setIsStreaming,
+    model, setModel,
+    showModelMenu, setShowModelMenu,
+    error, setError,
+    setClonedHtml, setCloneError,
+    generationHistory, setGenerationHistory,
+    buildWorkspaceContext,
+    researchMode,
+    researchContext,
+    setResearchContext,
+    enhanceWithResearch,
+    outputFramework,
+  } = options;
+
+  // A/B Mode
+  const [abMode, setAbMode] = useState(false);
+  const [abModelB, setAbModelB] = useState(MODELS[5]?.id || MODELS[0].id);
+  const [abResultB, setAbResultB] = useState<string>('');
+  const [abStreaming, setAbStreaming] = useState(false);
+  const abAbortRef = useRef<AbortController | null>(null);
+
+  // Streaming stats
+  const [streamingChars, setStreamingChars] = useState(0);
+  const streamStartTime = useRef<number>(0);
+
+  // Refs
+  const abortRef = useRef<AbortController | null>(null);
+  const autoFixInFlightRef = useRef(false);
+
+  // Attached images
+  const [attachedImages, setAttachedImages] = useState<{ data: string; type: string; name: string }[]>([]);
+
+  const extractGenMetadata = useCallback((html: string): { font?: string; accent?: string; template?: string } => {
+    const meta: { font?: string; accent?: string; template?: string } = {};
+    const fontImport = html.match(/fonts\.googleapis\.com\/css2?\?family=([^&"']+)/);
+    if (fontImport) meta.font = decodeURIComponent(fontImport[1]).split('&')[0].replace(/\+/g, ' ').split(':')[0];
+    const accentVar = html.match(/--accent\s*:\s*(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\))/);
+    if (accentVar) meta.accent = accentVar[1];
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if (titleMatch) meta.template = titleMatch[1].trim().slice(0, 40);
+    return meta;
+  }, []);
+
+  const recordGeneration = useCallback((html: string) => {
+    const meta = extractGenMetadata(html);
+    if (!meta.font && !meta.accent) return;
+    const entry = { ...meta, ts: Date.now() };
+    setGenerationHistory(prev => {
+      const next = [...prev, entry].slice(-5);
+      try { localStorage.setItem('aurion_gen_history', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, [extractGenMetadata]);
+
+  // Core streaming function
+  const streamToAssistant = useCallback(async (
+    allMessages: { role: string; content: string }[],
+    assistantMsgId: string,
+    useModel: string,
+    signal: AbortSignal,
+    images?: { data: string; type: string }[],
+    directResearchContext?: string,
+  ) => {
+    const endpoint = '/api/claude-code';
+    const effectiveResearch = directResearchContext || researchContext || undefined;
+
+    const bodyPayload = {
+      action: 'jarvis-execute',
+      prompt: allMessages[allMessages.length - 1]?.content || '',
+      messages: allMessages.slice(0, -1),
+      model: useModel,
+      researchContext: effectiveResearch,
+      ...(images?.length ? { images } : {}),
+    };
+
+    const res = await fetchWithRetry(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bodyPayload),
+      signal,
+      timeout: 0,
+    }, 0);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+
+    const reader = res.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) throw new Error('No response stream');
+
+    let accumulatedText = '';
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6);
+        if (payload === '[DONE]') break;
+        let data;
+        try { data = JSON.parse(payload); } catch { continue; }
+        if (data.error) {
+          const clean = data.error.replace(/\[GoogleGenerativeAI Error\]:?\s*/gi, '').replace(/Error fetching from https:\/\/[^\s]+/gi, '').replace(/\[{"@type"[\s\S]*/g, '').replace(/\s{2,}/g, ' ').trim().slice(0, 150) || 'Request failed. Please try again.';
+          throw new Error(clean);
+        }
+        if (data.text) {
+          accumulatedText += data.text;
+          setStreamingChars(prev => prev + data.text.length);
+          setMessages(prev =>
+            prev.map(m => (m.id === assistantMsgId ? { ...m, content: m.content + data.text } : m))
+          );
+        }
+      }
+    }
+    return accumulatedText;
+  }, [researchContext]);
+
+  // Build framework instructions
+  const getFrameworkInstructions = useCallback(() => {
+    const FW_MAP: Record<string, string> = {
+      react: '\n[FRAMEWORK: React + TypeScript + Vite]\nGenerate a COMPLETE multi-file React project. Use TypeScript everywhere (.tsx/.ts). Use shadcn/ui patterns: Button, Card, Input, Dialog, Sheet, Tabs, Badge, Avatar. Use Tailwind CSS utility classes. Use Lucide React icons. Export default function components. Use useState, useEffect, useCallback hooks.\nProject structure: src/main.tsx (entry), src/App.tsx (root), src/components/*.tsx, src/hooks/*.ts, src/lib/utils.ts. Use <<FILE:src/components/Navbar.tsx>> format for EACH file.\nAlso generate: package.json, vite.config.ts, tailwind.config.js, tsconfig.json, postcss.config.js.\n',
+      nextjs: '\n[FRAMEWORK: Next.js 14+ App Router + TypeScript]\nGenerate a COMPLETE multi-file Next.js project. Use TypeScript. Server/Client components (mark "use client" when needed). Use shadcn/ui components + Tailwind CSS. Use Next.js Image, Link, metadata.\nProject structure: app/layout.tsx, app/page.tsx, app/globals.css, components/*.tsx, lib/*.ts. Use <<FILE:app/about/page.tsx>> for routes, <<FILE:components/Header.tsx>> for components.\nAlso generate: package.json, next.config.js, tailwind.config.ts, tsconfig.json.\n',
+      vue: '\n[FRAMEWORK: Vue 3 SFC + TypeScript + Vite]\nGenerate a COMPLETE multi-file Vue 3 project. Use <script setup lang="ts"> syntax. Use Composition API (ref, computed, onMounted, watch). Use Tailwind CSS.\nProject structure: src/App.vue (root), src/main.ts (entry), src/components/*.vue, src/composables/*.ts, src/stores/*.ts (Pinia). Use <<FILE:src/components/Navbar.vue>> format.\nAlso generate: package.json, vite.config.ts, tailwind.config.js.\n',
+      svelte: '\n[FRAMEWORK: Svelte 4 + Vite]\nGenerate a COMPLETE multi-file Svelte project. Use <script> with TypeScript where possible. Use reactive statements ($:). Use Tailwind CSS.\nProject structure: src/App.svelte (root), src/main.js (entry), src/lib/components/*.svelte, src/lib/stores/*.ts. Use <<FILE:src/lib/components/Navbar.svelte>> format.\nAlso generate: package.json, vite.config.js, tailwind.config.js.\n',
+      angular: '\n[FRAMEWORK: Angular 17+ Standalone]\nGenerate a COMPLETE multi-file Angular project. Use standalone components (no NgModules). Use Angular signals where possible. Use TypeScript.\nProject structure: src/app/app.component.ts (root), src/app/components/*.ts, src/app/services/*.ts, src/main.ts (bootstrap). Use <<FILE:src/app/components/header.component.ts>> format.\nAlso generate: package.json, tsconfig.json, angular.json, src/styles.css.\n',
+      python: '\n[FRAMEWORK: Python FastAPI + SQLAlchemy]\nGenerate a COMPLETE multi-file Python backend. Use FastAPI with type hints. Use Pydantic for models. Use SQLAlchemy for ORM. Use async/await.\nProject structure: main.py (entry), app/routes/*.py, app/models/*.py, app/schemas/*.py, app/database.py, app/config.py. Use <<FILE:app/routes/users.py>> format.\nAlso generate: requirements.txt, .env, Dockerfile, README.md.\nFor the frontend, also generate a simple HTML file in static/index.html with Tailwind CSS.\n',
+      fullstack: '\n[FRAMEWORK: Full-Stack — React Frontend + Express/Node Backend]\nGenerate a COMPLETE full-stack project with BOTH frontend and backend code.\nFrontend: React + TypeScript + Vite + Tailwind in src/. Use shadcn/ui patterns.\nBackend: Express + TypeScript in server/. REST API with proper routes, middleware, error handling.\nProject structure: src/main.tsx, src/App.tsx, src/components/*.tsx, server/index.ts, server/routes/*.ts, server/middleware/*.ts.\nUse <<FILE:server/routes/api.ts>> and <<FILE:src/components/Dashboard.tsx>> format.\nAlso generate: package.json (with both deps), vite.config.ts (with proxy), tsconfig.json.\n',
+    };
+    return FW_MAP[outputFramework] || '';
+  }, [outputFramework]);
+
+  // Main send function
+  const sendToAI = useCallback(async (text: string, imgs?: { data: string; type: string }[]) => {
+    if (!text.trim() || isStreaming) return;
+    setError(null);
+    const optimalModel = getOptimalModel(model, text, !!(imgs && imgs.length > 0));
+    if (optimalModel !== model) setModel(optimalModel);
+    const useModelId = optimalModel;
+
+    const userMsg: Message = { id: generateId(), role: 'user', content: text.trim() };
+    const assistantMsg: Message = { id: generateId(), role: 'assistant', content: '' };
+    setMessages(prev => [...prev, userMsg, assistantMsg]);
+    setInput('');
+    setIsStreaming(true);
+    setStreamingChars(0);
+    streamStartTime.current = Date.now();
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const ctx = buildWorkspaceContext();
+    let directResearchResult: string | undefined;
+    if (researchMode && !researchContext && text.length > 10) {
+      try {
+        const enhancement = await Promise.race([
+          enhanceWithResearch('generate', text),
+          new Promise<null>(resolve => setTimeout(() => resolve(null), 8000)),
+        ]);
+        if (enhancement) {
+          directResearchResult = enhancement;
+          setResearchContext(enhancement);
+        }
+      } catch { /* continue without research */ }
+    }
+
+    const fwInstructions = getFrameworkInstructions();
+    const allMessages = [...messages, userMsg].map(({ role, content }) => ({ role, content }));
+    if (allMessages.length > 0) {
+      allMessages[allMessages.length - 1] = {
+        ...allMessages[allMessages.length - 1],
+        content: allMessages[allMessages.length - 1].content + '\n\n' + ctx + fwInstructions,
+      };
+    }
+
+    // A/B comparison
+    if (abMode && abModelB !== useModelId) {
+      setAbResultB('');
+      setAbStreaming(true);
+      const abController = new AbortController();
+      abAbortRef.current = abController;
+      (async () => {
+        try {
+          const res = await fetchWithRetry('/api/claude-code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'jarvis-execute', prompt: allMessages[allMessages.length - 1]?.content || '', messages: allMessages.slice(0, -1), model: abModelB, ...(imgs?.length ? { images: imgs } : {}) }),
+            signal: abController.signal,
+            timeout: 300000,
+          }, 2);
+          if (!res.ok) throw new Error('Model B request failed');
+          const reader = res.body?.getReader();
+          const decoder = new TextDecoder();
+          if (!reader) return;
+          let buf = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop() ?? '';
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const payload = line.slice(6);
+              if (payload === '[DONE]') break;
+              try {
+                const d = JSON.parse(payload);
+                if (d.text) setAbResultB(prev => prev + d.text);
+              } catch { continue; }
+            }
+          }
+        } catch { /* Model B failed silently */ }
+        finally { setAbStreaming(false); abAbortRef.current = null; }
+      })();
+    }
+
+    try {
+      const generatedOutput = await streamToAssistant(allMessages, assistantMsg.id, useModelId, controller.signal, imgs, directResearchResult);
+
+      // Quality Gates + Auto-Continue
+      if (generatedOutput && generatedOutput.length > 200) {
+        const output = generatedOutput;
+        const hasDoctype = /<!DOCTYPE\s+html/i.test(output);
+        const hasClosingHtml = /<\/html\s*>/i.test(output);
+        const hasBody = /<body[^>]*>/i.test(output);
+        const hasClosingBody = /<\/body\s*>/i.test(output);
+        const isHtmlOutput = hasDoctype || hasBody;
+
+        // Auto-continue if truncated
+        if (isHtmlOutput && (!hasClosingHtml || !hasClosingBody) && output.length > 1000) {
+          try {
+            const continueRes = await fetch('/api/claude-code', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'continue', code: output, model: useModelId }),
+              signal: AbortSignal.timeout(120000),
+            });
+            if (continueRes.ok) {
+              const reader = continueRes.body?.getReader();
+              const decoder = new TextDecoder();
+              if (reader) {
+                let buf = '';
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buf += decoder.decode(value, { stream: true });
+                  const lines = buf.split('\n');
+                  buf = lines.pop() ?? '';
+                  for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    const payload = line.slice(6);
+                    if (payload === '[DONE]') break;
+                    try { const d = JSON.parse(payload); if (d.text) setMessages(prev => prev.map(m => m.id === assistantMsg.id ? { ...m, content: m.content + d.text } : m)); } catch { continue; }
+                  }
+                }
+              }
+            }
+          } catch { /* auto-continue failed */ }
+        }
+
+        // Quality gate
+        if (isHtmlOutput) {
+          try {
+            const qcRes = await fetch('/api/claude-code', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'quality-check', code: output }),
+              signal: AbortSignal.timeout(5000),
+            });
+            if (qcRes.ok) {
+              const qcData = await qcRes.json();
+              if (qcData?.data) {
+                const { score, errors, warnings } = qcData.data;
+                if (score < 50 && errors?.length > 0) {
+                  setError(`Quality: ${score}% — ${[...errors, ...warnings.slice(0, 3)].join(', ')}`);
+                }
+              }
+            }
+          } catch { /* non-blocking */ }
+        }
+
+        // Post-processing
+        const ppResult = postProcessOutput(output);
+        if (ppResult.fixes.length > 0) {
+          setMessages(prev => prev.map(m =>
+            m.id === assistantMsg.id ? { ...m, content: ppResult.code } : m
+          ));
+        }
+      }
+    } catch (err: unknown) {
+      if ((err as Error).name === 'AbortError') return;
+      const raw = err instanceof Error ? err.message : 'Unknown error';
+      const msg = raw.replace(/\[GoogleGenerativeAI Error\]:?\s*/gi, '').replace(/Error fetching from https:\/\/[^\s]+/gi, '').replace(/\[{"@type"[\s\S]*/g, '').replace(/\s{2,}/g, ' ').trim().slice(0, 150) || 'Request failed. Please try again.';
+      setError(msg);
+      setMessages(prev => prev.filter(m => m.id !== assistantMsg.id || m.content.length > 0));
+    } finally {
+      setIsStreaming(false);
+      abortRef.current = null;
+      autoFixInFlightRef.current = false;
+      setMessages(prev => {
+        const last = prev.find(m => m.id === assistantMsg.id);
+        if (last?.content) recordGeneration(last.content);
+        return prev;
+      });
+    }
+  }, [isStreaming, messages, model, streamToAssistant, buildWorkspaceContext, abMode, abModelB, outputFramework, recordGeneration, researchMode, researchContext, enhanceWithResearch, setResearchContext, getFrameworkInstructions]);
+
+  const sendMessage = useCallback(() => {
+    const text = input.trim();
+    if (!text) return;
+    const imgInfo = attachedImages.length > 0 ? `\n[${attachedImages.length} image(s) attached: ${attachedImages.map(i => i.name).join(', ')}]` : '';
+    const imgs = attachedImages.length > 0 ? attachedImages.map(i => ({ data: i.data, type: i.type })) : undefined;
+    setAttachedImages([]);
+    sendToAI(text + imgInfo, imgs);
+  }, [input, attachedImages, sendToAI]);
+
+  const sendPrompt = useCallback((text: string) => { sendToAI(text); }, [sendToAI]);
+
+  const stopStream = useCallback(() => { abortRef.current?.abort(); setIsStreaming(false); }, []);
+
+  const clearChat = useCallback(() => {
+    if (isStreaming) { abortRef.current?.abort(); setIsStreaming(false); }
+    setMessages([]);
+    setError(null);
+  }, [isStreaming]);
+
+  return {
+    // A/B
+    abMode, setAbMode,
+    abModelB, setAbModelB,
+    abResultB, setAbResultB,
+    abStreaming,
+    // Streaming stats
+    streamingChars, streamStartTime,
+    // Images
+    attachedImages, setAttachedImages,
+    // Refs
+    autoFixInFlightRef,
+    // Actions
+    sendToAI, sendMessage, sendPrompt,
+    stopStream, clearChat,
+  };
+}

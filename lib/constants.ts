@@ -229,3 +229,98 @@ body {
 }
 `,
 };
+
+/* ════════════════════════════════════════════
+   UI Constants (extracted from page.tsx)
+   ════════════════════════════════════════════ */
+
+export const PROMPT_TEMPLATES = [
+  { icon: '🏠', title: 'Landing Page', prompt: 'Build a modern landing page with hero section, features grid, testimonials, pricing cards, and footer. Use gradients, animations, and professional typography.', cat: 'Page' },
+  { icon: '📊', title: 'Dashboard', prompt: 'Create an admin dashboard with sidebar navigation, stats cards, line/bar charts, recent activity table, and a clean dark theme.', cat: 'Page' },
+  { icon: '🛒', title: 'E-commerce', prompt: 'Build an e-commerce product listing page with product cards, filters sidebar, search bar, cart icon with badge, and responsive grid layout.', cat: 'Page' },
+  { icon: '📝', title: 'Blog', prompt: 'Create a modern blog with featured post hero, post cards grid, categories sidebar, newsletter signup, and dark/light theme toggle.', cat: 'Page' },
+  { icon: '🎨', title: 'Portfolio', prompt: 'Build a creative portfolio website with animated hero, project gallery with hover effects, about section, skills bars, and contact form.', cat: 'Page' },
+  { icon: '📱', title: 'Mobile App UI', prompt: 'Design a mobile app interface with bottom navigation, profile screen, settings list, notification badges, and swipeable cards.', cat: 'Page' },
+  { icon: '✨', title: 'Add Animations', prompt: 'Add smooth entrance animations, hover effects, scroll-triggered reveals, and micro-interactions to the current page using CSS animations and transitions.', cat: 'Enhance' },
+  { icon: '🌙', title: 'Dark Mode', prompt: 'Add a dark/light theme toggle with smooth transition. Use CSS variables for theming. Dark: #0f0f0f bg, light: #ffffff bg.', cat: 'Enhance' },
+  { icon: '📐', title: 'Make Responsive', prompt: 'Make the current page fully responsive with mobile-first breakpoints, hamburger menu for mobile nav, and proper spacing/sizing for all screen sizes.', cat: 'Enhance' },
+  { icon: '♿', title: 'Accessibility', prompt: 'Improve accessibility: add ARIA labels, keyboard navigation, focus styles, semantic HTML, proper heading hierarchy, alt texts, and color contrast fixes.', cat: 'Enhance' },
+  { icon: '⚡', title: 'Optimize Performance', prompt: 'Optimize the code: lazy load images, minimize DOM, use CSS containment, add loading states, optimize animations with will-change and transform.', cat: 'Enhance' },
+  { icon: '🧩', title: 'Add Form', prompt: 'Add a professional contact form with name, email, message fields, validation feedback, submit button with loading state, and success/error toast notifications.', cat: 'Component' },
+  { icon: '📊', title: 'Add Charts', prompt: 'Add interactive data visualization charts using Recharts: line chart, bar chart, and pie chart with sample data, tooltips, and legends.', cat: 'Component' },
+  { icon: '🗺️', title: 'Add Navigation', prompt: 'Add a professional navbar with logo, links, dropdown menus, mobile hamburger menu, and smooth scroll to sections. Sticky on scroll.', cat: 'Component' },
+] as const;
+
+export const EDITOR_THEMES = [
+  { id: 'vs-dark', name: 'Dark+ (Default)', desc: 'VS Code dark theme' },
+  { id: 'vs', name: 'Light', desc: 'VS Code light theme' },
+  { id: 'hc-black', name: 'High Contrast Dark', desc: 'Accessibility focused' },
+  { id: 'hc-light', name: 'High Contrast Light', desc: 'Light accessibility' },
+] as const;
+
+export const KEYBOARD_SHORTCUTS = [
+  { keys: '⌘K', desc: 'Command Palette', cat: 'General' },
+  { keys: '⌘P', desc: 'Go to File', cat: 'General' },
+  { keys: '⌘⇧F', desc: 'Search in Files', cat: 'General' },
+  { keys: '⌘S', desc: 'Save & Refresh Preview', cat: 'General' },
+  { keys: 'Esc', desc: 'Close Modals/Panels', cat: 'General' },
+  { keys: '⌘B', desc: 'Toggle Chat Panel', cat: 'View' },
+  { keys: '⌘`', desc: 'Toggle Terminal', cat: 'View' },
+  { keys: '⌘E', desc: 'Toggle Visual Editor', cat: 'View' },
+  { keys: '⌘1-4', desc: 'Switch Tabs (App/Code/DB/Pay)', cat: 'View' },
+  { keys: '⌘H', desc: 'Conversation History', cat: 'Chat' },
+  { keys: '⌘Z', desc: 'Undo (VFS)', cat: 'Edit' },
+  { keys: '⌘⇧Z', desc: 'Redo (VFS)', cat: 'Edit' },
+  { keys: '⌘D', desc: 'Download ZIP', cat: 'Project' },
+  { keys: '⌘⇧H', desc: 'Find & Replace', cat: 'Edit' },
+  { keys: '⌘/', desc: 'Keyboard Shortcuts', cat: 'General' },
+  { keys: '⌘G', desc: 'Go to Line', cat: 'Edit' },
+] as const;
+
+export const COMPONENT_SNIPPETS = [
+  { name: 'Button', cat: 'Basic', code: '<button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">Click me</button>' },
+  { name: 'Card', cat: 'Layout', code: '<div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">\n  <h3 className="text-lg font-semibold mb-2">Card Title</h3>\n  <p className="text-gray-600">Card description goes here.</p>\n</div>' },
+  { name: 'Input', cat: 'Form', code: '<input type="text" placeholder="Enter text..." className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />' },
+  { name: 'Badge', cat: 'Basic', code: '<span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Badge</span>' },
+  { name: 'Avatar', cat: 'Basic', code: '<div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm">A</div>' },
+  { name: 'Alert', cat: 'Feedback', code: '<div className="flex items-center gap-3 p-4 rounded-lg bg-blue-50 border border-blue-200">\n  <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd"/></svg>\n  <p className="text-sm text-blue-800">This is an info alert message.</p>\n</div>' },
+  { name: 'Modal', cat: 'Overlay', code: '<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">\n  <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">\n    <h2 className="text-xl font-bold mb-2">Modal Title</h2>\n    <p className="text-gray-600 mb-4">Modal description text goes here.</p>\n    <div className="flex justify-end gap-2">\n      <button className="px-4 py-2 rounded-lg border hover:bg-gray-50">Cancel</button>\n      <button className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">Confirm</button>\n    </div>\n  </div>\n</div>' },
+  { name: 'Navbar', cat: 'Navigation', code: '<nav className="flex items-center justify-between px-6 py-4 bg-white border-b">\n  <div className="text-xl font-bold">Logo</div>\n  <div className="flex items-center gap-6">\n    <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">Home</a>\n    <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">About</a>\n    <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">Contact</a>\n    <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Sign Up</button>\n  </div>\n</nav>' },
+  { name: 'Hero', cat: 'Section', code: '<section className="py-20 px-6 text-center bg-gradient-to-br from-blue-50 to-indigo-100">\n  <h1 className="text-5xl font-bold text-gray-900 mb-4">Build Something Amazing</h1>\n  <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-8">A brief description of your product or service that explains the value.</p>\n  <div className="flex justify-center gap-4">\n    <button className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">Get Started</button>\n    <button className="px-6 py-3 border-2 border-gray-300 rounded-lg hover:border-gray-400 font-medium">Learn More</button>\n  </div>\n</section>' },
+  { name: 'Footer', cat: 'Section', code: '<footer className="bg-gray-900 text-gray-400 py-12 px-6">\n  <div className="max-w-6xl mx-auto grid grid-cols-4 gap-8">\n    <div>\n      <h3 className="text-white font-semibold mb-4">Company</h3>\n      <ul className="space-y-2 text-sm"><li><a href="#" className="hover:text-white">About</a></li><li><a href="#" className="hover:text-white">Careers</a></li></ul>\n    </div>\n    <div>\n      <h3 className="text-white font-semibold mb-4">Product</h3>\n      <ul className="space-y-2 text-sm"><li><a href="#" className="hover:text-white">Features</a></li><li><a href="#" className="hover:text-white">Pricing</a></li></ul>\n    </div>\n    <div>\n      <h3 className="text-white font-semibold mb-4">Resources</h3>\n      <ul className="space-y-2 text-sm"><li><a href="#" className="hover:text-white">Docs</a></li><li><a href="#" className="hover:text-white">Blog</a></li></ul>\n    </div>\n    <div>\n      <h3 className="text-white font-semibold mb-4">Legal</h3>\n      <ul className="space-y-2 text-sm"><li><a href="#" className="hover:text-white">Privacy</a></li><li><a href="#" className="hover:text-white">Terms</a></li></ul>\n    </div>\n  </div>\n</footer>' },
+  { name: 'Pricing Card', cat: 'Section', code: '<div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 max-w-sm">\n  <h3 className="text-lg font-medium text-gray-500">Pro Plan</h3>\n  <div className="mt-4 flex items-baseline gap-1"><span className="text-5xl font-bold">$29</span><span className="text-gray-500">/month</span></div>\n  <ul className="mt-6 space-y-3">\n    <li className="flex items-center gap-2 text-sm"><svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg> Unlimited projects</li>\n    <li className="flex items-center gap-2 text-sm"><svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg> Priority support</li>\n  </ul>\n  <button className="mt-8 w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors">Get Started</button>\n</div>' },
+  { name: 'Table', cat: 'Data', code: '<div className="overflow-hidden rounded-lg border border-gray-200">\n  <table className="min-w-full divide-y divide-gray-200">\n    <thead className="bg-gray-50"><tr><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th></tr></thead>\n    <tbody className="bg-white divide-y divide-gray-200">\n      <tr><td className="px-6 py-4 text-sm font-medium text-gray-900">John Doe</td><td className="px-6 py-4"><span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">Active</span></td><td className="px-6 py-4 text-sm text-gray-500">Admin</td></tr>\n      <tr><td className="px-6 py-4 text-sm font-medium text-gray-900">Jane Smith</td><td className="px-6 py-4"><span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">Pending</span></td><td className="px-6 py-4 text-sm text-gray-500">User</td></tr>\n    </tbody>\n  </table>\n</div>' },
+  { name: 'Toggle', cat: 'Form', code: '<label className="relative inline-flex items-center cursor-pointer">\n  <input type="checkbox" className="sr-only peer" />\n  <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-blue-600 peer-checked:after:translate-x-full after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>\n  <span className="ml-3 text-sm font-medium text-gray-700">Toggle</span>\n</label>' },
+  { name: 'Loading Spinner', cat: 'Feedback', code: '<div className="flex items-center justify-center">\n  <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>\n</div>' },
+] as const;
+
+export const INTEGRATION_ROUTE_MAP: Record<string, string> = {
+  'OpenAI': '/api/openai', 'Resend': '/api/resend', 'SendGrid': '/api/sendgrid',
+  'Twilio': '/api/twilio', 'Upstash': '/api/upstash', 'Neon': '/api/neon',
+  'Slack': '/api/slack', 'Discord': '/api/discord', 'Lemon Squeezy': '/api/lemonsqueezy',
+  'Contentful': '/api/contentful', 'Algolia': '/api/algolia', 'Klaviyo': '/api/klaviyo',
+  'Sanity': '/api/sanity', 'Stripe': '/api/stripe', 'Supabase': '/api/supabase',
+};
+
+/** Panel names to close on Escape, checked in priority order */
+export const ESCAPE_PANEL_PRIORITY: string[] = [
+  'showCommandPalette', 'showFileSearch', 'showContentSearch', 'showFindReplace',
+  'showShortcuts', 'showThemeSelector', 'showColorPicker', 'showGotoLine',
+  'showA11yPanel', 'showSeoPanel', 'showTailwindPanel', 'showColorPalettePanel',
+  'showPerfPanel', 'showStatsPanel', 'showCssVarsPanel', 'showConsolePanel',
+  'showDepsPanel', 'showComplexityPanel', 'showOutlinePanel', 'showImageOptPanel',
+  'showDiffStatsPanel', 'showNetworkPanel', 'showHtmlValidatorPanel', 'showFontPanel',
+  'showSnippetsPanel', 'showTreemapPanel', 'showUnusedCssPanel', 'showLinkCheckerPanel',
+  'showDomTreePanel', 'showMetaEditorPanel', 'showShortcutsRef', 'showContrastPanel',
+  'showZIndexPanel', 'showTodoScanPanel', 'showRegexPanel', 'showSpecificityPanel',
+  'showLazyImgPanel', 'showTextStatsPanel', 'showDuplicatePanel', 'showElementCountPanel',
+  'showConsoleFilter', 'showColorEdit', 'showFoldMap', 'showDepGraph',
+  'showPerfBudget', 'showResponsiveGrid', 'showAnimPanel', 'showEventAudit',
+  'showOgPreview', 'showSemanticPanel', 'showChangeSummary', 'showWhitespacePanel',
+  'showPwaPanel', 'showSchemaPanel', 'showBundlePanel', 'showAriaPanel',
+  'showSecurityPanel', 'showCollabPanel', 'showFeedbackPanel',
+  'showChangelog', 'showVisualBuilder', 'showAnimBuilder', 'showDesignSystem',
+  'showApiTester', 'showGitPanel', 'showScreenshotAnalyzer', 'showTemplates',
+  'showMediaGallery', 'showEnvPanel', 'showModelMenu', 'showGitHubModal',
+  'showIntegrations', 'showResearchPanel', 'showProjectMenu',
+];
