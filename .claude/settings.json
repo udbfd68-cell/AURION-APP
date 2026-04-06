@@ -6,7 +6,18 @@
       "Write(*)",
       "Edit(*)",
       "Glob(*)",
-      "Grep(*)"
+      "Grep(*)",
+      "WebFetch(*)",
+      "mcp__*"
     ]
+  },
+  "skills": {
+    "autoLoad": [
+      ".agents/skills/vercel-react-best-practices/SKILL.md",
+      ".agents/skills/frontend-design/SKILL.md",
+      ".agents/skills/webapp-testing/SKILL.md"
+    ],
+    "catalog": ".agents/SKILLS_CATALOG.md",
+    "index": ".agents/skills-index.json"
   }
 }

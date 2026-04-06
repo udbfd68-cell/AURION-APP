@@ -10,12 +10,21 @@
  */
 
 import { NextRequest } from 'next/server';
+import { ltxSchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export const runtime = 'edge';
 
 const LTX_API_BASE = 'https://api.ltx.video/v1';
 
 export async function POST(req: NextRequest) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req, RATE_LIMITS.heavy);
+  if (rateLimitError) return rateLimitError;
+
   const apiKey = process.env.LTX_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: 'LTX_API_KEY not configured' }), {

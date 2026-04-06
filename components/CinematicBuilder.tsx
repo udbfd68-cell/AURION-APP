@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type {
   PipelineStep, StepStatus, PipelineNode, CinematicState,
@@ -28,7 +28,7 @@ const initialNodes: PipelineNode[] = STEPS.map(s => ({
   status: 'idle' as StepStatus,
 }));
 
-export default function CinematicBuilder() {
+function CinematicBuilder() {
   // ═══ State ═══
   const [state, setState] = useState<CinematicState>({
     nodes: initialNodes,
@@ -809,3 +809,5 @@ export default function CinematicBuilder() {
     </div>
   );
 }
+
+export default memo(CinematicBuilder);

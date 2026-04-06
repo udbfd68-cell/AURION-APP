@@ -1,6 +1,16 @@
+import { execSchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
+
 export const runtime = 'edge';
 
 export async function POST(req: Request) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req as any);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req as any, RATE_LIMITS.standard);
+  if (rateLimitError) return rateLimitError;
+
   try {
     const { code, timeout = 15000 } = await req.json();
 

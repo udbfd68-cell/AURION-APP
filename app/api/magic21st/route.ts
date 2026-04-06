@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { magic21stSchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 const API_KEY = process.env.TWENTY_FIRST_API_KEY;
 const BASE_URL = 'https://21st.dev';
@@ -6,6 +9,12 @@ const BASE_URL = 'https://21st.dev';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
+  if (rateLimitError) return rateLimitError;
+
   if (!API_KEY) {
     return NextResponse.json({ error: 'TWENTY_FIRST_API_KEY not configured' }, { status: 500 });
   }

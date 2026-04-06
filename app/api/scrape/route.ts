@@ -40,6 +40,9 @@ import {
   calculateVisualDiffHints,
   buildMultiViewportPrompt,
 } from '@/lib/firecrawl';
+import { scrapeSchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export const runtime = 'nodejs';
 export const maxDuration = 45;
@@ -201,6 +204,12 @@ function buildFallbackResponse(html: string, url: string) {
 }
 
 export async function POST(req: NextRequest) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req, RATE_LIMITS.heavy);
+  if (rateLimitError) return rateLimitError;
+
   let body: { url: string; light?: boolean };
   try {
     body = await req.json();

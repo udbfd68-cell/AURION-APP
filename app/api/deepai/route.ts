@@ -6,12 +6,21 @@
  */
 
 import { NextRequest } from 'next/server';
+import { deepaiSchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export const runtime = 'edge';
 
 const PEXELS_URL = 'https://api.pexels.com/v1/search';
 
 export async function POST(req: NextRequest) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
+  if (rateLimitError) return rateLimitError;
+
   const pexelsKey = process.env.PEXELS_API_KEY;
 
   let body: { prompt: string };

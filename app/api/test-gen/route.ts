@@ -7,6 +7,9 @@
  */
 
 import { NextRequest } from 'next/server';
+import { testGenSchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export const runtime = 'edge';
 
@@ -34,6 +37,12 @@ Return ONLY the test code wrapped in a single code block. No explanations before
 \`\`\``;
 
 export async function POST(req: NextRequest) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
+  if (rateLimitError) return rateLimitError;
+
   try {
     const { code, fileName, framework, language } = await req.json();
 

@@ -1,0 +1,25 @@
+{
+  "commands": [
+    "<list>",
+    {
+      "full_path": "str",
+      "name": "str",
+      "subcommands": [
+        "<list>",
+        {
+          "flags": [
+            "<list>",
+            "<...>"
+          ],
+          "full_path": "str",
+          "name": "str"
+        }
+      ],
+      "flags": [
+        "<list>",
+        "str"
+      ]
+    }
+  ],
+  "version": "str"
+}

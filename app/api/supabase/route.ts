@@ -6,10 +6,19 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { supabaseSchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
+  if (rateLimitError) return rateLimitError;
+
   try {
     const { supabaseUrl, supabaseKey, query, table, method, body, select } = await req.json();
 

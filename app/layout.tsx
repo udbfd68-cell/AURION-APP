@@ -1,6 +1,7 @@
 import './globals.css'
 import 'highlight.js/styles/github-dark.css'
 import { Metadata } from 'next'
+import WebVitals from '@/components/WebVitals'
 
 const hasClerk = !!(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
@@ -34,7 +35,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <html lang="en" suppressHydrationWarning>
           <head />
           <body className="bg-[#0a0a0a] text-gray-100 min-h-screen">
-            <main>{children}</main>
+            <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[9999] focus:bg-purple-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-lg">
+              Skip to content
+            </a>
+            <main id="main-content">{children}</main>
+            <WebVitals />
           </body>
         </html>
       </ClerkProvider>
@@ -45,7 +50,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en" suppressHydrationWarning>
       <head />
       <body className="bg-[#0a0a0a] text-gray-100 min-h-screen">
-        <main>{children}</main>
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[9999] focus:bg-purple-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-lg">
+          Skip to content
+        </a>
+        <main id="main-content">{children}</main>
+        <WebVitals />
       </body>
     </html>
   );

@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { renderSchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export const runtime = 'nodejs';
 
@@ -79,6 +82,12 @@ export async function GET(req: NextRequest) {
 
 // POST — create a new code-server IDE instance
 export async function POST(req: NextRequest) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req, RATE_LIMITS.deploy);
+  if (rateLimitError) return rateLimitError;
+
   try {
     const body = await req.json();
     const projectName = String(body.projectName || 'default').replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase().slice(0, 30);

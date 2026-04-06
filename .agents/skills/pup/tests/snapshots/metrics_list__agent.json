@@ -1,0 +1,10 @@
+{
+  "data": {
+    "from": "<unix_ts>",
+    "metrics": [
+      "<list>",
+      "str"
+    ]
+  },
+  "status": "str"
+}

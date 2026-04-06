@@ -1,0 +1,20 @@
+{
+  "data": {
+    "attributes": {
+      "*": "<...>"
+    },
+    "relationships": {
+      "*": {
+        "data": [
+          "<list>",
+          {
+            "id": "<...>",
+            "type": "<...>"
+          }
+        ]
+      }
+    },
+    "type": "str"
+  },
+  "status": "str"
+}

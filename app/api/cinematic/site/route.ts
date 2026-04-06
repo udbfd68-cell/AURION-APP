@@ -6,8 +6,17 @@ export const runtime = 'edge';
 import { LLM_PROVIDERS, resolveGoogleKey } from '@/lib/cinematic/config';
 import { CINEMATIC_TEMPLATES } from '@/lib/cinematic/templates';
 import { generateScrollSiteHtml } from '@/lib/cinematic/site-template';
+import { cinematicSiteSchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export async function POST(req: Request) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req, RATE_LIMITS.heavy);
+  if (rateLimitError) return rateLimitError;
+
   let body;
   try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
   const { enrichedPrompt, template: templateId, frameCount, fps, siteDescription } = body;

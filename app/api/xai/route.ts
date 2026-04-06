@@ -7,6 +7,9 @@
 
 import { NextRequest } from 'next/server';
 import { buildSystemPrompt } from '@/lib/system-prompts';
+import { xaiSchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export const runtime = 'edge';
 
@@ -16,6 +19,12 @@ const XAI_KEY = process.env.XAI_API_KEY || '';
 const SYSTEM_PROMPT = buildSystemPrompt();
 
 export async function POST(req: NextRequest) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
+  if (rateLimitError) return rateLimitError;
+
   try {
     const { messages, model } = await req.json();
     if (!messages?.length) return Response.json({ error: 'No messages' }, { status: 400 });

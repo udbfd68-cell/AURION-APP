@@ -71,7 +71,7 @@ const CodeEditorPanel = React.memo(function CodeEditorPanel(props: CodeEditorPan
   } = props;
 
   return (
-    <div className="h-full flex bg-[#0c0c0c]" onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
+    <div className="h-full flex bg-[#0c0c0c]" role="region" aria-label="Code editor" onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
       {isDragOver && (
         <div className="absolute inset-0 z-40 bg-purple-500/10 border-2 border-dashed border-purple-500/40 rounded-lg flex items-center justify-center">
           <div className="text-center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2" className="mx-auto mb-2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><p className="text-purple-400 text-sm font-medium">Drop files here</p></div>

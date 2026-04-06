@@ -5,6 +5,9 @@ export const runtime = 'edge';
 
 import { LLM_PROVIDERS, resolveGoogleKey } from '@/lib/cinematic/config';
 import { CINEMATIC_TEMPLATES } from '@/lib/cinematic/templates';
+import { cinematicEnrichSchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 const SYSTEM_PROMPT = `Tu es un expert en direction artistique cinématographique et en génération d'images/vidéos par IA.
 
@@ -22,6 +25,12 @@ Tu dois retourner un JSON avec exactement ces 4 champs :
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans explication.`;
 
 export async function POST(req: Request) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
+  if (rateLimitError) return rateLimitError;
+
   let body;
   try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
   const { prompt, template: templateId } = body;

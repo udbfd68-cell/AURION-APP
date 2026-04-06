@@ -7,6 +7,9 @@
  */
 
 import { NextRequest } from 'next/server';
+import { deploySchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export const runtime = 'edge';
 
@@ -19,6 +22,12 @@ interface DeployFile {
 }
 
 export async function POST(req: NextRequest) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req, RATE_LIMITS.deploy);
+  if (rateLimitError) return rateLimitError;
+
   const token = (process.env.VERCEL_DEPLOY_TOKEN || '').trim();
   if (!token) {
     return new Response(JSON.stringify({ error: 'VERCEL_DEPLOY_TOKEN not configured' }), {

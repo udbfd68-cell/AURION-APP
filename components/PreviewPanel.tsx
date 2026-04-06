@@ -72,7 +72,7 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
   } = props;
 
   return (
-    <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+    <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full" role="region" aria-label="Preview panel">
       {hasPreviewContent ? (
         <div className="relative w-full h-full bg-[#0c0c0c] flex flex-col">
           {/* Preview URL bar */}
@@ -142,9 +142,9 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
                 </div>
               )}
               {webContainer.previewUrl ? (
-                <iframe ref={iframeRef} className="w-full h-full border-none bg-white" src={webContainer.previewUrl} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" title="Preview" onLoad={() => setPreviewLoading(false)} />
+                <iframe ref={iframeRef} className="w-full h-full border-none bg-white" src={webContainer.previewUrl} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" title="Preview" aria-label="Website preview" onLoad={() => setPreviewLoading(false)} />
               ) : (
-                <iframe ref={iframeRef} className="w-full h-full border-none bg-white" srcDoc={previewHtml ?? ''} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" title="Preview" onLoad={() => setPreviewLoading(false)} />
+                <iframe ref={iframeRef} className="w-full h-full border-none bg-white" srcDoc={previewHtml ?? ''} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" title="Preview" aria-label="Website preview" onLoad={() => setPreviewLoading(false)} />
               )}
               {showSplitPreview && deviceMode === 'desktop' && previewHtml && (
                 <div className="absolute right-0 top-0 bottom-0 w-[200px] border-l-2 border-dashed border-[#333] bg-[#0a0a0a] flex flex-col items-center z-[6]">

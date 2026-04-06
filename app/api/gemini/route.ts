@@ -13,6 +13,9 @@
 import { NextRequest } from 'next/server';
 import { buildSystemPrompt, buildImageAnalysisPrompt, buildResearchEnhancedPrompt } from '@/lib/system-prompts';
 import { classifyError, calculateBackoff } from '@/lib/claude-code-engine';
+import { geminiSchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export const runtime = 'edge';
 
@@ -91,6 +94,12 @@ async function streamWithGoogle(
 }
 
 export async function POST(req: NextRequest) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
+  if (rateLimitError) return rateLimitError;
+
   let body: {
     messages: Array<{ role: string; content: string }>;
     model?: string;

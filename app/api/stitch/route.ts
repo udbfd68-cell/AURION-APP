@@ -13,6 +13,9 @@
 
 import { NextRequest } from 'next/server';
 import { Stitch, StitchToolClient, StitchError } from '@google/stitch-sdk';
+import { stitchSchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 // Server-only — cannot use edge runtime because SDK uses MCP protocol
 export const runtime = 'nodejs';
@@ -25,6 +28,12 @@ function getClient(): Stitch {
 }
 
 export async function POST(req: NextRequest) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
+  if (rateLimitError) return rateLimitError;
+
   const apiKey = process.env.STITCH_API_KEY;
   if (!apiKey) {
     return Response.json({ error: 'STITCH_API_KEY not configured. Add it in your .env.local file.' }, { status: 500 });

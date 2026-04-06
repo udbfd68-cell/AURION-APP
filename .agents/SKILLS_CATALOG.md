@@ -1,0 +1,738 @@
+# SKILLS CATALOG — 2217 skills indexed
+
+> Auto-generated index. Use `/skills <domain>` to find relevant skills.
+
+## FRONTEND (188)
+- **agent-sessions-layout**
+- **aiconfig-create**
+- **aiconfig-online-evals**
+- **aiconfig-projects**
+- **aiconfig-targeting**
+- **aiconfig-tools**
+- **aiconfig-update**
+- **aiconfig-variations**
+- **angular-migration**
+- **angular-modernization** — Modernizes Angular code such as components and directives to follow best practic
+- **api-design-principles**
+- **auth0-angular**
+- **auth0-nextjs**
+- **auth0-react**
+- **auth0-react-native**
+- **auth0-vue**
+- **better-icons**
+- **book-cover-design**
+- **brainstorming** — "You MUST use this before any creative work - creating features, building compon
+- **building-components**
+- **canvas-design**
+- **cds-design-to-code**
+- **character-design-sheet**
+- **ckm-banner-design**
+- **ckm-design**
+- **ckm-design-system**
+- **ckm-ui-styling**
+- **clerk-nextjs-patterns**
+- **cloud-design-patterns** — 'Cloud design patterns for distributed systems architecture covering 42 industry
+- **component-docs**
+- _...and 158 more_
+
+## BACKEND (41)
+- **apify-generate-output-schema**
+- **apollo-federation**
+- **aspnet-minimal-api-openapi** — 'Create ASP.NET Minimal API endpoints with proper OpenAPI documentation'
+- **auth0-express**
+- **backend-dev-guidelines**
+- **claude-md-improver**
+- **clerk-backend-api**
+- **copilot-usage-metrics** — Retrieve and display GitHub Copilot usage metrics for organizations and enterpri
+- **django-access-review**
+- **django-perf-review**
+- **dotnet-backend-patterns**
+- **error-tracking-node**
+- **expo-api-routes**
+- **fastapi-templates**
+- **feature-flags-nodejs**
+- **federation**
+- **graphql-operations**
+- **graphql-schema**
+- **integration-django**
+- **integration-fastapi**
+- **integration-javascript_node**
+- **kotlin-backend-jpa-entity-mapping**
+- **langchain-middleware**
+- **logs-nodejs**
+- **mcp-copilot-studio-server-generator** — 'Generate a complete MCP server implementation optimized for Copilot Studio inte
+- **node-add-oauth**
+- **nodejs-backend-patterns**
+- **power-platform-mcp-connector-suite** — 'Generate complete Power Platform custom connector with MCP integration for Copi
+- **prisma-upgrade-v7-schema-changes**
+- **rest-api-patterns**
+- _...and 11 more_
+
+## DATABASE (136)
+- **add-dataverse**
+- **add-neon-docs**
+- **arize-dataset** — "INVOKE THIS SKILL when creating, managing, or querying Arize datasets and examp
+- **auth0-migration**
+- **bigquery-pipeline-audit** — 'Audits Python + BigQuery pipelines for cost safety, idempotency, and production
+- **claimable-postgres**
+- **claude-opus-4-5-migration** — Migrate prompts and code from Claude Sonnet 4.0, Sonnet 4.5, or Opus 4.1 to Opus
+- **clickhouse-best-practices**
+- **cosmos-dbt-core**
+- **cosmos-dbt-fusion**
+- **cosmosdb-best-practices**
+- **cosmosdb-datamodeling** — 'Step-by-step guide for capturing key application requirements for NoSQL use-cas
+- **cra-to-next-migration**
+- **create-database-row**
+- **creating-oracle-to-postgres-master-migration-plan** — 'Discovers all projects in a .NET solution, classifies each for Oracle-to-Postgr
+- **creating-oracle-to-postgres-migration-bug-report** — 'Creates structured bug reports for defects found during Oracle-to-PostgreSQL mi
+- **creating-oracle-to-postgres-migration-integration-tests** — 'Creates integration test cases for .NET data access artifacts during Oracle-to-
+- **database-migration**
+- **database-migrations**
+- **database-query**
+- **dataverse-python-advanced-patterns** — 'Generate production code for Dataverse SDK using advanced patterns, error handl
+- **dataverse-python-production-code** — 'Generate production-ready Python code using Dataverse SDK with error handling, 
+- **dataverse-python-quickstart** — 'Generate Python SDK setup + CRUD + bulk + paging snippets using official patter
+- **dataverse-python-usecase-builder** — 'Generate complete solutions for specific Dataverse SDK use cases with architect
+- **encore-database**
+- **encore-go-database**
+- **flutter-working-with-databases**
+- **generate-custom-instructions-from-codebase** — 'Migration and code evolution instructions generator for GitHub Copilot. Analyze
+- **generate-migration**
+- **github-discussion-query**
+- _...and 106 more_
+
+## AUTH (71)
+- **analyzing-experiment-session-replays**
+- **analyzing-git-sessions** — Analyzes git commits and changes within a timeframe or commit range, providing s
+- **arize-link** — Generate deep links to the Arize UI. Use when the user wants a clickable URL to 
+- **arize-trace** — "INVOKE THIS SKILL when downloading or exporting Arize traces and spans. Covers 
+- **audit-permissions**
+- **auth**
+- **auth-implementation-patterns**
+- **auth0-android**
+- **auth0-aspnetcore-api**
+- **auth0-fastify**
+- **auth0-fastify-api**
+- **auth0-mfa**
+- **auth0-nuxt**
+- **auth0-quickstart**
+- **authenticate-wallet**
+- **author-contributions**
+- **authoring-dags**
+- **authoring-skills** — >
+- **azure-rbac**
+- **azure-role-selector** — When user is asking for guidance for which role to assign to an identity given d
+- **better-auth-best-practices**
+- **better-auth-security-best-practices**
+- **bitwarden-security-context** — Bitwarden's security principles (P01-P06), security vocabulary, and data classif
+- **build-test-verify** — Build, test, lint, and deploy commands for the Bitwarden Android project. Use wh
+- **cipher-type-planner** — Plans the creation or modification of a cipher type (vault item type) across the
+- **clerk**
+- **clerk-android**
+- **clerk-custom-ui**
+- **clerk-orgs**
+- **clerk-setup**
+- _...and 41 more_
+
+## DEVOPS (155)
+- **add-azuredevops**
+- **add-cdn-bundle**
+- **ai-content-pipeline**
+- **ai-rag-pipeline**
+- **arize-annotation** — "INVOKE THIS SKILL when creating, managing, or using annotation configs on Arize
+- **aspire** — 'Aspire skill covering the Aspire CLI, AppHost orchestration, service discovery,
+- **assessing-external-test-risk** — Assesses whether branch or PR changes are high-risk for externally hosted or emb
+- **aws**
+- **aws-ami-builder**
+- **aws-cdk-python-setup** — Setup and initialization guide for developing AWS CDK (Cloud Development Kit) ap
+- **az-cost-optimize** — 'Analyze Azure resources used in the app (IaC files and/or resources in a target
+- **azure-ai**
+- **azure-aigateway**
+- **azure-architecture-autopilot** — >
+- **azure-cloud-migrate**
+- **azure-compliance**
+- **azure-compute**
+- **azure-cost**
+- **azure-deploy**
+- **azure-deployment-preflight** — 'Performs comprehensive preflight validation of Bicep deployments to Azure, incl
+- **azure-devops-cli** — Manage Azure DevOps resources via CLI including projects, repos, pipelines, buil
+- **azure-diagnostics**
+- **azure-enterprise-infra-planner**
+- **azure-hosted-copilot-sdk**
+- **azure-image-builder**
+- **azure-kubernetes**
+- **azure-kusto**
+- **azure-messaging**
+- **azure-pipelines**
+- **azure-prepare**
+- _...and 125 more_
+
+## TESTING (143)
+- **add-educational-comments** — 'Add educational comments to the file specified, or prompt asking for file to co
+- **adding-dbt-unit-test**
+- **agentic-eval** — |
+- **analyze-test-run**
+- **arize-evaluator** — "INVOKE THIS SKILL for LLM-as-judge evaluation workflows on Arize: creating/upda
+- **arize-prompt-optimization** — "INVOKE THIS SKILL when optimizing, improving, or debugging LLM prompts using pr
+- **backtesting-frameworks**
+- **bats-testing-patterns**
+- **bazel-test-hygiene**
+- **benchmark-agents**
+- **benchmark-e2e**
+- **benchmark-sandbox**
+- **benchmark-testing**
+- **breakdown-test** — 'Test Planning and Quality Assurance prompt that generates comprehensive test st
+- **build-and-test** — How to build and test .NET projects in the Agent Framework repository. Use this 
+- **checking-changes** — Validates all code changes before committing by running format, lint, type, and 
+- **copilot-spaces** — 'Use Copilot Spaces to provide project-specific context to conversations. Use th
+- **create-github-issue-feature-from-specification** — 'Create GitHub Issue for feature request from specification file using feature_r
+- **create-github-issues-for-unmet-specification-requirements** — 'Create GitHub Issues for unimplemented requirements from specification files us
+- **create-github-pull-request-from-specification** — 'Create GitHub Pull Request for feature request from specification file using pu
+- **create-llms** — 'Create an llms.txt file from scratch based on repository structure following th
+- **create-specification** — 'Create a new specification file for the solution, optimized for Generative AI c
+- **csharp-mstest** — 'Get best practices for MSTest 3.x/4.x unit testing, including modern assertion 
+- **csharp-nunit** — 'Get best practices for NUnit unit testing, including data-driven tests'
+- **csharp-tunit** — 'Get best practices for TUnit unit testing, including data-driven tests'
+- **csharp-xunit** — 'Get best practices for XUnit unit testing, including data-driven tests'
+- **discovering-make-commands** — Lists available make commands for Streamlit development. Use for build, test, li
+- **documentation-writer** — 'Diátaxis Documentation Expert. An expert technical writer specializing in creat
+- **e2e**
+- **e2e-medallion-architecture**
+- _...and 113 more_
+
+## PAYMENTS (8)
+- **apify-ecommerce**
+- **billing-automation**
+- **mapbox-cartography**
+- **stripe-best-practices**
+- **stripe-integration**
+- **stripe-projects**
+- **upgrade-stripe**
+- **whop-payments-network**
+
+## AI (254)
+- **3-statement-model**
+- **add-ai-integration**
+- **add-mcscopilot**
+- **add-model-descriptions**
+- **add-model-price**
+- **agent-browser**
+- **agent-development**
+- **agent-device**
+- **agent-email-inbox**
+- **agent-framework-demo**
+- **agent-friendly-apis**
+- **agent-governance** — |
+- **agent-prompt**
+- **agent-setup-maintenance**
+- **agent-skills**
+- **agent-tools**
+- **agent-ui**
+- **agentcore**
+- **agents**
+- **agents-md**
+- **agents-sdk**
+- **ai-automation-workflows**
+- **ai-avatar-video**
+- **ai-elements**
+- **ai-gateway**
+- **ai-image-generation**
+- **ai-marketing-videos**
+- **ai-music-generation**
+- **ai-podcast-creation**
+- **ai-product-photography**
+- _...and 224 more_
+
+## SECURITY (75)
+- **accessibility-audit**
+- **accessibility-compliance**
+- **add-policy**
+- **analyzing-code-security** — This skill should be used when the user asks to "analyze code for security issue
+- **asset-audit**
+- **audit-support**
+- **audit-xls**
+- **auditing-experiments-flags**
+- **centos-linux-triage** — 'Triage and resolve CentOS issues using RHEL-compatible tooling, SELinux-aware p
+- **channel-audit**
+- **code-security**
+- **compliance-check**
+- **compliance-tracking**
+- **cookbook-audit**
+- **figma.audit-connect**
+- **find-warden-bugs**
+- **fix-security-vulnerability**
+- **gha-security-review**
+- **memory-leak-audit**
+- **minimal-run-and-audit**
+- **owasp-top-10**
+- **pci-compliance**
+- **plugin-audit**
+- **policy-lookup**
+- **reviewing-dependencies** — This skill should be used when the user asks to "review Dependabot alerts", "che
+- **secret-scanning**
+- **secrets-management**
+- **security-alert-review**
+- **security-best-practices**
+- **security-ownership-map**
+- _...and 45 more_
+
+## MESSAGING (34)
+- **add-teams**
+- **email-analytics**
+- **email-best-practices**
+- **email-drafter** — 'Draft and review professional emails that match your personal writing style. An
+- **email-sequence**
+- **gtm-positioning-strategy** — Find and own a defensible market position. Use when messaging sounds like compet
+- **lark-approval**
+- **lark-base**
+- **lark-calendar**
+- **lark-contact**
+- **lark-doc**
+- **lark-drive**
+- **lark-event**
+- **lark-im**
+- **lark-mail**
+- **lark-minutes**
+- **lark-openapi-explorer**
+- **lark-shared**
+- **lark-sheets**
+- **lark-skill-maker**
+- **lark-task**
+- **lark-vc**
+- **lark-whiteboard**
+- **lark-wiki**
+- **lark-workflow-meeting-summary**
+- **lark-workflow-standup-report**
+- **notification-platform**
+- **push**
+- **resend**
+- **resend-cli**
+- _...and 4 more_
+
+## SCRAPING (16)
+- **apify-ultimate-scraper**
+- **browser**
+- **browser-use**
+- **browserbase-cli**
+- **chrome-devtools** — 'Expert-level browser automation, debugging, and performance analysis using Chro
+- **firecrawl**
+- **firecrawl-crawl**
+- **firecrawl-download**
+- **firecrawl-instruct**
+- **firecrawl-map**
+- **firecrawl-scrape**
+- **firecrawl-search**
+- **next-browser**
+- **remote-browser**
+- **tavily-crawl**
+- **use-my-browser**
+
+## MEDIA (46)
+- **brand-voice-enforcement**
+- **console-rendering**
+- **dialogue-audio**
+- **edit-canvas-app**
+- **elevenlabs-dialogue**
+- **elevenlabs-dubbing**
+- **elevenlabs-music**
+- **elevenlabs-sound-effects**
+- **elevenlabs-stt**
+- **elevenlabs-tts**
+- **elevenlabs-voice-changer**
+- **elevenlabs-voice-isolator**
+- **explainer-video-guide**
+- **figma**
+- **figma-code-connect**
+- **figma-create-new-file**
+- **figma-use**
+- **flux-image**
+- **image**
+- **image-manipulation-image-magick** — Process and manipulate images using ImageMagick. Supports resizing, format conve
+- **image-to-video**
+- **image-upscaling**
+- **imagegen**
+- **images-search**
+- **integrate-audio**
+- **integrate-image**
+- **integrate-uploads**
+- **integrate-video**
+- **java-add-graalvm-native-image-support** — 'GraalVM Native Image expert that adds native image support to Java applications
+- **music**
+- _...and 16 more_
+
+## ANALYTICS (74)
+- **apify-brand-reputation-monitoring**
+- **apify-content-analytics**
+- **appinsights-instrumentation**
+- **axiom-sre**
+- **blog-post**
+- **blog-writing-guide**
+- **build-dashboard**
+- **building-admin-dashboard-customizations**
+- **building-dashboards**
+- **changelog-automation**
+- **changelog-writing**
+- **cli-logging-ux**
+- **cudf-analytics**
+- **dashboard-create-screen**
+- **error-tracking-android**
+- **error-tracking-flutter**
+- **error-tracking-go**
+- **error-tracking-hono**
+- **error-tracking-nuxt**
+- **error-tracking-python**
+- **error-tracking-ruby**
+- **error-tracking-ruby-on-rails**
+- **error-tracking-web**
+- **github-issues** — 'Create, update, and manage GitHub issues using MCP tools. Use this skill when u
+- **grafana-dashboards**
+- **instrument-error-tracking**
+- **instrument-logs**
+- **instrument-product-analytics**
+- **launchdarkly-metric-choose**
+- **launchdarkly-metric-create**
+- _...and 44 more_
+
+## AUTOMATION (45)
+- **airflow**
+- **airflow-dag-patterns**
+- **airflow-hitl**
+- **airflow-plugins**
+- **annotating-task-lineage**
+- **automate-this** — 'Analyze a screen recording of a manual process and produce targeted, working au
+- **autoresearch** — 'Autonomous iterative experimentation loop for any programming task. Guides the 
+- **create-task**
+- **creating-mermaid-dbt-dag**
+- **dagster-expert**
+- **daily-prep** — 'Prepare for tomorrow''s meetings and tasks. Pulls calendar from Outlook via Wor
+- **debugging-dags**
+- **debugging-workflows**
+- **fixing-streamlit-ci** — Analyze and fix failed GitHub Actions CI jobs for the current branch/PR. Use whe
+- **git-advanced-workflows**
+- **gitops-workflow**
+- **migrating-airflow-2-to-3**
+- **n8n-conventions**
+- **posting-review-summary** — Use this skill when posting the final summary comment after all inline comments 
+- **python-background-jobs**
+- **refactor-plan** — 'Plan a multi-file refactor with proper sequencing and rollback steps'
+- **release-workflow**
+- **requesting-code-review** — Use when completing tasks, implementing major features, or before merging to ver
+- **saga-orchestration**
+- **skypilot-multi-cloud-orchestration**
+- **task-coordination-strategies**
+- **task-management**
+- **tasks-build**
+- **tasks-explain-diff**
+- **tasks-plan**
+- _...and 15 more_
+
+## CODE-QUALITY (73)
+- **arch-linux-triage** — 'Triage and resolve Arch Linux issues with pacman, systemd, and rolling-release 
+- **architecture-patterns**
+- **async-python-patterns**
+- **bash-defensive-patterns**
+- **best-practices**
+- **best-practices-check**
+- **binary-analysis-patterns**
+- **clean-data-xls**
+- **cleaning-up-stale-feature-flags**
+- **cms-best-practices**
+- **code-connect-best-practice**
+- **content-experimentation-best-practices**
+- **creating-pull-requests** — Creates a draft pull request on GitHub with proper labels, branch naming, and de
+- **csharp-async** — 'Get best practices for C# async programming'
+- **dotnet-best-practices** — 'Ensure .NET/C# code meets best practices for the solution/project.'
+- **ef-core** — 'Get best practices for Entity Framework Core'
+- **error-handling-patterns**
+- **error-pattern-safety**
+- **eslint-plugin-custom-rule**
+- **gitlab-ci-patterns**
+- **go-concurrency-patterns**
+- **godot-gdscript-patterns**
+- **java-docs** — 'Ensure that Java types are documented with Javadoc comments and follow best pra
+- **java-refactoring-extract-method** — 'Refactoring using Extract Methods in Java Language'
+- **java-refactoring-remove-parameter** — 'Refactoring using Remove Parameter in Java Language'
+- **java-springboot** — 'Get best practices for developing applications with Spring Boot.'
+- **javascript-refactoring**
+- **kotlin-springboot** — 'Get best practices for developing applications with Spring Boot and Kotlin.'
+- **launchdarkly-flag-cleanup**
+- **linkerd-patterns**
+- _...and 43 more_
+
+## GIT (60)
+- **add-or-fix-type-checking** — Fixes broken typing checks detected by ty, make typing, or make check-repo. Use 
+- **add-sharepoint**
+- **addressing-pr-review-comments** — Address all valid review comments on a PR for the current branch in the streamli
+- **automate-github-issues**
+- **babysit-pr**
+- **branches** — >-
+- **commit**
+- **commit-categories**
+- **commits** — >-
+- **create-branch**
+- **create-pr**
+- **final-release-review**
+- **finalizing-pr** — Finalizes branch changes for merging by simplifying code, running checks, review
+- **gdpr-data-handling**
+- **gh-cli** — GitHub CLI (gh) comprehensive reference for repositories, issues, pull requests,
+- **git-flow-branch-creator** — 'Intelligent Git Flow branch creator that analyzes git status/diff and creates a
+- **github**
+- **github-actions**
+- **github-actions-docs**
+- **github-actions-templates**
+- **github-issue-creator**
+- **github-mcp-server**
+- **github-repo-explore**
+- **github-repo-manager**
+- **github-script**
+- **gitlab**
+- **here-be-git**
+- **hf-release-notes**
+- **iterate-pr**
+- **make-repo-contribution** — 'All changes to code must follow the guidance documented in the repository. Befo
+- _...and 30 more_
+
+## MOBILE (33)
+- **app-store-screenshots**
+- **apple-appstore-reviewer** — 'Serves as a reviewer of the codebase with instructions on looking for Apple App
+- **arize-experiment** — "INVOKE THIS SKILL when creating, running, or analyzing Arize experiments. Cover
+- **development-cds-mobile**
+- **expo-dev-client**
+- **expo-module**
+- **feature-flags-android**
+- **feature-flags-flutter**
+- **feature-flags-ios**
+- **flutter-adding-home-screen-widgets**
+- **flutter-animating-apps**
+- **flutter-architecting-apps**
+- **flutter-building-forms**
+- **flutter-building-plugins**
+- **flutter-caching-data**
+- **flutter-handling-concurrency**
+- **flutter-handling-http-and-json**
+- **flutter-implementing-navigation-and-routing**
+- **flutter-improving-accessibility**
+- **flutter-interoperating-with-native-apis**
+- **flutter-localizing-apps**
+- **flutter-managing-state**
+- **flutter-reducing-app-size**
+- **flutter-setting-up-on-linux**
+- **flutter-setting-up-on-macos**
+- **flutter-setting-up-on-windows**
+- **flutter-theming-apps**
+- **integration-android**
+- **integration-expo**
+- **integration-swift**
+- _...and 3 more_
+
+## WEB3 (7)
+- **connecting-to-base-network**
+- **defi-protocol-templates**
+- **employment-contract-templates**
+- **gtm-enterprise-onboarding** — Four-phase framework for onboarding enterprise customers from contract to value 
+- **nft-standards**
+- **review-contract**
+- **typed-service-contracts**
+
+## DOCUMENTS (34)
+- **bulk-cms-update**
+- **chat-customizations-editor**
+- **cms-collection-setup**
+- **create-technical-spike** — 'Create time-boxed technical spike documents for researching and resolving criti
+- **create-tldr-page** — 'Create a tldr page from documentation URLs and command examples, requiring both
+- **documentation**
+- **docx**
+- **gpu-document-processing**
+- **integrate-documents**
+- **markdown-converter**
+- **markdown-drafts**
+- **msstore-cli** — 'Microsoft Store Developer CLI (msstore) for publishing Windows applications to 
+- **notion-api**
+- **notion-cli**
+- **notion-knowledge-capture**
+- **notion-meeting-intelligence**
+- **notion-research-documentation**
+- **pdf**
+- **pptx**
+- **research-documentation**
+- **safe-publish**
+- **skill-writer**
+- **updating-internal-docs** — Review internal documentation (*.md files) against the current codebase state an
+- **view-pdf**
+- **wordpress-block-theming**
+- **wordpress-router**
+- **write-api-reference** — |
+- **write-coding-standards-from-file** — 'Write a coding standards document for a project using the coding styles from th
+- **write-docs**
+- **write-example**
+- _...and 4 more_
+
+## SEARCH (38)
+- **account-research**
+- **apify-influencer-discovery**
+- **apify-market-research**
+- **arxiv-search**
+- **avoiding-false-positives** — Use this skill to validate findings during a code review. For each finding, run 
+- **classifying-review-findings** — Use this skill when categorizing code review findings into severity levels. Appl
+- **contact-research**
+- **customer-research**
+- **discover-brand**
+- **equity-research**
+- **find**
+- **find-bugs**
+- **find-docs**
+- **find-skills**
+- **gtm-0-to-1-launch** — Launch new products from idea to first customers. Use when launching products, f
+- **hybrid-search-implementation**
+- **integrate-context-matic** — 'Discovers and integrates third-party APIs using the context-matic MCP server. U
+- **launchdarkly-flag-discovery**
+- **mapbox-search-integration**
+- **mgrep-code-search**
+- **multi-plan-search**
+- **news-search**
+- **research-synthesis**
+- **search**
+- **search-for-service**
+- **search-strategy**
+- **synthesize-research**
+- **tavily**
+- **tavily-cli**
+- **tavily-extract**
+- _...and 8 more_
+
+## MARKETING (9)
+- **add-seo**
+- **brand-guidelines**
+- **brand-review**
+- **campaign-plan**
+- **ckm-brand**
+- **gtm-product-led-growth** — Build self-serve acquisition and expansion motions. Use when deciding PLG vs sal
+- **programmatic-seo**
+- **seo**
+- **seo-content-brief**
+
+## DEBUGGING (25)
+- **atlassian-reader** — Reads Jira issues, epics, stories, sprints, boards, and Confluence pages from At
+- **autofix**
+- **create-issue**
+- **debian-linux-triage** — 'Triage and resolve Debian Linux issues with apt, systemd, and AppArmor-aware gu
+- **debug**
+- **debugging-strategies**
+- **error-messages**
+- **extract-errors**
+- **fedora-linux-triage** — 'Triage and resolve Fedora issues with dnf, systemd, and SELinux-aware guidance.
+- **fix**
+- **fix-ci-failures**
+- **fix-errors**
+- **fixed-income-portfolio**
+- **flowstudio-power-automate-debug** — >-
+- **gh-fix-ci**
+- **linear-issue**
+- **paper-context-resolver**
+- **parallel-debugging**
+- **python-error-handling**
+- **ruff-recursive-fix** — Run Ruff checks with optional scope and rule overrides, apply safe and unsafe au
+- **runtime-debug** — >
+- **safe-debug**
+- **snowflake-semanticview** — Create, alter, and validate Snowflake semantic views using Snowflake CLI (snow).
+- **triage-issue**
+- **webflow-cli-troubleshooter**
+
+## PLANNING (31)
+- **architecture**
+- **architecture-decision-records**
+- **architecture-review**
+- **bootstrap**
+- **capacity-plan**
+- **cell-architecture**
+- **cloud-solution-architect**
+- **feature-planner**
+- **fun-brainstorming**
+- **gtm-enterprise-account-planning** — Strategic account planning and execution for enterprise deals. Use when planning
+- **gtm-partnership-architecture** — Build and scale partner ecosystems that drive revenue and platform adoption. Use
+- **implementation-strategy**
+- **mamba-architecture**
+- **marketplace-scaffold**
+- **multi-cloud-architecture**
+- **org-planning**
+- **planning-with-files**
+- **product-brainstorming**
+- **python-architecture**
+- **ralph-plan**
+- **recipe-full-setup**
+- **roadmap-update**
+- **rwkv-architecture**
+- **setup**
+- **setup-api-key**
+- **setup-dev**
+- **sprint-planning**
+- **swap-curve-strategy**
+- **ultrathink**
+- **warehouse-init**
+- _...and 1 more_
+
+## OTHER (621)
+- **access**
+- **accessibility**
+- **accessibility-aria-expert**
+- **accessibility-review**
+- **action-creator**
+- **action-item-extractor**
+- **activate-site**
+- **add-autogate**
+- **add-compat-flag**
+- **add-connector**
+- **add-datasource**
+- **add-excel**
+- **add-function**
+- **add-ir-instruction**
+- **add-office365**
+- **add-onedrive**
+- **add-sample-data**
+- **adding-builder-codes**
+- **algorithmic-art**
+- **analyze**
+- **analyze-bundle**
+- **analyze-project**
+- **analyzing-data**
+- **anki-connect**
+- **answering-natural-language-questions-with-dbt**
+- **answers**
+- **anti-reversing-techniques**
+- **api-docs**
+- **api-reference**
+- **apify-actor-development**
+- _...and 591 more_
+
+## STATS
+- frontend: 188
+- backend: 41
+- database: 136
+- auth: 71
+- devops: 155
+- testing: 143
+- payments: 8
+- ai: 254
+- security: 75
+- messaging: 34
+- scraping: 16
+- media: 46
+- analytics: 74
+- automation: 45
+- code-quality: 73
+- git: 60
+- mobile: 33
+- web3: 7
+- documents: 34
+- search: 38
+- marketing: 9
+- debugging: 25
+- planning: 31
+- other: 621
+- **TOTAL: 2217**
+
+### enterprise (4 skills)
+- enterprise-agent-patterns � Multi-agent architecture, AgentOps, evaluation, orchestration patterns (Google+OpenAI)
+- enterprise-prompt-engineering � Prompt engineering techniques, CoT, ReAct, ToT, best practices (Google+Anthropic)
+- enterprise-guardrails-eval � Guardrails, safety, evaluation framework, metrics, human-in-the-loop (OpenAI+Google)
+- enterprise-ai-use-cases � 7 enterprise lessons, 6 use case primitives, Impact/Effort scaling (OpenAI+Google)

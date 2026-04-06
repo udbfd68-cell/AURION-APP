@@ -4,8 +4,17 @@
 export const runtime = 'edge';
 
 import { IMAGE_PROVIDERS, resolveGoogleKey } from '@/lib/cinematic/config';
+import { cinematicImageSchema } from '@/lib/api-schemas';
+import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export async function POST(req: Request) {
+  // ── Security: Origin validation + Rate limiting ──
+  const originError = validateOrigin(req);
+  if (originError) return originError;
+  const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
+  if (rateLimitError) return rateLimitError;
+
   let body;
   try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
   const { prompt, width = 1920, height = 1080 } = body;

@@ -1,10 +1,12 @@
-Mets à jour PROGRESS.md avec l'état réel actuel.
+Mets à jour l'état réel du projet.
 
-1. Lis PROGRESS.md existant
+1. Lis CLAUDE.md
 2. Lance `npx tsc --noEmit` → compte erreurs
-3. Vérifie chaque item marqué ✅ : est-ce toujours vrai ?
-4. Vérifie chaque item marqué ❌ : a-t-il changé ?
-5. Ajoute les nouveaux problèmes découverts
-6. Mets à jour le score architecture /10
-7. Mets à jour la date
-8. Sauvegarde PROGRESS.md
+3. Lance `npm test` → compte tests passés/échoués
+4. Lance `npm run build` → vérifie compilation
+5. Compte les `any` : `grep -r ": any" --include="*.ts" --include="*.tsx" | wc -l`
+6. Compte les hooks testés vs non testés
+7. Compte les composants testés vs non testés
+8. Mets à jour la section "ÉTAT DE SANTÉ" dans CLAUDE.md
+9. Mets à jour la section "POINTS À AMÉLIORER" dans CLAUDE.md
+10. Résumé avec score /10 honnête
