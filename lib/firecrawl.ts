@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Firecrawl v2 SDK Integration
  * Source: https://github.com/firecrawl/firecrawl
  * 
@@ -7,7 +7,7 @@
  * API docs: https://docs.firecrawl.dev/api-reference/introduction
  */
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface FirecrawlScrapeOptions {
   url: string;
@@ -87,7 +87,7 @@ export interface FirecrawlMapResult {
   error?: string;
 }
 
-// ─── Firecrawl Client Class ─────────────────────────────────────────────────
+// â”€â”€â”€ Firecrawl Client Class â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export class FirecrawlClient {
   private apiKey: string;
@@ -208,9 +208,9 @@ export class FirecrawlClient {
   }
 
   /**
-   * Full-page scrape with scroll capture — takes multiple screenshots
+   * Full-page scrape with scroll capture â€” takes multiple screenshots
    * at different scroll positions to capture below-the-fold content.
-   * Uses Firecrawl actions: wait → screenshot → scroll → screenshot → ...
+   * Uses Firecrawl actions: wait â†’ screenshot â†’ scroll â†’ screenshot â†’ ...
    */
   async scrapeFullPage(url: string): Promise<{
     html: string;
@@ -289,7 +289,7 @@ export class FirecrawlClient {
   }
 }
 
-// ─── Helper: Clean HTML for LLM consumption ─────────────────────────────────
+// â”€â”€â”€ Helper: Clean HTML for LLM consumption â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function cleanHtmlForClone(html: string): string {
   let cleaned = html;
@@ -336,7 +336,7 @@ export function cleanHtmlForClone(html: string): string {
       return match.length < 500 ? '[icon]' : '';
     }
     if (match.length < 500) return '[icon]';  // Small icon SVG
-    return '';  // Large decorative SVG — just remove
+    return '';  // Large decorative SVG â€” just remove
   });
 
   // Remove data-* attributes (noise)
@@ -359,7 +359,7 @@ export function cleanHtmlForClone(html: string): string {
   return cleaned.trim();
 }
 
-// ─── Helper: Extract design tokens from raw HTML (MAXIMUM extraction) ───────
+// â”€â”€â”€ Helper: Extract design tokens from raw HTML (MAXIMUM extraction) â”€â”€â”€â”€â”€â”€â”€
 
 export function extractDesignTokens(html: string): {
   colors: string[];
@@ -396,7 +396,7 @@ export function extractDesignTokens(html: string): {
   }
   const cssContent = styleBlocks.join('\n') + '\n' + inlineStyles.join('\n');
 
-  // Extract hex colors — only from CSS context (not from JS hex literals like 0x1a2b3c)
+  // Extract hex colors â€” only from CSS context (not from JS hex literals like 0x1a2b3c)
   const colorFrequency = new Map<string, number>();
   const hexMatches = cssContent.match(/#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g);
   if (hexMatches) hexMatches.forEach(c => {
@@ -448,7 +448,7 @@ export function extractDesignTokens(html: string): {
     });
   }
 
-  // Extract CSS custom properties (variables) — only from CSS content
+  // Extract CSS custom properties (variables) â€” only from CSS content
   const varMatches = cssContent.match(/--[\w-]+:\s*[^;}"]+/g);
   if (varMatches) {
     varMatches.slice(0, 160).forEach(v => {
@@ -457,7 +457,7 @@ export function extractDesignTokens(html: string): {
     });
   }
 
-  // Resolve CSS var chains: --color-bg: var(--gray-900) → resolve to actual value
+  // Resolve CSS var chains: --color-bg: var(--gray-900) â†’ resolve to actual value
   for (const [key, value] of Object.entries(cssVariables)) {
     const varRef = value.match(/var\(\s*(--[\w-]+)\s*(?:,\s*([^)]+))?\)/);
     if (varRef) {
@@ -525,7 +525,7 @@ export function extractDesignTokens(html: string): {
   };
 }
 
-// ─── Helper: Extract navigation items from HTML ─────────────────────────────
+// â”€â”€â”€ Helper: Extract navigation items from HTML â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function extractNavigation(html: string): Array<{ text: string; href: string }> {
   const navItems: Array<{ text: string; href: string }> = [];
@@ -548,7 +548,7 @@ export function extractNavigation(html: string): Array<{ text: string; href: str
   return navItems;
 }
 
-// ─── Helper: Extract ALL images metadata (img, picture, srcset, CSS bg, og) ─
+// â”€â”€â”€ Helper: Extract ALL images metadata (img, picture, srcset, CSS bg, og) â”€
 
 export function extractImages(html: string): Array<{ src: string; alt: string; width?: string; height?: string }> {
   const images: Array<{ src: string; alt: string; width?: string; height?: string }> = [];
@@ -618,7 +618,7 @@ export function extractImages(html: string): Array<{ src: string; alt: string; w
   return images;
 }
 
-// ─── Helper: Extract video sources ──────────────────────────────────────────
+// â”€â”€â”€ Helper: Extract video sources â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function extractVideos(html: string): Array<{ src: string; poster?: string; type?: string }> {
   const videos: Array<{ src: string; poster?: string; type?: string }> = [];
@@ -672,7 +672,7 @@ export function extractVideos(html: string): Array<{ src: string; poster?: strin
   return videos;
 }
 
-// ─── Helper: Extract <style> and inline CSS blocks ──────────────────────────
+// â”€â”€â”€ Helper: Extract <style> and inline CSS blocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function extractStyleBlocks(html: string): string {
   const blocks: string[] = [];
@@ -684,7 +684,7 @@ export function extractStyleBlocks(html: string): string {
   return blocks.join('\n').slice(0, 60000);
 }
 
-// ─── Helper: Extract structured content map from HTML ───────────────────────
+// â”€â”€â”€ Helper: Extract structured content map from HTML â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Parses the page into labeled sections with text content for the AI
 
 export interface StructuredSection {
@@ -865,7 +865,7 @@ export function extractStructuredContent(html: string): {
   return { title, metaDescription, headings, sections, allButtonTexts, totalTextLength };
 }
 
-// ─── Helper: Extract <link> stylesheet and font URLs ────────────────────────
+// â”€â”€â”€ Helper: Extract <link> stylesheet and font URLs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function extractLinkedResources(html: string): { stylesheets: string[]; fonts: string[] } {
   const stylesheets: string[] = [];
@@ -887,7 +887,7 @@ export function extractLinkedResources(html: string): { stylesheets: string[]; f
   return { stylesheets: stylesheets.slice(0, 20), fonts: fonts.slice(0, 10) };
 }
 
-// ─── Helper: Extract key CSS patterns from style blocks ─────────────────────
+// â”€â”€â”€ Helper: Extract key CSS patterns from style blocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Strips selectors (no obfuscated class names), keeps property-value pairs
 // Gives the AI layout/visual/typography patterns it needs to match the design
 
@@ -896,7 +896,7 @@ export function extractKeyCSS(styleContent: string): string {
 
   const propValues = new Map<string, Set<string>>();
 
-  // ─── NEW: Extract selector→property pairs for semantic classes ───
+  // â”€â”€â”€ NEW: Extract selectorâ†’property pairs for semantic classes â”€â”€â”€
   const semanticRules: string[] = [];
   const semanticSelectors = /\.(hero|nav|navbar|header|footer|card|btn|button|cta|feature|pricing|testimonial|about|contact|section|container|wrapper|sidebar|banner|modal|dropdown|accordion|tab|form|input|badge|avatar|logo|menu|social|stat|faq|gallery|slider|carousel)[a-z-]*\s*\{([^}]+)\}/gi;
   let sm;
@@ -960,7 +960,7 @@ export function extractKeyCSS(styleContent: string): string {
   return lines.join('\n');
 }
 
-// ─── Helper: Extract SPA hydration data ─────────────────────────────────────
+// â”€â”€â”€ Helper: Extract SPA hydration data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Extracts text content from __NEXT_DATA__, __NUXT__, JSON-LD, and other
 // JavaScript-embedded data that contains the actual page content for SPAs
 
@@ -992,7 +992,7 @@ export function extractSPAData(html: string): string[] {
     }
   };
 
-  // __NEXT_DATA__ — Next.js SSR payload (contains all pre-rendered page data)
+  // __NEXT_DATA__ â€” Next.js SSR payload (contains all pre-rendered page data)
   const nextDataMatch = html.match(/<script\s+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
   if (nextDataMatch) {
     try {
@@ -1006,7 +1006,7 @@ export function extractSPAData(html: string): string[] {
     } catch { /* malformed JSON */ }
   }
 
-  // __NUXT__ / __NUXT_DATA__ — Nuxt.js payload
+  // __NUXT__ / __NUXT_DATA__ â€” Nuxt.js payload
   const nuxtMatch = html.match(/window\.__NUXT__\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/i);
   if (nuxtMatch) {
     try {
@@ -1014,7 +1014,7 @@ export function extractSPAData(html: string): string[] {
     } catch { /* malformed JSON */ }
   }
 
-  // JSON-LD structured data — describes the page in detail
+  // JSON-LD structured data â€” describes the page in detail
   const jsonLdRegex = /<script\s+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
   let ldMatch;
   let ldCount = 0;
@@ -1029,7 +1029,7 @@ export function extractSPAData(html: string): string[] {
   return [...new Set(texts)].slice(0, 300);
 }
 
-// ─── Helper: Extract internal links from HTML ───────────────────────────────
+// â”€â”€â”€ Helper: Extract internal links from HTML â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function extractInternalLinks(html: string, baseUrl: string): string[] {
   const links = new Set<string>();
@@ -1051,7 +1051,7 @@ export function extractInternalLinks(html: string, baseUrl: string): string[] {
   return [...links].slice(0, 40);
 }
 
-// ─── Helper: Detect CSS framework used by the site ──────────────────────────
+// â”€â”€â”€ Helper: Detect CSS framework used by the site â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function detectCSSFramework(html: string): string | null {
   const classes = (html.match(/class="[^"]*"/gi) || []).join(' ');
@@ -1064,7 +1064,7 @@ export function detectCSSFramework(html: string): string | null {
   return null;
 }
 
-// ─── Helper: Detect icon library used by the site ───────────────────────────
+// â”€â”€â”€ Helper: Detect icon library used by the site â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function detectIconLibrary(html: string): string[] {
   const libs: string[] = [];
@@ -1080,7 +1080,7 @@ export function detectIconLibrary(html: string): string[] {
   return libs;
 }
 
-// ─── Helper: Detect animation libraries used by the site ────────────────────
+// â”€â”€â”€ Helper: Detect animation libraries used by the site â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function detectAnimationLibraries(html: string): string[] {
   const libs: string[] = [];
@@ -1106,7 +1106,7 @@ export function detectAnimationLibraries(html: string): string[] {
   return libs;
 }
 
-// ─── Helper: Fetch external CSS files ───────────────────────────────────────
+// â”€â”€â”€ Helper: Fetch external CSS files â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchExternalCSS(html: string, baseUrl: string): Promise<string> {
   const cssUrls: string[] = [];
@@ -1140,7 +1140,7 @@ export async function fetchExternalCSS(html: string, baseUrl: string): Promise<s
     .slice(0, 100000);
 }
 
-// ─── Helper: Detect interaction models per section ──────────────────────────
+// â”€â”€â”€ Helper: Detect interaction models per section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Identifies whether sections are scroll-driven, click-driven, time-driven etc.
 // Inspired by ai-website-cloner-template Phase 1 methodology
 
@@ -1231,7 +1231,7 @@ export function extractInteractionModels(html: string, css: string): Interaction
   return models;
 }
 
-// ─── Helper: Detect layered/stacked assets per container ────────────────────
+// â”€â”€â”€ Helper: Detect layered/stacked assets per container â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Identifies sections where multiple images/backgrounds are layered (common in premium sites)
 
 export interface LayeredAsset {
@@ -1291,7 +1291,7 @@ export function extractLayeredAssets(html: string): LayeredAsset[] {
   return layered;
 }
 
-// ─── Helper: Detect multi-state content (tabs, accordions, carousels) ───────
+// â”€â”€â”€ Helper: Detect multi-state content (tabs, accordions, carousels) â”€â”€â”€â”€â”€â”€â”€
 
 export interface MultiStateContent {
   type: 'tabs' | 'accordion' | 'carousel' | 'toggle' | 'dropdown';
@@ -1368,7 +1368,7 @@ export function extractMultiStateContent(html: string): MultiStateContent[] {
   return states;
 }
 
-// ─── Helper: Extract scroll behaviors & animation patterns ──────────────────
+// â”€â”€â”€ Helper: Extract scroll behaviors & animation patterns â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface ScrollBehavior {
   type: string;
@@ -1448,7 +1448,7 @@ export function extractScrollBehaviors(html: string, css: string): ScrollBehavio
   return behaviors;
 }
 
-// ─── Helper: Extract computed-style-level CSS patterns from style blocks ────
+// â”€â”€â”€ Helper: Extract computed-style-level CSS patterns from style blocks â”€â”€â”€â”€
 // Emulates getComputedStyle extraction by parsing CSS rules with granular detail
 
 export function extractComputedStylePatterns(html: string, css: string): Record<string, Record<string, string>> {
@@ -1563,7 +1563,7 @@ export function extractComputedStylePatterns(html: string, css: string): Record<
   return patterns;
 }
 
-// ─── Helper: Detect page composition layers (z-index stacking) ──────────────
+// â”€â”€â”€ Helper: Detect page composition layers (z-index stacking) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function extractZIndexLayers(html: string, css: string): Array<{ element: string; zIndex: string; position: string }> {
   const layers: Array<{ element: string; zIndex: string; position: string }> = [];
@@ -1588,7 +1588,7 @@ export function extractZIndexLayers(html: string, css: string): Array<{ element:
   return layers.sort((a, b) => parseInt(b.zIndex) - parseInt(a.zIndex));
 }
 
-// ─── Page Topology Extractor ────────────────────────────────────────────────
+// â”€â”€â”€ Page Topology Extractor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Maps every distinct section of the page from top to bottom with its role,
 // interaction model, content summary, and dependencies.
 // Inspired by ai-website-cloner-template Phase 1: Page Topology.
@@ -1694,7 +1694,7 @@ export function extractPageTopology(html: string): PageTopologySection[] {
   return topology;
 }
 
-// ─── Font Stack Extractor ───────────────────────────────────────────────────
+// â”€â”€â”€ Font Stack Extractor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Extracts comprehensive font info: Google Fonts imports, local fonts, weights, styles.
 // Inspired by ai-website-cloner-template Phase 1 Global Extraction.
 
@@ -1786,8 +1786,8 @@ export function extractFontStack(html: string, css: string): FontInfo[] {
   return [...fonts.values()];
 }
 
-// ─── Hover State Extractor ──────────────────────────────────────────────────
-// Extracts hover transitions: before → after CSS property diffs.
+// â”€â”€â”€ Hover State Extractor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Extracts hover transitions: before â†’ after CSS property diffs.
 // Inspired by ai-website-cloner-template Phase 3 multi-state extraction.
 
 export interface HoverTransition {
@@ -1843,7 +1843,7 @@ export function extractHoverTransitions(css: string): HoverTransition[] {
   return transitions;
 }
 
-// ─── Responsive Breakpoint Extractor ────────────────────────────────────────
+// â”€â”€â”€ Responsive Breakpoint Extractor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Detects actual breakpoints used in the site's CSS.
 
 export interface ResponsiveBreakpoint {
@@ -1882,4 +1882,327 @@ export function extractResponsiveBreakpoints(css: string): ResponsiveBreakpoint[
   }
 
   return [...breakpoints.values()].sort((a, b) => a.width - b.width);
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// PIXEL-PERFECT CLONE PIPELINE â€” ai-website-cloner inspired
+// Phase 3: Component Spec Generation (per-section detailed specs)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+export interface ComponentSpec {
+  sectionIndex: number;
+  tag: string;
+  role: string;
+  heading?: string;
+  layout: string;
+  childCount: number;
+  interactionModel: string;
+  hasImages: boolean;
+  hasVideo: boolean;
+  textContent: string[];
+  links: Array<{ text: string; href: string }>;
+  images: Array<{ src: string; alt: string }>;
+  videos: Array<{ src: string; poster?: string }>;
+  computedStyles: Record<string, string>;
+  hoverStates: string[];
+  scrollBehavior?: string;
+  multiState?: { type: string; stateCount: number; labels: string[] };
+  layers?: Array<{ type: string; src: string }>;
+}
+
+/**
+ * Generate per-section component specs (like ai-website-cloner Phase 3).
+ * Each spec contains EVERYTHING needed to rebuild that section in isolation.
+ */
+export function generateComponentSpecs(
+  html: string,
+  _css: string,
+  topology: PageTopologySection[],
+  _fonts: FontInfo[],
+  interactions: InteractionModel[],
+  hovers: HoverTransition[],
+  layeredAssets: LayeredAsset[],
+  multiStateContent: MultiStateContent[],
+  scrollBehaviors: ScrollBehavior[],
+  computedPatterns: Record<string, Record<string, string>>,
+): ComponentSpec[] {
+  const specs: ComponentSpec[] = [];
+
+  for (const section of topology) {
+    const interaction = interactions.find(m =>
+      m.section.toLowerCase().includes(section.role.toLowerCase()) ||
+      section.role.toLowerCase().includes(m.section.toLowerCase())
+    );
+
+    const styles: Record<string, string> = {};
+    for (const [component, props] of Object.entries(computedPatterns)) {
+      if (component.toLowerCase().includes(section.role.toLowerCase()) ||
+          section.role.toLowerCase().includes(component.toLowerCase())) {
+        Object.assign(styles, props);
+      }
+    }
+
+    const sectionHovers = hovers
+      .filter(h => h.selector.toLowerCase().includes(section.role.toLowerCase()))
+      .map(h => `${h.selector}: ${h.changes.map(c => `${c.property}: ${c.before} â†’ ${c.after}`).join(', ')}${h.transition ? ` (${h.transition})` : ''}`);
+
+    const scrollBehavior = scrollBehaviors.find(s =>
+      s.elements.toLowerCase().includes(section.role.toLowerCase())
+    );
+
+    const multiStateMatch = multiStateContent.find(ms =>
+      ms.containerHint.toLowerCase().includes(section.role.toLowerCase())
+    );
+
+    const sectionLayers = layeredAssets
+      .filter(la => la.container.toLowerCase().includes(section.role.toLowerCase()))
+      .flatMap(la => la.layers);
+
+    const sectionTexts: string[] = [];
+    const sectionLinks: Array<{ text: string; href: string }> = [];
+    const sectionImages: Array<{ src: string; alt: string }> = [];
+    const sectionVideos: Array<{ src: string; poster?: string }> = [];
+
+    if (section.headingText) {
+      const escapedHeading = section.headingText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').slice(0, 60);
+      const headingRegex = new RegExp(escapedHeading, 'i');
+      const headingIndex = html.search(headingRegex);
+      if (headingIndex >= 0) {
+        const sectionSlice = html.slice(Math.max(0, headingIndex - 200), headingIndex + 3000);
+
+        const pMatches = sectionSlice.match(/<p[^>]*>([\s\S]*?)<\/p>/gi) || [];
+        for (const p of pMatches.slice(0, 5)) {
+          const text = p.replace(/<[^>]*>/g, '').trim();
+          if (text.length > 10) sectionTexts.push(text.slice(0, 200));
+        }
+
+        const linkMatches = sectionSlice.matchAll(/<a[^>]*href=["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi);
+        for (const lm of linkMatches) {
+          const href = lm[1];
+          const text = lm[2].replace(/<[^>]*>/g, '').trim();
+          if (text && href) sectionLinks.push({ text: text.slice(0, 80), href: href.slice(0, 200) });
+        }
+
+        const imgMatches = sectionSlice.matchAll(/<img[^>]*src=["']([^"']*)["'][^>]*(?:alt=["']([^"']*)["'])?[^>]*>/gi);
+        for (const im of imgMatches) {
+          sectionImages.push({ src: im[1].slice(0, 300), alt: (im[2] || '').slice(0, 100) });
+        }
+
+        const vidMatches = sectionSlice.matchAll(/<(?:video|source)[^>]*src=["']([^"']*)["'][^>]*(?:poster=["']([^"']*)["'])?[^>]*>/gi);
+        for (const vm of vidMatches) {
+          sectionVideos.push({ src: vm[1].slice(0, 300), poster: vm[2]?.slice(0, 300) });
+        }
+      }
+    }
+
+    specs.push({
+      sectionIndex: section.order,
+      tag: section.tag,
+      role: section.role,
+      heading: section.headingText,
+      layout: styles['display'] || 'block',
+      childCount: parseInt(styles['child-count'] || '0') || 0,
+      interactionModel: interaction?.model || section.interactionModel || 'static',
+      hasImages: section.hasImages || sectionImages.length > 0,
+      hasVideo: section.hasVideo || sectionVideos.length > 0,
+      textContent: sectionTexts,
+      links: sectionLinks.slice(0, 15),
+      images: sectionImages.slice(0, 10),
+      videos: sectionVideos.slice(0, 5),
+      computedStyles: styles,
+      hoverStates: sectionHovers.slice(0, 10),
+      scrollBehavior: scrollBehavior ? `${scrollBehavior.type}: ${scrollBehavior.mechanism}` : undefined,
+      multiState: multiStateMatch ? {
+        type: multiStateMatch.type,
+        stateCount: multiStateMatch.stateCount,
+        labels: multiStateMatch.stateLabels,
+      } : undefined,
+      layers: sectionLayers.length > 0 ? sectionLayers.map(l => ({ type: l.type, src: l.src })) : undefined,
+    });
+  }
+
+  return specs;
+}
+
+/**
+ * Build component spec prompt section for the clone AI.
+ * Creates per-section spec doc like ai-website-cloner Phase 3.
+ */
+export function buildComponentSpecPrompt(specs: ComponentSpec[]): string {
+  if (specs.length === 0) return '';
+
+  const lines: string[] = [
+    '## ðŸ“‹ COMPONENT SPECS (per-section build instructions â€” follow EXACTLY)',
+    '',
+  ];
+
+  for (const spec of specs) {
+    lines.push(`### Section ${spec.sectionIndex}: [${spec.tag.toUpperCase()}] ${spec.role}`);
+    if (spec.heading) lines.push(`**Heading**: "${spec.heading}"`);
+    lines.push(`**Interaction**: ${spec.interactionModel}`);
+    lines.push(`**Layout**: ${spec.layout} | Children: ${spec.childCount}`);
+
+    if (Object.keys(spec.computedStyles).length > 0) {
+      lines.push('**Computed CSS**:');
+      for (const [prop, val] of Object.entries(spec.computedStyles)) {
+        lines.push(`  ${prop}: ${val}`);
+      }
+    }
+
+    if (spec.hoverStates.length > 0) {
+      lines.push('**Hover States**:');
+      for (const h of spec.hoverStates) lines.push(`  ${h}`);
+    }
+
+    if (spec.scrollBehavior) lines.push(`**Scroll**: ${spec.scrollBehavior}`);
+
+    if (spec.multiState) {
+      lines.push(`**Multi-State**: ${spec.multiState.type} (${spec.multiState.stateCount} states): ${spec.multiState.labels.join(', ')}`);
+    }
+
+    if (spec.layers && spec.layers.length > 0) {
+      lines.push(`**Layers**: ${spec.layers.map(l => `${l.type}: ${l.src}`).join(' | ')}`);
+    }
+
+    if (spec.textContent.length > 0) {
+      lines.push('**Content**: ' + spec.textContent.slice(0, 3).map(t => `"${t.slice(0, 100)}"`).join(' | '));
+    }
+
+    if (spec.images.length > 0) {
+      lines.push(`**Images**: ${spec.images.length} â†’ ${spec.images.slice(0, 3).map(i => i.src.split('/').pop()?.slice(0, 40)).join(', ')}`);
+    }
+
+    if (spec.videos.length > 0) {
+      lines.push(`**Videos**: ${spec.videos.length}`);
+    }
+
+    lines.push('');
+  }
+
+  lines.push('âš ï¸ Build EACH section following its spec. Match computed CSS values precisely.');
+  lines.push('Do not approximate â€” "font-size: 18px" means 18px, not text-lg.');
+  return lines.join('\n');
+}
+
+/**
+ * Build multi-viewport analysis prompt section.
+ */
+export function buildMultiViewportPrompt(viewports: Array<{ width: number; label: string }>): string {
+  if (viewports.length <= 1) return '';
+
+  return `
+## ðŸ“± MULTI-VIEWPORT ANALYSIS (${viewports.length} viewport screenshots provided)
+Screenshots at: ${viewports.map(v => `${v.label} (${v.width}px)`).join(', ')}
+
+### Cross-Viewport Rules:
+1. **Desktop (1440px)**: Primary reference â€” build this first
+2. **Tablet (768px)**: Check for layout changes â€” stacked columns, hidden elements, nav collapse
+3. **Mobile (390px)**: Verify responsive â€” hamburger nav, single column, adjusted typography
+4. Compare same section across viewports to identify:
+   - Elements that HIDE on mobile (display:none at breakpoints)
+   - Elements that STACK (flex-direction: column)
+   - Elements that RESIZE (different font-size, padding)
+   - Elements that TRANSFORM (nav â†’ hamburger, grid â†’ scroll)
+5. Build desktop-first, then add @media breakpoints for tablet and mobile
+6. Test mental model at all 3 widths before outputting`;
+}
+
+/**
+ * Calculate visual diff hints between original and cloned HTML.
+ * Returns discrepancies for auto-refine phase.
+ */
+export function calculateVisualDiffHints(originalHtml: string, clonedHtml: string): string[] {
+  const hints: string[] = [];
+
+  const origSections = (originalHtml.match(/<(?:nav|header|section|main|footer|article)\b/gi) || []).length;
+  const cloneSections = (clonedHtml.match(/<(?:nav|header|section|main|footer|article)\b/gi) || []).length;
+  if (cloneSections < origSections) {
+    hints.push(`MISSING SECTIONS: Original has ${origSections} sections, clone only has ${cloneSections}. Add ${origSections - cloneSections} more.`);
+  }
+
+  const origImages = (originalHtml.match(/<img\b/gi) || []).length;
+  const cloneImages = (clonedHtml.match(/<img\b/gi) || []).length;
+  if (cloneImages < origImages * 0.5) {
+    hints.push(`MISSING IMAGES: Original has ${origImages} images, clone only has ${cloneImages}.`);
+  }
+
+  const origVideos = (originalHtml.match(/<video\b/gi) || []).length;
+  const cloneVideos = (clonedHtml.match(/<video\b/gi) || []).length;
+  if (origVideos > 0 && cloneVideos === 0) {
+    hints.push(`MISSING VIDEO: Original has ${origVideos} video elements but clone has none.`);
+  }
+
+  if (!/<nav\b/i.test(clonedHtml) && /<nav\b/i.test(originalHtml)) {
+    hints.push('MISSING NAV: Original has navigation but clone does not.');
+  }
+  if (!/<footer\b/i.test(clonedHtml) && /<footer\b/i.test(originalHtml)) {
+    hints.push('MISSING FOOTER: Original has footer but clone does not.');
+  }
+
+  const origForms = (originalHtml.match(/<(?:form|input|textarea|select)\b/gi) || []).length;
+  const cloneForms = (clonedHtml.match(/<(?:form|input|textarea|select)\b/gi) || []).length;
+  if (origForms > 0 && cloneForms === 0) {
+    hints.push(`MISSING FORMS: Original has ${origForms} form elements but clone has none.`);
+  }
+
+  const origLinks = (originalHtml.match(/<a\b/gi) || []).length;
+  const cloneLinks = (clonedHtml.match(/<a\b/gi) || []).length;
+  if (cloneLinks < origLinks * 0.3) {
+    hints.push(`MISSING LINKS: Original has ${origLinks} links, clone only has ${cloneLinks}.`);
+  }
+
+  if (/gsap|scrolltrigger/i.test(originalHtml) && !/gsap|scrolltrigger/i.test(clonedHtml)) {
+    hints.push('MISSING ANIMATIONS: Original uses GSAP/ScrollTrigger but clone does not.');
+  }
+
+  if (clonedHtml.length < originalHtml.length * 0.3) {
+    hints.push(`TOO SHORT: Clone (${clonedHtml.length} chars) much shorter than original (${originalHtml.length} chars).`);
+  }
+
+  const origBtns = (originalHtml.match(/<button\b/gi) || []).length;
+  const cloneBtns = (clonedHtml.match(/<button\b/gi) || []).length;
+  if (origBtns > 0 && cloneBtns < origBtns * 0.5) {
+    hints.push(`MISSING BUTTONS: Original has ${origBtns} buttons, clone only has ${cloneBtns}.`);
+  }
+
+  return hints;
+}
+
+/**
+ * Build design system card from extracted tokens.
+ */
+export function buildDesignSystemCard(
+  tokens: ReturnType<typeof extractDesignTokens>,
+  fonts: FontInfo[],
+  breakpoints: ResponsiveBreakpoint[],
+): string {
+  const lines: string[] = ['## ðŸŽ¨ DESIGN SYSTEM CARD (extracted from source)'];
+
+  if (tokens.colors.length > 0) {
+    lines.push(`**Colors**: ${tokens.colors.slice(0, 12).join(', ')}`);
+  }
+  if (tokens.gradients && tokens.gradients.length > 0) {
+    lines.push(`**Gradients**: ${tokens.gradients.slice(0, 4).join(' | ')}`);
+  }
+  if (fonts.length > 0) {
+    lines.push(`**Fonts**: ${fonts.map(f => `${f.family} (${f.weights.join(',')})`).join(' | ')}`);
+  } else if (tokens.fonts.length > 0) {
+    lines.push(`**Fonts**: ${tokens.fonts.join(', ')}`);
+  }
+  if (tokens.cssVariables && Object.keys(tokens.cssVariables).length > 0) {
+    const vars = Object.entries(tokens.cssVariables).slice(0, 15);
+    lines.push('**CSS Variables**:');
+    for (const [k, v] of vars) lines.push(`  ${k}: ${v}`);
+  }
+  if (tokens.shadows && tokens.shadows.length > 0) {
+    lines.push(`**Shadows**: ${tokens.shadows.slice(0, 4).join(' | ')}`);
+  }
+  if (tokens.borderRadii && tokens.borderRadii.length > 0) {
+    lines.push(`**Border Radii**: ${tokens.borderRadii.join(', ')}`);
+  }
+  if (breakpoints.length > 0) {
+    lines.push(`**Breakpoints**: ${breakpoints.map(b => `${b.width}px`).join(', ')}`);
+  }
+
+  return lines.join('\n');
 }

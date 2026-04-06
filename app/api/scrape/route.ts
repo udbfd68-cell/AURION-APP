@@ -34,6 +34,11 @@ import {
   extractFontStack,
   extractHoverTransitions,
   extractResponsiveBreakpoints,
+  generateComponentSpecs,
+  buildComponentSpecPrompt,
+  buildDesignSystemCard,
+  calculateVisualDiffHints,
+  buildMultiViewportPrompt,
 } from '@/lib/firecrawl';
 
 export const runtime = 'nodejs';
@@ -141,6 +146,27 @@ function buildFallbackResponse(html: string, url: string) {
   try { hoverTransitions = extractHoverTransitions(styleBlocks); } catch { /* isolated */ }
   try { responsiveBreakpoints = extractResponsiveBreakpoints(styleBlocks); } catch { /* isolated */ }
 
+  // ─── Phase 3: Component specs + design system card (ai-website-cloner pipeline) ────
+  let componentSpecs = '';
+  let designSystemCard = '';
+  try {
+    const topoArray = Array.isArray(pageTopology) ? pageTopology : [];
+    const fontArray = Array.isArray(fontStack) ? fontStack : [];
+    const interArray = Array.isArray(interactionModels) ? interactionModels : [];
+    const hoverArray = Array.isArray(hoverTransitions) ? hoverTransitions : [];
+    const layerArray = Array.isArray(layeredAssets) ? layeredAssets : [];
+    const multiArray = Array.isArray(multiStateContent) ? multiStateContent : [];
+    const scrollArray = Array.isArray(scrollBehaviors) ? scrollBehaviors : [];
+    const bpArray = Array.isArray(responsiveBreakpoints) ? responsiveBreakpoints : [];
+    const compPatterns = (computedPatterns && typeof computedPatterns === 'object') ? computedPatterns as Record<string, Record<string, string>> : {};
+
+    if (topoArray.length > 0) {
+      const specs = generateComponentSpecs(html, styleBlocks, topoArray, fontArray, interArray, hoverArray, layerArray, multiArray, scrollArray, compPatterns);
+      componentSpecs = buildComponentSpecPrompt(specs);
+    }
+    designSystemCard = buildDesignSystemCard(tokens, fontArray, bpArray);
+  } catch { /* isolated — never break scrape for spec generation */ }
+
   return {
     html: cleaned.slice(0, 300000),
     rawHtml: html.slice(0, 400000),
@@ -168,6 +194,8 @@ function buildFallbackResponse(html: string, url: string) {
     fontStack,
     hoverTransitions,
     responsiveBreakpoints,
+    componentSpecs,
+    designSystemCard,
     fallback: true,
   };
 }
@@ -450,6 +478,27 @@ export async function POST(req: NextRequest) {
     const hoverTransitions = extractionMap.get('hoverTransitions')?.value ?? [];
     const responsiveBreakpoints = extractionMap.get('responsiveBreakpoints')?.value ?? [];
 
+    // ─── Phase 3: Component specs + design system card (ai-website-cloner pipeline) ────
+    let componentSpecs = '';
+    let designSystemCard = '';
+    try {
+      const topoArray = Array.isArray(pageTopology) ? pageTopology : [];
+      const fontArray = Array.isArray(fontStack) ? fontStack : [];
+      const interArray = Array.isArray(interactionModels) ? interactionModels : [];
+      const hoverArray = Array.isArray(hoverTransitions) ? hoverTransitions : [];
+      const layerArray = Array.isArray(layeredAssets) ? layeredAssets : [];
+      const multiArray = Array.isArray(multiStateContent) ? multiStateContent : [];
+      const scrollArray = Array.isArray(scrollBehaviors) ? scrollBehaviors : [];
+      const bpArray = Array.isArray(responsiveBreakpoints) ? responsiveBreakpoints : [];
+      const compPatterns = (computedPatterns && typeof computedPatterns === 'object') ? computedPatterns as Record<string, Record<string, string>> : {};
+
+      if (topoArray.length > 0) {
+        const specs = generateComponentSpecs(rawSource, enrichedStyleBlocks, topoArray, fontArray, interArray, hoverArray, layerArray, multiArray, scrollArray, compPatterns);
+        componentSpecs = buildComponentSpecPrompt(specs);
+      }
+      designSystemCard = buildDesignSystemCard(enrichedTokens, fontArray, bpArray);
+    } catch { /* isolated */ }
+
     return new Response(JSON.stringify({
       html: cleaned.slice(0, 200000),
       rawHtml: (data.rawHtml || '').slice(0, 300000),
@@ -478,6 +527,8 @@ export async function POST(req: NextRequest) {
       fontStack,
       hoverTransitions,
       responsiveBreakpoints,
+      componentSpecs,
+      designSystemCard,
     }), {
       headers: { 'Content-Type': 'application/json' },
     });

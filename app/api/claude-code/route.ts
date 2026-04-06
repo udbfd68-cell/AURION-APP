@@ -1,52 +1,69 @@
 /**
- * Claude Code Execution API Route
- * Advanced code execution, error recovery, parallel processing,
- * and research-enhanced generation pipeline.
- *
- * Implements Claude Code architectural patterns:
- * - Smart retry with error classification
- * - Parallel task execution with critical path
- * - Context compression and budget management
- * - Quality gates for output validation
- * - Output recovery from truncation
+ * Claude Code Execution API Route v4.0 — REAL, Cleaned
+ * 
+ * What this does:
+ * - Routes generation through best available model (Ollama → Mammoth → Gemini)
+ * - Real subsystem calls: NotebookLM research + Stitch design (with timeouts)
+ * - Smart prompt selection (buildSmartSystemPrompt, ~80K chars, not 550K)
+ * - Quality gates that return real scores
+ * - Auto-continue for truncated output
+ * - HTML compression for context injection
+ * 
+ * What was REMOVED:
+ * - 3 dead Swarm routes (swarm-decompose, swarm-route, swarm-status)
+ * - Dead imports (buildSwarmPrompt, getPatternStats, AGENT_CAPABILITIES, etc.)
+ * - "methodology" stub route
+ * - enhanced-generate using the bloated 550K prompt (now uses smart prompt)
+ * - Ruflo cosmetic context injection into system prompt
  */
 
 export const runtime = 'edge';
 
 import {
   classifyError,
-  withSmartRetry,
   compressHtmlForPrompt,
   budgetPromptSections,
   runQualityChecks,
   HTML_QUALITY_CHECKS,
   buildContinuationPrompt,
+  analyzeRequest,
+  createPlan,
+  buildJarvisSystemContext,
+  formatJarvisStatus,
+  SUBSYSTEM_CAPABILITIES,
 } from '@/lib/claude-code-engine';
+import type { SubSystem, JarvisContext, JarvisPlan } from '@/lib/claude-code-engine';
 
-import { buildSystemPrompt, buildCloneSystemPrompt } from '@/lib/system-prompts';
+import { buildSmartSystemPrompt, buildCloneSystemPrompt } from '@/lib/system-prompts';
 
-/* ── Types ── */
+/* ── Input validation ── */
 interface ExecutionRequest {
-  /** Action to perform */
   action: string;
-  /** User prompt */
   prompt?: string;
-  /** Model to use */
   model?: string;
-  /** Existing code for improvement */
   code?: string;
-  /** Research context to inject */
   researchContext?: string;
-  /** Max tokens for response */
   maxTokens?: number;
-  /** Enable quality gates */
   qualityGates?: boolean;
-  /** Messages for chat continuation */
   messages?: { role: string; content: string }[];
-  /** Max chars for compression */
   maxChars?: number;
-  /** Error message to classify */
   error?: string;
+  jarvisContext?: Partial<JarvisContext>;
+  jarvisPlan?: JarvisPlan;
+  images?: { data: string; type: string }[];
+}
+
+function validateAction(action: unknown): action is string {
+  return typeof action === 'string' && action.length > 0 && action.length < 100;
+}
+
+function validatePrompt(prompt: unknown): prompt is string {
+  return typeof prompt === 'string' && prompt.length > 0 && prompt.length < 500000;
+}
+
+function sanitizeForPrompt(text: string): string {
+  // Strip potential prompt injection markers, but keep the content useful
+  return text.replace(/<\/?system>/gi, '').replace(/<\/?human>/gi, '').replace(/<\/?assistant>/gi, '');
 }
 
 export async function POST(req: Request) {
@@ -54,31 +71,29 @@ export async function POST(req: Request) {
     const body: ExecutionRequest = await req.json();
     const { action } = body;
 
-    if (!action || typeof action !== 'string') {
-      return Response.json({ error: 'Missing action' }, { status: 400 });
+    if (!validateAction(action)) {
+      return Response.json({ error: 'Invalid action' }, { status: 400 });
     }
 
     switch (action) {
       /* ── Enhanced Generate: Research-backed code generation ── */
       case 'enhanced-generate': {
         const { prompt, code, researchContext, model = MAMMOTH_KEY ? 'claude-sonnet-4-20250514' : 'gemini-2.5-pro' } = body;
-        if (!prompt) {
-          return Response.json({ error: 'Missing prompt' }, { status: 400 });
+        if (!validatePrompt(prompt)) {
+          return Response.json({ error: 'Missing or invalid prompt' }, { status: 400 });
         }
 
-        // Build enhanced system prompt with Claude Code methodology + research
-        const systemPrompt = buildEnhancedSystemPrompt(researchContext);
+        // Use SMART prompt (not the 550K blob)
+        const systemPrompt = buildEnhancedSystemPrompt(sanitizeForPrompt(prompt!), researchContext);
 
-        // Build messages with context budget
         const sections = [
-          { name: 'prompt', content: prompt, priority: 1 },
-          ...(researchContext ? [{ name: 'research', content: researchContext, priority: 2 }] : []),
+          { name: 'prompt', content: sanitizeForPrompt(prompt!), priority: 1 },
+          ...(researchContext ? [{ name: 'research', content: researchContext.slice(0, 12000), priority: 2 }] : []),
           ...(code ? [{ name: 'existing_code', content: compressHtmlForPrompt(code, 4000), priority: 3 }] : []),
         ];
         const budgeted = budgetPromptSections(sections, 25000);
         const userContent = Array.from(budgeted.values()).filter(Boolean).join('\n\n');
 
-        // Stream to Gemini with smart retry
         return await streamToModel({
           model,
           systemPrompt,
@@ -87,7 +102,7 @@ export async function POST(req: Request) {
         });
       }
 
-      /* ── Quality Check: Validate generated code ── */
+      /* ── Quality Check: Validate generated code with real scores ── */
       case 'quality-check': {
         const { code } = body;
         if (!code) {
@@ -106,7 +121,7 @@ export async function POST(req: Request) {
         const continuationPrompt = buildContinuationPrompt(code);
         return await streamToModel({
           model,
-          systemPrompt: buildSystemPrompt(),
+          systemPrompt: buildSmartSystemPrompt('continue generation', 60000),
           userContent: continuationPrompt,
         });
       }
@@ -139,13 +154,168 @@ export async function POST(req: Request) {
         return Response.json({ success: true, data: { classification } });
       }
 
-      /* ── Get Methodology: Return development methodology ── */
-      case 'methodology': {
+      /* ═══════════════════════════════════════════════════════
+         ORCHESTRATOR ACTIONS
+         ═══════════════════════════════════════════════════════ */
+
+      /* ── Analyze: Detect subsystems needed ── */
+      case 'jarvis-analyze': {
+        const { prompt, jarvisContext } = body;
+        if (!validatePrompt(prompt)) {
+          return Response.json({ error: 'Missing prompt' }, { status: 400 });
+        }
+        const analysis = analyzeRequest(prompt!, jarvisContext || {});
+        const plan = createPlan(prompt!, analysis);
         return Response.json({
           success: true,
           data: {
-            methodology: 'Methodology strings removed — they wasted tokens. The real intelligence is in the design system, component libraries, and quality checks.',
+            analysis,
+            plan,
+            subsystemDetails: analysis.subsystems.map(s => ({
+              id: s,
+              ...SUBSYSTEM_CAPABILITIES[s],
+            })),
           },
+        });
+      }
+
+      /* ── Execute: Full generation with real subsystem calls ── */
+      case 'jarvis-execute': {
+        const {
+          prompt,
+          code,
+          researchContext,
+          model = MAMMOTH_KEY ? 'claude-sonnet-4-20250514' : (OLLAMA_KEY ? 'qwen3-coder-480b' : 'gemini-2.5-pro'),
+          jarvisContext,
+        } = body;
+        if (!validatePrompt(prompt)) {
+          return Response.json({ error: 'Missing prompt' }, { status: 400 });
+        }
+
+        const safePrompt = sanitizeForPrompt(prompt!);
+
+        // Step 1: Analyze which subsystems to activate
+        const analysis = analyzeRequest(safePrompt, jarvisContext || {});
+        const plan = createPlan(safePrompt, analysis);
+
+        // Step 2: ACTUALLY call subsystems in parallel (real fetch, real timeouts)
+        const subsystemResults: string[] = [];
+        const subsystemCalls: Promise<void>[] = [];
+
+        // NotebookLM research (real fetch, 15s timeout)
+        if (analysis.subsystems.includes('notebooklm') && !researchContext) {
+          subsystemCalls.push(
+            (async () => {
+              try {
+                const researchRes = await fetch(new URL('/api/notebooklm', req.url).href, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'quick-research', query: safePrompt }),
+                  signal: AbortSignal.timeout(15000),
+                });
+                if (researchRes.ok) {
+                  const data = await researchRes.json();
+                  if (data?.data?.result) {
+                    const result = typeof data.data.result === 'string' ? data.data.result : JSON.stringify(data.data.result);
+                    subsystemResults.push(`[RESEARCH]\n${result.slice(0, 8000)}\n[/RESEARCH]`);
+                  }
+                }
+              } catch (e) {
+                console.warn('[Subsystem] NotebookLM failed:', e instanceof Error ? e.message : 'timeout');
+              }
+            })()
+          );
+        }
+
+        // Stitch design generation (real fetch, 20s timeout)
+        if (analysis.subsystems.includes('stitch') && (GOOGLE_KEY || process.env.STITCH_API_KEY)) {
+          subsystemCalls.push(
+            (async () => {
+              try {
+                const stitchRes = await fetch(new URL('/api/stitch', req.url).href, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'generate', prompt: `UI design for: ${safePrompt.slice(0, 500)}`, mode: 'ui' }),
+                  signal: AbortSignal.timeout(20000),
+                });
+                if (stitchRes.ok) {
+                  const data = await stitchRes.json();
+                  const stitchHtml = data?.data?.html || data?.data?.result || '';
+                  if (typeof stitchHtml === 'string' && stitchHtml.length > 100) {
+                    subsystemResults.push(`[STITCH DESIGN]\n${stitchHtml.slice(0, 6000)}\n[/STITCH DESIGN]`);
+                  }
+                }
+              } catch (e) {
+                console.warn('[Subsystem] Stitch failed:', e instanceof Error ? e.message : 'timeout');
+              }
+            })()
+          );
+        }
+
+        // Execute subsystem calls in parallel
+        if (subsystemCalls.length > 0) {
+          await Promise.allSettled(subsystemCalls);
+        }
+
+        // Step 3: Build smart system prompt (80K max, not the 550K blob)
+        const basePrompt = buildSmartSystemPrompt(safePrompt, 80000);
+        const orchestratorContext = buildJarvisSystemContext(analysis.subsystems, plan);
+        const subsystemData = subsystemResults.length > 0 ? '\n\n' + subsystemResults.join('\n\n') : '';
+        const systemPrompt = `${basePrompt}\n\n${orchestratorContext}${subsystemData}`;
+
+        // Step 4: Build user message with context budget
+        const sections = [
+          { name: 'prompt', content: safePrompt, priority: 1 },
+          ...(researchContext ? [{ name: 'research', content: researchContext.slice(0, 12000), priority: 2 }] : []),
+          ...(code ? [{ name: 'existing_code', content: compressHtmlForPrompt(code, 4000), priority: 3 }] : []),
+        ];
+        const budgeted = budgetPromptSections(sections, 25000);
+        let userContent = Array.from(budgeted.values()).filter(Boolean).join('\n\n');
+
+        // Inject plan context
+        userContent = `[PLAN]\n${analysis.reasoning}\nSteps: ${analysis.suggestedPlan.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nSubsystem data: ${subsystemResults.length} results\n[/PLAN]\n\n${userContent}`;
+
+        // Quality gate instruction
+        if (analysis.subsystems.includes('quality-gates')) {
+          userContent += `\n\n[QUALITY GATES]\nBefore outputting, verify:\n1. HTML: <!DOCTYPE html> → </html>\n2. All sections complete\n3. No placeholder text\n4. Responsive: 768px, 1024px breakpoints\n5. Real image URLs or SVG placeholders\n6. Scroll animations + hover transitions\n7. Accessibility: alt text, aria labels, semantic HTML\n[/QUALITY GATES]`;
+        }
+
+        // Step 5: Stream via best model
+        return await streamToModel({
+          model,
+          systemPrompt,
+          userContent,
+          messages: body.messages,
+          images: body.images,
+        });
+      }
+
+      /* ── Subsystem Status ── */
+      case 'jarvis-status': {
+        const allSystems = Object.entries(SUBSYSTEM_CAPABILITIES).map(([id, cap]) => ({
+          id,
+          ...cap,
+          available: checkSubsystemAvailability(id as SubSystem),
+        }));
+        return Response.json({
+          success: true,
+          data: {
+            totalSubsystems: allSystems.length,
+            available: allSystems.filter(s => s.available).length,
+            subsystems: allSystems,
+          },
+        });
+      }
+
+      /* ── Plan Status ── */
+      case 'jarvis-plan-status': {
+        const { jarvisPlan } = body;
+        if (!jarvisPlan) {
+          return Response.json({ error: 'Missing jarvisPlan' }, { status: 400 });
+        }
+        return Response.json({
+          success: true,
+          data: { formatted: formatJarvisStatus(jarvisPlan) },
         });
       }
 
@@ -159,23 +329,43 @@ export async function POST(req: Request) {
   }
 }
 
-/* ── Stream to Model — Mammoth AI (Anthropic/Claude) primary, Gemini fallback ── */
+/* ── Model Routing ── */
 
 const MAMMOTH_KEY = process.env.MAMMOTH_API_KEY || '';
 const MAMMOTH_URL = process.env.MAMMOTH_API_URL || 'https://api.mammoth.ai/v1';
 const GOOGLE_KEY = process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_AI_STUDIO_KEY || '';
+const OLLAMA_KEY = process.env.OLLAMA_API_KEY || '';
+const OLLAMA_URL = 'https://ollama.com/v1/chat/completions';
 
-/** Map of supported Claude models via Mammoth */
+const OLLAMA_MODELS: Record<string, string> = {
+  'gemma4': 'gemma4',
+  'glm-4.7-flash': 'glm-4.7-flash',
+  'gemini-3-flash-preview': 'gemini-3-flash-preview',
+  'gemini-3-flash': 'gemini-3-flash-preview',
+  'glm-4.7': 'glm-4.7',
+  'glm-4.6': 'glm-4.6',
+  'kimi-k2.5': 'kimi-k2.5',
+  'qwen3.5-397b': 'qwen3.5:397b',
+  'qwen3-coder-480b': 'qwen3-coder:480b',
+  'qwen3-coder-next': 'qwen3-coder-next',
+  'devstral-2': 'devstral-2:123b',
+  'devstral-small-2': 'devstral-small-2:24b',
+  'deepseek-v3.2': 'deepseek-v3.2',
+  'glm-5': 'glm-5',
+};
+
 const CLAUDE_MODELS = new Set([
   'claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307',
   'claude-3-opus-20240229', 'claude-3-5-haiku-20241022',
 ]);
 
-/** Determine if we should route to Mammoth (Anthropic) or Gemini */
 function shouldUseMammoth(model: string): boolean {
   if (!MAMMOTH_KEY) return false;
-  // Use Mammoth for any claude- prefixed model or if explicitly requested
   return model.startsWith('claude-') || CLAUDE_MODELS.has(model);
+}
+
+function isOllamaModel(model: string): boolean {
+  return !!OLLAMA_MODELS[model];
 }
 
 async function streamToModel(opts: {
@@ -183,44 +373,100 @@ async function streamToModel(opts: {
   systemPrompt: string;
   userContent: string;
   messages?: { role: string; content: string }[];
+  images?: { data: string; type: string }[];
 }): Promise<Response> {
-  // Route to Mammoth AI if key is set and model is Claude
-  const useMammoth = shouldUseMammoth(opts.model);
-
-  if (useMammoth) {
-    return streamViaMammoth(opts);
+  if (OLLAMA_KEY && isOllamaModel(opts.model)) {
+    return await streamViaOllama(opts);
   }
-  return streamViaGemini(opts);
+  if (shouldUseMammoth(opts.model)) {
+    return await streamViaMammoth(opts);
+  }
+  return await streamViaGemini(opts);
 }
 
-/** Stream via Mammoth AI (Anthropic-compatible Messages API) */
+/* ── Ollama Cloud ── */
+async function streamViaOllama(opts: {
+  model: string;
+  systemPrompt: string;
+  userContent: string;
+  messages?: { role: string; content: string }[];
+  images?: { data: string; type: string }[];
+}): Promise<Response> {
+  if (!OLLAMA_KEY) return streamViaGemini(opts);
+
+  const apiModel = OLLAMA_MODELS[opts.model] || opts.model;
+  const VISION_MODELS = new Set([
+    'gemma4', 'glm-4.7-flash', 'gemini-3-flash-preview',
+    'gemini-3-flash', 'glm-4.7', 'glm-4.6', 'kimi-k2.5', 'qwen3.5-397b',
+  ]);
+  const isVision = VISION_MODELS.has(opts.model);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allMessages: Array<{ role: string; content: any }> = [
+    { role: 'system', content: opts.systemPrompt },
+    ...(opts.messages || []).map(m => ({ role: m.role, content: m.content })),
+    { role: 'user', content: opts.userContent },
+  ];
+
+  if (opts.images && opts.images.length > 0 && isVision) {
+    const lastIdx = allMessages.length - 1;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const contentParts: any[] = [
+      { type: 'text', text: allMessages[lastIdx].content },
+    ];
+    for (const img of opts.images) {
+      contentParts.push({
+        type: 'image_url',
+        image_url: { url: `data:${img.type};base64,${img.data}` },
+      });
+    }
+    allMessages[lastIdx] = { ...allMessages[lastIdx], content: contentParts };
+  }
+
+  const res = await fetch(OLLAMA_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${OLLAMA_KEY}`,
+    },
+    body: JSON.stringify({
+      model: apiModel,
+      messages: allMessages,
+      stream: true,
+      max_tokens: 131072,
+      temperature: 0.7,
+    }),
+    signal: AbortSignal.timeout(300000),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    console.error('[Ollama API Error]', res.status, errText.slice(0, 300));
+    if (GOOGLE_KEY) {
+      console.log('[Fallback] Ollama → Gemini');
+      return streamViaGemini(opts);
+    }
+    return Response.json({ error: `Ollama API error ${res.status}: ${errText.slice(0, 200)}` }, { status: res.status });
+  }
+
+  return createSSEResponse(res, (data) => data?.choices?.[0]?.delta?.content, opts.model);
+}
+
+/* ── Mammoth (Anthropic) ── */
 async function streamViaMammoth(opts: {
   model: string;
   systemPrompt: string;
   userContent: string;
   messages?: { role: string; content: string }[];
 }): Promise<Response> {
-  // Build messages array (Anthropic format: system is separate, first msg must be user)
   const userMessages: { role: string; content: string }[] = [];
   for (const m of (opts.messages || [])) {
     if (m.role !== 'system') userMessages.push({ role: m.role, content: m.content });
   }
   userMessages.push({ role: 'user', content: opts.userContent });
 
-  // Merge consecutive same-role messages
-  const merged: { role: string; content: string }[] = [];
-  for (const msg of userMessages) {
-    if (merged.length > 0 && merged[merged.length - 1].role === msg.role) {
-      merged[merged.length - 1].content += '\n\n' + msg.content;
-    } else {
-      merged.push({ ...msg });
-    }
-  }
-
-  // Ensure first message is user role
-  if (merged.length > 0 && merged[0].role !== 'user') {
-    merged[0].role = 'user';
-  }
+  const merged = mergeConsecutiveMessages(userMessages);
+  if (merged.length > 0 && merged[0].role !== 'user') merged[0].role = 'user';
 
   const res = await fetch(`${MAMMOTH_URL}/messages`, {
     method: 'POST',
@@ -235,13 +481,7 @@ async function streamViaMammoth(opts: {
       max_tokens: 128000,
       temperature: 0.4,
       stream: true,
-      system: [
-        {
-          type: 'text',
-          text: opts.systemPrompt,
-          cache_control: { type: 'ephemeral' },
-        },
-      ],
+      system: [{ type: 'text', text: opts.systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages: merged,
     }),
     signal: AbortSignal.timeout(300000),
@@ -250,74 +490,22 @@ async function streamViaMammoth(opts: {
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
     console.error('[Mammoth API Error]', res.status, errText.slice(0, 300));
-    // Fallback to Gemini on Mammoth failure
     if (GOOGLE_KEY) {
-      console.log('[Claude Code] Mammoth failed, falling back to Gemini');
+      console.log('[Fallback] Mammoth → Gemini');
       return streamViaGemini(opts);
     }
     return Response.json({ error: `Mammoth API error ${res.status}: ${errText.slice(0, 200)}` }, { status: res.status });
   }
 
-  // Parse Anthropic SSE stream → forward as our simplified SSE format
-  const encoder = new TextEncoder();
-  const reader = res.body?.getReader();
-  if (!reader) return Response.json({ error: 'No stream from Mammoth' }, { status: 500 });
-
-  const stream = new ReadableStream({
-    async start(controller) {
-      const decoder = new TextDecoder();
-      let buffer = '';
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            const payload = line.slice(6).trim();
-            if (payload === '[DONE]') {
-              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-              break;
-            }
-            if (!payload || payload.startsWith('{') === false) continue;
-            try {
-              const data = JSON.parse(payload);
-              // Anthropic stream events: content_block_delta has delta.text
-              if (data.type === 'content_block_delta' && data.delta?.text) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: data.delta.text })}\n\n`));
-              }
-              // OpenAI-compatible format (some proxies use this)
-              else if (data.choices?.[0]?.delta?.content) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: data.choices[0].delta.content })}\n\n`));
-              }
-              // Message stop
-              else if (data.type === 'message_stop') {
-                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-              }
-            } catch { continue; }
-          }
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Stream error';
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: msg })}\n\n`));
-      } finally {
-        controller.close();
-      }
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-    },
-  });
+  // Parse Anthropic SSE → our format
+  return createSSEResponse(res, (data) => {
+    if (data.type === 'content_block_delta' && data.delta?.text) return data.delta.text;
+    if (data.choices?.[0]?.delta?.content) return data.choices[0].delta.content;
+    return null;
+  }, undefined, (data) => data.type === 'message_stop');
 }
 
-/** Stream via Google Gemini (OpenAI-compatible) — fallback */
+/* ── Gemini (fallback) ── */
 async function streamViaGemini(opts: {
   model: string;
   systemPrompt: string;
@@ -325,7 +513,7 @@ async function streamViaGemini(opts: {
   messages?: { role: string; content: string }[];
 }): Promise<Response> {
   if (!GOOGLE_KEY) {
-    return Response.json({ error: 'No API key configured (set MAMMOTH_API_KEY or GOOGLE_API_KEY)' }, { status: 500 });
+    return Response.json({ error: 'No API key configured (set MAMMOTH_API_KEY, OLLAMA_API_KEY, or GOOGLE_API_KEY)' }, { status: 500 });
   }
 
   const allMessages = [
@@ -333,24 +521,18 @@ async function streamViaGemini(opts: {
     ...(opts.messages || []),
     { role: 'user', content: opts.userContent },
   ];
-
-  const merged: { role: string; content: string }[] = [];
-  for (const msg of allMessages) {
-    if (merged.length > 0 && merged[merged.length - 1].role === msg.role) {
-      merged[merged.length - 1].content += '\n' + msg.content;
-    } else {
-      merged.push({ ...msg });
-    }
-  }
-
-  // Use a Gemini model even if user requested Claude (since we're in fallback)
+  const merged = mergeConsecutiveMessages(allMessages);
   const geminiModel = opts.model.startsWith('claude-') ? 'gemini-2.5-pro' : opts.model;
 
+  // Use header-based auth instead of key in URL
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${GOOGLE_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': GOOGLE_KEY,
+      },
       body: JSON.stringify({
         model: geminiModel,
         messages: merged,
@@ -366,6 +548,18 @@ async function streamViaGemini(opts: {
     return Response.json({ error: errMsg }, { status: res.status });
   }
 
+  return createSSEResponse(res, (data) => data?.choices?.[0]?.delta?.content);
+}
+
+/* ── Shared SSE stream helper ── */
+function createSSEResponse(
+  res: Response,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  extractText: (data: any) => string | null | undefined,
+  modelInfo?: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  isDone?: (data: any) => boolean,
+): Response {
   const encoder = new TextEncoder();
   const reader = res.body?.getReader();
   if (!reader) return Response.json({ error: 'No stream' }, { status: 500 });
@@ -375,6 +569,9 @@ async function streamViaGemini(opts: {
       const decoder = new TextDecoder();
       let buffer = '';
       try {
+        if (modelInfo) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ model: modelInfo })}\n\n`));
+        }
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -388,9 +585,14 @@ async function streamViaGemini(opts: {
               controller.enqueue(encoder.encode('data: [DONE]\n\n'));
               break;
             }
+            if (!payload) continue;
             try {
               const data = JSON.parse(payload);
-              const text = data.choices?.[0]?.delta?.content;
+              if (isDone?.(data)) {
+                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                break;
+              }
+              const text = extractText(data);
               if (text) {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
               }
@@ -415,34 +617,48 @@ async function streamViaGemini(opts: {
   });
 }
 
-/* ── Build Enhanced System Prompt ── */
+/* ── Helpers ── */
 
-function buildEnhancedSystemPrompt(researchContext?: string): string {
-  const base = buildSystemPrompt();
+function mergeConsecutiveMessages(messages: { role: string; content: string }[]): { role: string; content: string }[] {
+  const merged: { role: string; content: string }[] = [];
+  for (const msg of messages) {
+    if (merged.length > 0 && merged[merged.length - 1].role === msg.role) {
+      merged[merged.length - 1].content += '\n\n' + msg.content;
+    } else {
+      merged.push({ ...msg });
+    }
+  }
+  return merged;
+}
 
-  const enhanced = `${base}
+function buildEnhancedSystemPrompt(prompt: string, researchContext?: string): string {
+  const base = buildSmartSystemPrompt(prompt, 80000);
 
-${researchContext ? `
-[RESEARCH-ENHANCED CONTEXT]
-The following research was gathered by NotebookLM deep analysis.
-Use these insights to produce superior, research-backed output:
+  return `${base}${researchContext ? `
 
-${researchContext}
-
-Apply ALL discovered best practices, patterns, and recommendations.
-[/RESEARCH-ENHANCED CONTEXT]
-` : ''}
+[RESEARCH CONTEXT]
+${researchContext.slice(0, 12000)}
+[/RESEARCH CONTEXT]` : ''}
 
 [QUALITY REQUIREMENTS]
-Before completing output, verify:
-1. HTML is complete (DOCTYPE → head → body → closing tags)
-2. All sections are fully rendered (no truncation)
-3. Research recommendations are applied
-4. Animations and interactions are included
-5. Responsive design with mobile breakpoints
-6. Accessibility attributes present
-7. Performance optimizations applied
+1. HTML complete (DOCTYPE → closing tags)
+2. All sections fully rendered
+3. Animations + interactions included
+4. Responsive with mobile breakpoints
+5. Accessibility attributes present
 [/QUALITY REQUIREMENTS]`;
+}
 
-  return enhanced;
+function checkSubsystemAvailability(system: SubSystem): boolean {
+  switch (system) {
+    case 'anthropic': return !!(process.env.MAMMOTH_API_KEY || process.env.ANTHROPIC_API_KEY);
+    case 'gemini': return !!(process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_AI_STUDIO_KEY);
+    case 'groq': return !!process.env.GROQ_API_KEY;
+    case 'openai': return !!process.env.OPENAI_API_KEY;
+    case 'stitch': return !!process.env.STITCH_API_KEY;
+    case 'firecrawl': return !!process.env.FIRECRAWL_API_KEY;
+    case 'vercel': return !!process.env.VERCEL_TOKEN;
+    case 'github': return !!process.env.GITHUB_TOKEN;
+    default: return true; // Built-in libraries
+  }
 }

@@ -9,7 +9,7 @@
 import { NextRequest } from 'next/server';
 import { type ClonePromptData, getModelHints, buildCloneSystemPrompt } from '@/lib/system-prompts';
 import { detectIndustry, generateDesignContext, PREMIUM_UI_PATTERNS, FRAMER_LEVEL_SYSTEM } from '@/lib/ui-ux-pro-max';
-import { extractStructuredContent, extractKeyCSS, extractSPAData } from '@/lib/firecrawl';
+import { extractStructuredContent, extractKeyCSS, extractSPAData, calculateVisualDiffHints, buildMultiViewportPrompt } from '@/lib/firecrawl';
 import {
   classifyError,
   calculateBackoff,
@@ -340,6 +340,9 @@ export async function POST(req: NextRequest) {
     fontStack?: Array<{ family: string; source: string; weights: string[]; importUrl?: string }>;
     hoverTransitions?: Array<{ selector: string; changes: Array<{ property: string; before: string; after: string }>; transition?: string }>;
     responsiveBreakpoints?: Array<{ query: string; width: number; type: string; affectedSelectors: string[] }>;
+    // Component specs from ai-website-cloner pipeline Phase 3
+    componentSpecs?: string;
+    designSystemCard?: string;
     // Iteration/refine fields
     currentHtml?: string;
     feedback?: string;
@@ -353,7 +356,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const { url, html, rawHtml, tokens, branding, screenshot, screenshots, pageName, navigation, images, videos, styleBlocks, linkedResources, model: requestedModel, currentHtml, feedback, cssFramework, iconLibraries, animationLibraries, colorFrequency, interactionModels, layeredAssets, multiStateContent, scrollBehaviors, computedPatterns, zIndexLayers, pageTopology, fontStack, hoverTransitions, responsiveBreakpoints } = body;
+  const { url, html, rawHtml, tokens, branding, screenshot, screenshots, pageName, navigation, images, videos, styleBlocks, linkedResources, model: requestedModel, currentHtml, feedback, cssFramework, iconLibraries, animationLibraries, colorFrequency, interactionModels, layeredAssets, multiStateContent, scrollBehaviors, computedPatterns, zIndexLayers, pageTopology, fontStack, hoverTransitions, responsiveBreakpoints, componentSpecs, designSystemCard } = body;
 
   const isRefine = !!(currentHtml && feedback);
 
@@ -384,6 +387,17 @@ export async function POST(req: NextRequest) {
   const selectedModel = requestedModel || 'qwen3-coder-480b';
   const modelHint = getModelHints(selectedModel);
   if (modelHint) enrichmentSections.push(`## MODEL OPTIMIZATION: ${modelHint}`);
+
+  // Multi-viewport prompt when multiple screenshots available
+  if (screenshots && screenshots.length > 1) {
+    const viewports = [
+      { width: 1440, label: 'Desktop' },
+      { width: 768, label: 'Tablet' },
+      { width: 390, label: 'Mobile' },
+    ].slice(0, screenshots.length);
+    const mvpPrompt = buildMultiViewportPrompt(viewports);
+    if (mvpPrompt) enrichmentSections.push(mvpPrompt);
+  }
 
   // Add detected framework/library info
   if (cssFramework) enrichmentSections.push(`## CSS FRAMEWORK DETECTED: ${cssFramework} — replicate its class patterns and design system`);
@@ -661,6 +675,14 @@ export async function POST(req: NextRequest) {
     enrichmentSections.push('## BREAKPOINTS: ' + tokens.mediaQueries.join(' | '));
   }
 
+  // ─── ai-website-cloner Phase 3 & Phase 4: Component specs + design system card ───
+  if (designSystemCard && typeof designSystemCard === 'string' && designSystemCard.length > 20) {
+    enrichmentSections.push(designSystemCard);
+  }
+  if (componentSpecs && typeof componentSpecs === 'string' && componentSpecs.length > 20) {
+    enrichmentSections.push(componentSpecs);
+  }
+
   // Clean HTML before building prompt — use Claude Code's context compression
   let cleanedHtml = compressHtmlForPrompt(html || '', 120000);
   // Extract body content
@@ -861,6 +883,11 @@ Use ALL provided design tokens, images, and navigation. ${isDarkTheme ? 'Dark th
       }
 
       if (isRefine && currentHtml && feedback) {
+        // Calculate visual diff hints for targeted refining
+        const visualDiffs = calculateVisualDiffHints(html || '', currentHtml);
+        if (visualDiffs.length > 0) {
+          cloneParts.push(`\n## 🔍 VISUAL DIFF HINTS (auto-detected discrepancies):\n${visualDiffs.map(d => `- ${d}`).join('\n')}`);
+        }
         const htmlSnippet = currentHtml.length > 20000
           ? currentHtml.slice(0, 10000) + '\n<!-- ... -->\n' + currentHtml.slice(-10000)
           : currentHtml;
