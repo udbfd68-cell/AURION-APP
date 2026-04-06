@@ -24,7 +24,7 @@
     "@google/stitch-sdk": "^0.1.0",
     "@monaco-editor/react": "^4.7.0",
     "@stripe/stripe-js": "^8.10.0",
-    "@supabase/supabase-js": "^2.99.2",
+    "@supabase/supabase-js": "^2.101.1",
     "@webcontainer/api": "^1.6.1",
     "framer-motion": "^11.11.17",
     "highlight.js": "^11.10.0",
