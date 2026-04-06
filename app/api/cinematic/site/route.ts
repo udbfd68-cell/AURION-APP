@@ -1,6 +1,6 @@
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// Cinematic 3D Scroll Builder â€” Site HTML Generation via LLM
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
+// Cinematic 3D Scroll Builder — Site HTML Generation via LLM
+// ═══════════════════════════════════════════════════════════════
 export const runtime = 'edge';
 
 import { LLM_PROVIDERS, resolveGoogleKey } from '@/lib/cinematic/config';
@@ -11,7 +11,7 @@ import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-uti
 import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export async function POST(req: Request) {
-  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
+  // ── Security: Origin validation + Rate limiting ──
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.heavy);
@@ -36,18 +36,18 @@ export async function POST(req: Request) {
 }
 
 async function enhanceWithLlm(baseHtml: string, template: (typeof CINEMATIC_TEMPLATES)[number], description: string): Promise<string | null> {
-  const system = `Tu es un expert en dÃ©veloppement web front-end spÃ©cialisÃ© dans les sites cinÃ©matiques scroll-driven.
+  const system = `Tu es un expert en développement web front-end spécialisé dans les sites cinématiques scroll-driven.
 
-Tu reÃ§ois un HTML de base pour un site avec animation de frames au scroll (style Apple).
-Ta mission : amÃ©liorer UNIQUEMENT le contenu textuel des sections (titres h2, paragraphes, texte hero) pour correspondre Ã  la description du projet.
+Tu reçois un HTML de base pour un site avec animation de frames au scroll (style Apple).
+Ta mission : améliorer UNIQUEMENT le contenu textuel des sections (titres h2, paragraphes, texte hero) pour correspondre à la description du projet.
 
-RÃˆGLES STRICTES :
+RÈGLES STRICTES :
 - Ne modifie PAS le JavaScript du scroll engine
 - Ne modifie PAS la structure canvas/scroll-spacer
 - Ne modifie PAS les noms de fichiers frames
-- Tu peux ajouter des sections de contenu supplÃ©mentaires
-- Tu peux amÃ©liorer le CSS pour plus de style
-- Garde le mÃªme systÃ¨me de variables CSS
+- Tu peux ajouter des sections de contenu supplémentaires
+- Tu peux améliorer le CSS pour plus de style
+- Garde le même système de variables CSS
 - Retourne le HTML COMPLET (pas un diff)
 - Pas de markdown, pas d'explication, juste le HTML`;
 
@@ -55,7 +55,7 @@ RÃˆGLES STRICTES :
 Template : ${template.name} (${template.category})
 Style : font=${template.siteStyle.fontFamily}, accent=${template.siteStyle.accentColor}
 
-Voici le HTML de base Ã  amÃ©liorer :
+Voici le HTML de base à améliorer :
 
 ${baseHtml}`;
 

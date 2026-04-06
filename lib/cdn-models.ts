@@ -183,6 +183,44 @@ function detectLibraryCDNs(files: VirtualFS): string[] {
   return cdns;
 }
 
+/* ── Strip TS/ES import/export lines that Babel CDN can't resolve ── */
+function stripImports(code: string): string {
+  return code
+    // Remove import statements (but keep inline dynamic imports)
+    .replace(/^import\s+(?:type\s+)?(?:\{[^}]*\}|[^;'"]*)\s+from\s+['"][^'"]+['"];?\s*$/gm, '')
+    .replace(/^import\s+['"][^'"]+['"];?\s*$/gm, '')
+    // Remove export default function → function
+    .replace(/^export\s+default\s+function\b/gm, 'function')
+    // Remove export { ... } lines
+    .replace(/^export\s+\{[^}]*\};?\s*$/gm, '')
+    // Remove bare export keyword before declarations
+    .replace(/^export\s+(?=(?:const|let|function|class|interface|type)\b)/gm, '')
+    // Remove TypeScript type annotations that Babel preset-react can't handle
+    .replace(/:\s*React\.FC(?:<[^>]*>)?/g, '')
+    .replace(/:\s*React\.ReactNode/g, '')
+    .replace(/:\s*React\.Ref<[^>]*>/g, '')
+    .replace(/:\s*JSX\.Element/g, '')
+    // Remove "as" casts
+    .replace(/\s+as\s+(?:const|string|number|boolean|any|unknown|Record<[^>]+>|Array<[^>]+>|\w+(?:\[\])?)/g, '')
+    // Remove interface/type blocks (Babel can't handle them)
+    .replace(/^(?:export\s+)?(?:interface|type)\s+\w+[\s\S]*?(?=\n(?:const|let|var|function|class|export|import|\/\/|\/\*|$))/gm, '')
+    .trim();
+}
+
+/* ── Sort component files: utils first, then ui/, then hooks/, then components, then App ── */
+function sortComponentFiles(entries: [string, { content: string; language: string }][]): [string, { content: string; language: string }][] {
+  const order = (path: string): number => {
+    if (/lib\/utils/.test(path)) return 0;
+    if (/components\/ui\//.test(path)) return 1;
+    if (/hooks\//.test(path)) return 2;
+    if (/components\//.test(path)) return 3;
+    if (/main\.tsx/.test(path)) return 99;
+    if (/App\.tsx/.test(path)) return 98;
+    return 5;
+  };
+  return entries.sort(([a], [b]) => order(a) - order(b));
+}
+
 /* ── Assemble multi-file preview with React/Tailwind runtime ── */
 function assemblePreview(files: VirtualFS): string | null {
   const isReact = detectReactCode(files);
@@ -197,22 +235,41 @@ function assemblePreview(files: VirtualFS): string | null {
     const appFile = files['App.jsx'] || files['App.tsx'] || files['app.jsx'] || files['app.tsx']
       || files['src/App.jsx'] || files['src/App.tsx'];
     if (appFile) {
-      // Gather all component files
-      const components: string[] = [];
+      // Gather CSS files
+      const cssBlocks: string[] = [];
       for (const [path, file] of Object.entries(files)) {
-        if (path === 'index.html' || path === 'package.json') continue;
-        if (file.language === 'css') {
-          components.push(`<style>/* ${path} */\n${file.content}</style>`);
+        if (file.language === 'css' || path.endsWith('.css')) {
+          cssBlocks.push(`<style>/* ${path} */\n${file.content}</style>`);
         }
       }
-      // Gather all JSX/TSX files (non-App)
-      const jsxFiles: string[] = [];
+
+      // Gather all JSX/TSX/TS files SORTED (utils → ui → hooks → components → App)
+      const jsxEntries: [string, { content: string; language: string }][] = [];
+      const skipPaths = new Set(['package.json', 'vite.config.ts', 'tailwind.config.js', 'tailwind.config.ts', 'postcss.config.js', 'tsconfig.json', 'next.config.js', 'next.config.ts']);
+      const appPaths = new Set(['App.jsx', 'App.tsx', 'app.jsx', 'app.tsx', 'src/App.jsx', 'src/App.tsx']);
+      const mainPaths = new Set(['src/main.tsx', 'src/main.ts', 'main.tsx', 'main.ts']);
+
       for (const [path, file] of Object.entries(files)) {
-        if (path === 'package.json' || path === 'index.html') continue;
-        if (['jsx', 'tsx', 'javascript', 'typescript'].includes(file.language) && path !== 'App.jsx' && path !== 'App.tsx' && path !== 'app.jsx' && path !== 'app.tsx' && path !== 'src/App.jsx' && path !== 'src/App.tsx') {
-          jsxFiles.push(`// ── ${path} ──\n${file.content}`);
+        if (skipPaths.has(path) || path.endsWith('.css') || path === 'index.html') continue;
+        if (mainPaths.has(path)) continue; // Skip main.tsx — we mount ourselves
+        if (appPaths.has(path)) continue; // App added separately at the end
+        if (['jsx', 'tsx', 'javascript', 'typescript'].includes(file.language) || path.endsWith('.tsx') || path.endsWith('.ts') || path.endsWith('.jsx') || path.endsWith('.js')) {
+          jsxEntries.push([path, file]);
         }
       }
+
+      const sorted = sortComponentFiles(jsxEntries);
+      const jsxFiles = sorted.map(([path, file]) =>
+        `// ── ${path} ──\n${stripImports(file.content)}`
+      );
+
+      // Provide cn() utility if not already in the project
+      const hasCnUtil = Object.keys(files).some(p => /lib\/utils/.test(p));
+      const cnShim = hasCnUtil ? '' : `
+// ── cn() utility (shadcn) ──
+function cn(...inputs) {
+  return inputs.filter(Boolean).join(' ').replace(/\\s+/g, ' ').trim();
+}`;
 
       // Build CDN stack
       const cdns = [REACT_CDN, PREMIUM_FONTS_CDN];
@@ -221,26 +278,77 @@ function assemblePreview(files: VirtualFS): string | null {
       if (isRouter) cdns.push(REACT_ROUTER_CDN);
       if (isFramer) cdns.push(FRAMER_MOTION_CDN);
       cdns.push(LUCIDE_CDN);
+      cdns.push(GSAP_CDN);
+      cdns.push(LENIS_CDN);
       cdns.push(...libCDNs);
+
+      // Lucide icon shim: make lucide-react imports work via global lucide object
+      const lucideShim = `
+<script>
+// Lucide React shim — resolve icon names from global lucide object
+window.LucideIcons = window.lucide || {};
+(function(){
+  if (!window.lucide) return;
+  const icons = window.lucide;
+  window.React.__lucideIcons = {};
+  for (const [name, createFn] of Object.entries(icons)) {
+    if (typeof createFn === 'function' && name !== 'createIcons' && name !== 'createElement') {
+      const pascalName = name.charAt(0).toUpperCase() + name.slice(1);
+      window[pascalName] = function(props) {
+        const { size = 24, className = '', color, strokeWidth = 2, ...rest } = props || {};
+        return React.createElement('svg', {
+          xmlns: 'http://www.w3.org/2000/svg', width: size, height: size,
+          viewBox: '0 0 24 24', fill: 'none', stroke: color || 'currentColor',
+          strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round',
+          className: className + ' lucide lucide-' + name, dangerouslySetInnerHTML: { __html: '' },
+          ...rest
+        });
+      };
+    }
+  }
+})();
+</script>`;
 
       // Router wrapper: wrap App in HashRouter if React Router detected
       const mountCode = isRouter
-        ? `const {HashRouter,Routes,Route,Link,NavLink,useNavigate,useParams,useLocation}=ReactRouterDOM;
+        ? `const {HashRouter,Routes,Route,Link,NavLink,useNavigate,useParams,useLocation,Navigate,Outlet}=ReactRouterDOM;
 const _root=ReactDOM.createRoot(document.getElementById('root'));
 _root.render(React.createElement(HashRouter,null,React.createElement(typeof App!=='undefined'?App:()=>React.createElement('div',null,'Loading...'))));`
         : `const _root=ReactDOM.createRoot(document.getElementById('root'));
 _root.render(React.createElement(typeof App!=='undefined'?App:()=>React.createElement('div',null,'Loading...')));`;
 
+      // Framer Motion shim
+      const framerShim = isFramer ? `
+<script>
+// Framer Motion shim — extract globals
+if (window.FramerMotion) {
+  window.motion = window.FramerMotion.motion;
+  window.AnimatePresence = window.FramerMotion.AnimatePresence;
+  window.useAnimation = window.FramerMotion.useAnimation;
+  window.useMotionValue = window.FramerMotion.useMotionValue;
+  window.useTransform = window.FramerMotion.useTransform;
+  window.useSpring = window.FramerMotion.useSpring;
+  window.useInView = window.FramerMotion.useInView;
+  window.useScroll = window.FramerMotion.useScroll;
+}
+</script>` : '';
+
       return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Aurion Preview</title>
 ${cdns.join('\n')}
 ${SHADCN_BASE_CSS}
-${components.join('\n')}
+${cssBlocks.join('\n')}
+${lucideShim}
+${framerShim}
 </head><body><div id="root"></div>
-<script type="text/babel" data-type="module">
+<script type="text/babel" data-presets="react,typescript">
+const { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext, forwardRef, Fragment } = React;
+${cnShim}
+
 ${jsxFiles.join('\n\n')}
 
 // ── App ──
-${appFile.content}
+${stripImports(appFile.content)}
 
 // ── Mount ──
 ${mountCode}

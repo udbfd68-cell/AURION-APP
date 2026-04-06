@@ -296,8 +296,15 @@ export function useChat(options: UseChatOptions) {
         const hasClosingBody = /<\/body\s*>/i.test(output);
         const isHtmlOutput = hasDoctype || hasBody;
 
-        // Auto-continue if truncated
-        if (isHtmlOutput && (!hasClosingHtml || !hasClosingBody) && output.length > 1000) {
+        // Detect React multi-file output truncation
+        const fileTagOpens = (output.match(/<<FILE:/g) || []).length;
+        const fileTagCloses = (output.match(/<\/FILE>>/g) || []).length;
+        const isReactOutput = fileTagOpens > 1; // Multi-file = React project
+        const isReactTruncated = isReactOutput && fileTagOpens > fileTagCloses;
+
+        // Auto-continue if truncated (HTML or React)
+        const isTruncated = isReactTruncated || (isHtmlOutput && (!hasClosingHtml || !hasClosingBody));
+        if (isTruncated && output.length > 1000) {
           try {
             const continueRes = await fetch('/api/claude-code', {
               method: 'POST',
@@ -328,8 +335,8 @@ export function useChat(options: UseChatOptions) {
           } catch { /* auto-continue failed */ }
         }
 
-        // Quality gate
-        if (isHtmlOutput) {
+        // Quality gate (works for both HTML and React multi-file output)
+        if (isHtmlOutput || isReactOutput) {
           try {
             const qcRes = await fetch('/api/claude-code', {
               method: 'POST',

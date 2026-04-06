@@ -246,8 +246,8 @@ export function useWorkspace(
     prevFilesRef.current = Object.fromEntries(Object.entries(projectFiles).map(([k, v]) => [k, v.content]));
   }, [projectFiles, webContainer]);
 
-  // Framework selector for design-to-code
-  const [outputFramework, setOutputFramework] = useState<'html' | 'react' | 'nextjs' | 'vue' | 'svelte' | 'angular' | 'python' | 'fullstack'>('html');
+  // Framework selector for design-to-code — React is the default (like v0, bolt, lovable)
+  const [outputFramework, setOutputFramework] = useState<'html' | 'react' | 'nextjs' | 'vue' | 'svelte' | 'angular' | 'python' | 'fullstack'>('react');
 
   // Framework project scaffolding — generate proper project structures
   const scaffoldFrameworkProject = useCallback((fw: 'html' | 'react' | 'nextjs' | 'vue' | 'svelte' | 'angular' | 'python' | 'fullstack') => {

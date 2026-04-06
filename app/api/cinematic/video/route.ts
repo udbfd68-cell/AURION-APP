@@ -1,6 +1,6 @@
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// Cinematic 3D Scroll Builder â€” Video Generation (Google Veo 3)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
+// Cinematic 3D Scroll Builder — Video Generation (Google Veo 3)
+// ═══════════════════════════════════════════════════════════════
 export const runtime = 'edge';
 
 import { VIDEO_PROVIDERS, MAX_POLL_ATTEMPTS, POLL_INTERVAL_MS, resolveGoogleKey } from '@/lib/cinematic/config';
@@ -9,7 +9,7 @@ import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-uti
 import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export async function POST(req: Request) {
-  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
+  // ── Security: Origin validation + Rate limiting ──
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.heavy);
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
   return Response.json({ error: 'No video provider available. Set GOOGLE_API_KEY.' }, { status: 503 });
 }
 
-// â•â•â• Google Veo 3 â•â•â•
+// ═══ Google Veo 3 ═══
 async function generateWithVeo3(apiKey: string, prompt: string, imageUrl?: string): Promise<string | null> {
   const requestBody: Record<string, unknown> = {
     instances: [{ prompt }],

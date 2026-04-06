@@ -215,21 +215,27 @@ export interface QualityCheck {
   description: string;
 }
 
+/* ── Detect if output is a React multi-file project (not HTML) ── */
+function isReactMultiFile(output: string): boolean {
+  return (output.match(/<<FILE:/g) || []).length > 1 && /<<FILE:src\//.test(output);
+}
+
 export const HTML_QUALITY_CHECKS: QualityCheck[] = [
-  { name: 'has_doctype', test: (o) => /<!DOCTYPE html>/i.test(o), severity: 'error', description: 'Missing <!DOCTYPE html>' },
-  { name: 'has_html_close', test: (o) => /<\/html>/i.test(o), severity: 'error', description: 'Missing </html> closing tag' },
-  { name: 'has_head', test: (o) => /<head>/i.test(o), severity: 'error', description: 'Missing <head> section' },
-  { name: 'has_body', test: (o) => /<body/i.test(o), severity: 'error', description: 'Missing <body> tag' },
-  { name: 'has_title', test: (o) => /<title[^>]*>[^<]+<\/title>/i.test(o), severity: 'warning', description: 'Missing or empty <title>' },
-  { name: 'has_meta_viewport', test: (o) => /viewport/i.test(o), severity: 'warning', description: 'Missing viewport meta (not responsive)' },
-  { name: 'has_meta_charset', test: (o) => /charset/i.test(o), severity: 'warning', description: 'Missing charset declaration' },
+  { name: 'has_doctype', test: (o) => isReactMultiFile(o) || /<!DOCTYPE html>/i.test(o), severity: 'error', description: 'Missing <!DOCTYPE html>' },
+  { name: 'has_html_close', test: (o) => isReactMultiFile(o) || /<\/html>/i.test(o), severity: 'error', description: 'Missing </html> closing tag' },
+  { name: 'has_head', test: (o) => isReactMultiFile(o) || /<head>/i.test(o), severity: 'error', description: 'Missing <head> section' },
+  { name: 'has_body', test: (o) => isReactMultiFile(o) || /<body/i.test(o), severity: 'error', description: 'Missing <body> tag' },
+  { name: 'has_title', test: (o) => isReactMultiFile(o) || /<title[^>]*>[^<]+<\/title>/i.test(o), severity: 'warning', description: 'Missing or empty <title>' },
+  { name: 'has_meta_viewport', test: (o) => isReactMultiFile(o) || /viewport/i.test(o), severity: 'warning', description: 'Missing viewport meta (not responsive)' },
+  { name: 'has_meta_charset', test: (o) => isReactMultiFile(o) || /charset/i.test(o), severity: 'warning', description: 'Missing charset declaration' },
   { name: 'no_markdown_fence', test: (o) => !/^```/m.test(o), severity: 'warning', description: 'Contains markdown code fences' },
-  { name: 'has_style_or_link', test: (o) => /<style/i.test(o) || /<link[^>]+stylesheet/i.test(o), severity: 'warning', description: 'No CSS found' },
+  { name: 'has_style_or_css', test: (o) => isReactMultiFile(o) || /<style/i.test(o) || /<link[^>]+stylesheet/i.test(o), severity: 'warning', description: 'No CSS found' },
   { name: 'min_length', test: (o) => o.length > 500, severity: 'error', description: 'Output too short (<500 chars)' },
   { name: 'no_placeholder_text', test: (o) => !/lorem ipsum/i.test(o), severity: 'warning', description: 'Contains Lorem Ipsum' },
-  { name: 'has_semantic_tags', test: (o) => /<(header|main|footer|nav|section|article)/i.test(o), severity: 'warning', description: 'No semantic HTML tags' },
-  { name: 'has_lang_attr', test: (o) => /<html[^>]+lang=/i.test(o), severity: 'warning', description: 'Missing lang attribute on <html>' },
+  { name: 'has_components', test: (o) => isReactMultiFile(o) ? /export (default |)function/.test(o) : /<(header|main|footer|nav|section|article)/i.test(o), severity: 'warning', description: 'No semantic HTML tags or React components' },
+  { name: 'has_multiple_files', test: (o) => !isReactMultiFile(o) || (o.match(/<<FILE:/g) || []).length >= 4, severity: 'warning', description: 'React project should have at least 4 files' },
   { name: 'head_before_body', test: (o) => {
+    if (isReactMultiFile(o)) return true;
     const headPos = o.search(/<head/i);
     const bodyPos = o.search(/<body/i);
     return headPos < 0 || bodyPos < 0 || headPos < bodyPos;
@@ -271,9 +277,12 @@ export function runQualityChecks(output: string, checks: QualityCheck[] = HTML_Q
 
 export function buildContinuationPrompt(truncatedOutput: string): string {
   const tail = truncatedOutput.slice(-2000);
+  const isReact = /<<FILE:src\//.test(truncatedOutput) || /import.*from ['"]/.test(truncatedOutput);
   return `Output token limit hit. Resume directly — no apology, no recap of what you were doing. ` +
     `Pick up mid-thought from exactly where the output was cut. ` +
-    `Continue generating the HTML from this point:\n\n${tail}`;
+    (isReact
+      ? `Continue generating the remaining React component files from this point. Maintain the same <<FILE:path>> format:\n\n${tail}`
+      : `Continue generating the code from this point:\n\n${tail}`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

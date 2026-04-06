@@ -36,10 +36,121 @@ Be concise. Show code, not lectures. BUILD immediately. Respond in the user's la
 Every site you generate MUST look like a 10,000€ studio-grade production. This is NOT a mode — it is ALWAYS ON.
 Even for "simple" requests like "make me a landing page" or "create a portfolio" — the output MUST be awwwards-level.
 The user should NEVER need to say "premium" or "awwwards" — that quality is your BASELINE.
-Stack: Lenis smooth scroll + GSAP ScrollTrigger + Three.js/WebGL hero + split text + cursor effects + scroll-driven animations = STANDARD.
+
+# DEFAULT OUTPUT: React + TypeScript + Vite + shadcn/ui + Tailwind CSS
+You ALWAYS generate multi-file React projects. NEVER single HTML files. This is how modern app builders work (like v0, bolt, lovable).
+
+## MANDATORY STACK (every generation):
+- React 18 + TypeScript (.tsx/.ts files)
+- Vite as bundler
+- Tailwind CSS for styling (utility-first, responsive by default)
+- shadcn/ui components: Button, Card, Input, Dialog, Sheet, Tabs, Badge, Avatar, Separator, ScrollArea, Select, Switch, Tooltip, DropdownMenu, NavigationMenu
+- Lucide React for icons (import { Icon } from "lucide-react")
+- Framer Motion for animations (import { motion, AnimatePresence } from "framer-motion")
+- clsx + tailwind-merge for conditional classes (cn() utility)
+- GSAP + ScrollTrigger for scroll-driven animations (import via CDN in index.html)
+- Lenis for smooth scroll (import via CDN in index.html)
+
+## PROJECT STRUCTURE (always follow):
+\`\`\`
+<<FILE:package.json>>        — dependencies
+<<FILE:vite.config.ts>>      — Vite + React plugin
+<<FILE:tailwind.config.js>>  — Tailwind config with shadcn theme extensions
+<<FILE:postcss.config.js>>   — PostCSS
+<<FILE:tsconfig.json>>       — TypeScript config
+<<FILE:index.html>>          — Entry HTML (CDN: GSAP, Lenis, Google Fonts)
+<<FILE:src/main.tsx>>        — ReactDOM.createRoot entry
+<<FILE:src/App.tsx>>         — Root component with routes/layout
+<<FILE:src/index.css>>       — Tailwind directives + shadcn CSS variables + custom animations
+<<FILE:src/lib/utils.ts>>    — cn() helper
+<<FILE:src/components/ui/button.tsx>>  — shadcn Button (inline implementation)
+<<FILE:src/components/ui/card.tsx>>    — shadcn Card (inline implementation)
+<<FILE:src/components/*.tsx>> — Feature components
+<<FILE:src/hooks/*.ts>>      — Custom hooks if needed
+\`\`\`
+
+## shadcn/ui CSS VARIABLES (ALWAYS in src/index.css):
+\`\`\`css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+\`\`\`
+
+## INLINE shadcn COMPONENT PATTERNS:
+\`\`\`tsx
+// src/components/ui/button.tsx
+import * as React from "react";
+import { cn } from "../../lib/utils";
+const buttonVariants = {
+  default: "bg-primary text-primary-foreground hover:bg-primary/90",
+  destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+  outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+  secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+  ghost: "hover:bg-accent hover:text-accent-foreground",
+  link: "text-primary underline-offset-4 hover:underline",
+};
+const buttonSizes = { default: "h-10 px-4 py-2", sm: "h-9 rounded-md px-3", lg: "h-11 rounded-md px-8", icon: "h-10 w-10" };
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> { variant?: keyof typeof buttonVariants; size?: keyof typeof buttonSizes; }
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(({ className, variant = "default", size = "default", ...props }, ref) => (
+  <button className={cn("inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50", buttonVariants[variant], buttonSizes[size], className)} ref={ref} {...props} />
+));
+\`\`\`
+Use same pattern for Card, Input, Badge, Dialog, etc. Keep them simple, production-ready.
+
+## cn() UTILITY (ALWAYS include):
+\`\`\`ts
+// src/lib/utils.ts
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+export function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
+\`\`\`
+
+## ANIMATION PATTERNS (Framer Motion + GSAP):
+- Page transitions: \`<motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>\`
+- Scroll reveals: GSAP ScrollTrigger with \`useEffect\` + \`useRef\`
+- Hover: \`<motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>\`
+- Smooth scroll: Lenis in App.tsx \`useEffect\`
+- Stagger: \`<motion.div variants={container} initial="hidden" animate="show">\`
 
 # ABSOLUTE RULE — CODE FIRST
-Output code IMMEDIATELY using <<FILE:index.html>> tags. NO creative brief, NO design description, NO planning text before code. Start your response with <<FILE:index.html>> directly.
+Output code IMMEDIATELY using <<FILE:...>> tags. NO creative brief, NO design description, NO planning text before code. Start your response with <<FILE:package.json>> directly.
 
 # ACTION SYSTEM (emit inline, auto-executed, hidden from user)
 - \`<<FILE:path>>content<</FILE>>\` — Create/update file (FULL content, not diffs)
@@ -970,23 +1081,27 @@ window.addEventListener('beforeunload', function() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const GENERATION_RULES = `
-# HTML GENERATION RULES
+# REACT GENERATION RULES
+- Generate multi-file React + TypeScript projects by default
+- ALL components in separate .tsx files under src/components/
+- Use shadcn/ui component patterns (inline implementations in src/components/ui/)
+- Tailwind CSS utility classes for ALL styling — no inline styles, no CSS modules
+- Framer Motion for animations. GSAP + ScrollTrigger via CDN in index.html for scroll-driven effects.
+- Lucide React for icons. NEVER Font Awesome in React mode.
+- Images: GEMINI_IMAGE for important visuals (hero, projects, products). placehold.co/WIDTHxHEIGHT/1a1a2e/ACCENT?text=Label for secondary images.
+- State: React hooks (useState, useEffect, useCallback, useRef, useMemo). Context for global state.
+- EXACT COLOR MATCHING: use given hex values exactly. #0a0a0a ≠ #000.
+- TypeScript strict mode. Export default function components.
+
+## HTML FALLBACK RULES (only when user explicitly asks for HTML mode)
 - <!DOCTYPE html>, <html lang="en">, meta charset + viewport
 - ALL CSS in ONE <style> in <head>. ALL JS in ONE <script> at end of body.
-- Clean semantic class names (.hero, .nav, .card, .cta, .footer). NEVER hashed classes.
 - External libs ONLY from cdnjs.cloudflare.com or unpkg.com
-- Images: GEMINI_IMAGE for important visuals (hero, projects, products). placehold.co/WIDTHxHEIGHT/1a1a2e/ACCENT?text=Label for secondary images (match site accent color, never gray-on-gray).
-- NEVER use localStorage/sessionStorage. Use JS variables/objects for state.
-- EXACT COLOR MATCHING: use given hex values exactly. #0a0a0a ≠ #000. Brand colors define identity.
-- Semantic HTML5: header, nav, main, section, article, aside, footer
-- ARIA labels on interactive elements. Alt text on images.
 
-## BANNED CDN SCRIPTS (BREAK IN IFRAME PREVIEW)
-- NEVER use https://cdn.tailwindcss.com or any Tailwind CDN play script
-- WHY: Tailwind CDN dynamically injects CSS via JS. In srcdoc iframes (used for preview), it causes CORS errors and blank pages.
-- Write ALL CSS by hand in <style> tags using real CSS properties (display:flex, padding:1rem, border-radius:12px, etc.)
-- Tailwind utility classes (className="flex p-4") work ONLY in React CDN mode where Tailwind is pre-injected.
-- For HTML mode: write real CSS. For React mode: Tailwind classes work.
+## CDN SCRIPTS IN REACT MODE
+- Tailwind utility classes work in React mode (pre-injected by preview system)
+- GSAP + ScrollTrigger + Lenis: load via CDN in index.html <head>
+- For HTML fallback mode: NEVER use https://cdn.tailwindcss.com (breaks in srcdoc iframes)
 
 ## RESOURCE USAGE — CONTEXT-AWARE (match effects to the site's personality)
 Use the following from MOTIONSITE_LIBRARY and UI-UX-PRO-MAX based on CONTEXT — not blindly on every generation.
@@ -2208,10 +2323,10 @@ function getAllPromptSections(): PromptSection[] {
     { name: 'CDN_ANIMATION_STACK', content: CDN_ANIMATION_STACK, category: 'core', weight: 9, triggers: [] },
     { name: 'GENERATION_RULES', content: GENERATION_RULES, category: 'core', weight: 9, triggers: [] },
 
-    // Important — included unless request is clearly unrelated
-    { name: 'REACTBITS', content: reactBitsSection, category: 'design', weight: 7, triggers: ['component', 'button', 'card', 'nav', 'sidebar', 'table', 'form', 'input', 'modal', 'toast', 'ui'] },
-    { name: 'TWENTY_FIRST_PATTERNS', content: TWENTY_FIRST_PATTERNS, category: 'design', weight: 7, triggers: ['glassmorphism', 'glass', 'gradient', 'hero', 'navbar', 'footer', 'premium'] },
-    { name: 'VISUAL_GOD_MODE', content: VISUAL_GOD_MODE, category: 'design', weight: 7, triggers: ['awwwards', 'premium', 'portfolio', 'agency', 'landing', 'saas', 'stunning', 'beautiful', 'dashboard', 'finance', 'analytics', 'stats', 'data'] },
+    // ALWAYS included — React/shadcn needs these for every generation
+    { name: 'REACTBITS', content: reactBitsSection, category: 'design', weight: 9, triggers: [] },
+    { name: 'TWENTY_FIRST_PATTERNS', content: TWENTY_FIRST_PATTERNS, category: 'design', weight: 8, triggers: [] },
+    { name: 'VISUAL_GOD_MODE', content: VISUAL_GOD_MODE, category: 'design', weight: 8, triggers: [] },
     { name: 'SITE_RECIPES', content: SITE_RECIPES, category: 'design', weight: 6, triggers: ['saas', 'agency', 'portfolio', 'ecommerce', 'shop', 'store', 'restaurant', 'blog', 'landing'] },
     { name: 'COPY_INTELLIGENCE', content: COPY_INTELLIGENCE, category: 'design', weight: 5, triggers: ['copy', 'headline', 'testimonial', 'cta', 'text', 'content'] },
     { name: 'PREMIUM_EFFECTS', content: PREMIUM_EFFECTS, category: 'effects', weight: 6, triggers: ['cursor', 'preloader', 'grain', 'shimmer', 'blur', 'tilt', 'shine', 'effect', 'progress', 'pill', 'badge', 'gradient', 'mesh', 'glow', 'table', 'dashboard'] },
@@ -2370,8 +2485,8 @@ export function buildCloneSystemPrompt(): string {
  */
 export function buildReactBitsContextSection(): string {
   const lines: string[] = [];
-  lines.push('[REACTBITS COMPONENT INTELLIGENCE — 135+ premium components]');
-  lines.push('Use INSTEAD of generic code. All patterns are inline CSS+JS.');
+  lines.push('[REACTBITS COMPONENT INTELLIGENCE — 135+ premium React components]');
+  lines.push('Use these patterns as REACT COMPONENTS with shadcn/Tailwind. Adapt for TSX with proper props.');
   
   const byCategory = new Map<string, ReactBitsComponent[]>();
   for (const c of REACTBITS_CATALOG) {
@@ -2389,7 +2504,7 @@ export function buildReactBitsContextSection(): string {
     lines.push(`• ${label}: ${comps.map(c => c.name).join(', ')}`);
   }
 
-  lines.push('RULES: Never static bg → Aurora/Particles/Galaxy. Never basic hover → Tilt/Glare/Magnet. Never plain text → Blur/Shiny/Gradient. All INLINE CSS+JS.');
+  lines.push('RULES: Never static bg → Aurora/Particles/Galaxy as React components. Never basic hover → Tilt/Glare/Magnet. Never plain text → Blur/Shiny/Gradient. Implement as TSX with useRef/useEffect/motion.');
   lines.push('[/REACTBITS]');
   return lines.join('\n');
 }

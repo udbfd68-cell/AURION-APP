@@ -1,6 +1,6 @@
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// Cinematic 3D Scroll Builder â€” Image Generation (Google Imagen 3)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
+// Cinematic 3D Scroll Builder — Image Generation (Google Imagen 3)
+// ═══════════════════════════════════════════════════════════════
 export const runtime = 'edge';
 
 import { IMAGE_PROVIDERS, resolveGoogleKey } from '@/lib/cinematic/config';
@@ -9,7 +9,7 @@ import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-uti
 import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export async function POST(req: Request) {
-  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
+  // ── Security: Origin validation + Rate limiting ──
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);

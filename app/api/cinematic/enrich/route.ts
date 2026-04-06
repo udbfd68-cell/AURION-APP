@@ -1,6 +1,6 @@
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// Cinematic 3D Scroll Builder â€” Prompt Enrichment
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
+// Cinematic 3D Scroll Builder — Prompt Enrichment
+// ═══════════════════════════════════════════════════════════════
 export const runtime = 'edge';
 
 import { LLM_PROVIDERS, resolveGoogleKey } from '@/lib/cinematic/config';
@@ -9,23 +9,23 @@ import { cinematicEnrichSchema } from '@/lib/api-schemas';
 import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
 import { RATE_LIMITS } from '@/lib/rate-limiter';
 
-const SYSTEM_PROMPT = `Tu es un expert en direction artistique cinÃ©matographique et en gÃ©nÃ©ration d'images/vidÃ©os par IA.
+const SYSTEM_PROMPT = `Tu es un expert en direction artistique cinématographique et en génération d'images/vidéos par IA.
 
-Ta mission : transformer un prompt utilisateur court en une description cinÃ©matique optimisÃ©e pour :
-1. GÃ©nÃ©rer une IMAGE haute qualitÃ© (1920Ã—1080) avec profondeur et couches de parallaxe
-2. Animer cette image en VIDÃ‰O avec mouvement de camÃ©ra subtil et effet 3D
-3. CrÃ©er un SITE WEB scroll-driven avec l'effet "frames on scroll" (style Apple)
+Ta mission : transformer un prompt utilisateur court en une description cinématique optimisée pour :
+1. Générer une IMAGE haute qualité (1920×1080) avec profondeur et couches de parallaxe
+2. Animer cette image en VIDÉO avec mouvement de caméra subtil et effet 3D
+3. Créer un SITE WEB scroll-driven avec l'effet "frames on scroll" (style Apple)
 
 Tu dois retourner un JSON avec exactement ces 4 champs :
-- "enrichedPrompt": le prompt enrichi global (2-3 phrases cinÃ©matiques)
-- "imagePrompt": prompt optimisÃ© pour la gÃ©nÃ©ration d'image (dÃ©taille la composition, lumiÃ¨res, profondeur, couleurs)
-- "videoPrompt": prompt optimisÃ© pour la vidÃ©o (mouvement de camÃ©ra, parallaxe, atmosphÃ¨re, durÃ©e 8s)
-- "siteDescription": description courte du site final pour le gÃ©nÃ©rateur HTML
+- "enrichedPrompt": le prompt enrichi global (2-3 phrases cinématiques)
+- "imagePrompt": prompt optimisé pour la génération d'image (détaille la composition, lumières, profondeur, couleurs)
+- "videoPrompt": prompt optimisé pour la vidéo (mouvement de caméra, parallaxe, atmosphère, durée 8s)
+- "siteDescription": description courte du site final pour le générateur HTML
 
-RÃ©ponds UNIQUEMENT en JSON valide, sans markdown, sans explication.`;
+Réponds UNIQUEMENT en JSON valide, sans markdown, sans explication.`;
 
 export async function POST(req: Request) {
-  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
+  // ── Security: Origin validation + Rate limiting ──
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
@@ -37,10 +37,10 @@ export async function POST(req: Request) {
 
   const template = CINEMATIC_TEMPLATES.find(t => t.id === templateId);
   const templateContext = template
-    ? `\n\nTemplate sÃ©lectionnÃ©: "${template.name}" (${template.category})\nStyle: ${template.description}\nSuffix image: ${template.imagePromptSuffix}\nSuffix vidÃ©o: ${template.videoPromptSuffix}`
+    ? `\n\nTemplate sélectionné: "${template.name}" (${template.category})\nStyle: ${template.description}\nSuffix image: ${template.imagePromptSuffix}\nSuffix vidéo: ${template.videoPromptSuffix}`
     : '';
 
-  const userMessage = `Prompt utilisateur: "${prompt}"${templateContext}\n\nTransforme ce prompt en description cinÃ©matique optimisÃ©e.`;
+  const userMessage = `Prompt utilisateur: "${prompt}"${templateContext}\n\nTransforme ce prompt en description cinématique optimisée.`;
 
   // Try LLM providers in priority order
   for (const provider of LLM_PROVIDERS) {

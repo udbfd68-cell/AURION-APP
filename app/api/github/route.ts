@@ -1,8 +1,8 @@
 /**
- * GitHub Proxy Route â€” Create repos and push files via GitHub REST API
+ * GitHub Proxy Route — Create repos and push files via GitHub REST API
  * 
  * Uses the user's PAT (Personal Access Token) to create a repository
- * and push files from the VFS. No packages needed â€” pure fetch.
+ * and push files from the VFS. No packages needed — pure fetch.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -15,7 +15,7 @@ export const runtime = 'edge';
 const GITHUB_API = 'https://api.github.com';
 
 export async function POST(req: NextRequest) {
-  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
+  // ── Security: Origin validation + Rate limiting ──
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.standard);
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * GET handler â€” Fetch repos, branches, commits, or diff
+ * GET handler — Fetch repos, branches, commits, or diff
  * Query params:
  *   action=repos|branches|commits|diff
  *   token (required)
@@ -188,7 +188,7 @@ export async function GET(req: NextRequest) {
     const token = req.headers.get('x-github-token');
 
     if (!token) {
-      return NextResponse.json({ error: 'Missing GitHub token â€” pass via X-GitHub-Token header' }, { status: 400 });
+      return NextResponse.json({ error: 'Missing GitHub token — pass via X-GitHub-Token header' }, { status: 400 });
     }
 
     const headers: Record<string, string> = {

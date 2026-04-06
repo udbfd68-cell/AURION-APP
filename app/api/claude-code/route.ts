@@ -1,9 +1,9 @@
 /**
- * Claude Code API Route v5.0 â€” REAL only
+ * Claude Code API Route v5.0 — REAL only
  * 
  * 4 actions (all called by frontend):
  * - jarvis-execute: Main generation with optional subsystem calls
- * - jarvis-analyze: Pre-analyze prompt â†’ detect subsystems
+ * - jarvis-analyze: Pre-analyze prompt → detect subsystems
  * - quality-check: Structural HTML validation
  * - continue: Resume truncated output
  */
@@ -16,7 +16,6 @@ import {
   runQualityChecks,
   HTML_QUALITY_CHECKS,
   buildContinuationPrompt,
-  detectSubsystems,
 } from '@/lib/claude-code-engine';
 
 import { buildSmartSystemPrompt, buildBrainEnhancedPrompt } from '@/lib/system-prompts';
@@ -25,7 +24,7 @@ import { claudeCodeSchema } from '@/lib/api-schemas';
 import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
 import { RATE_LIMITS } from '@/lib/rate-limiter';
 
-/* â”€â”€ Input validation â”€â”€ */
+/* ── Input validation ── */
 interface ExecutionRequest {
   action: string;
   prompt?: string;
@@ -49,7 +48,7 @@ function sanitizeForPrompt(text: string): string {
 }
 
 export async function POST(req: Request) {
-  // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
+  // ── Security: Origin validation + Rate limiting ──
   const originError = validateOrigin(req);
   if (originError) return originError;
   const rateLimitError = applyRateLimit(req, RATE_LIMITS.ai);
@@ -64,7 +63,7 @@ export async function POST(req: Request) {
     }
 
     switch (action) {
-      /* â”€â”€ Quality Check: Structural HTML validation â”€â”€ */
+      /* ── Quality Check: Structural HTML validation ── */
       case 'quality-check': {
         const { code } = body;
         if (!code) {
@@ -74,7 +73,7 @@ export async function POST(req: Request) {
         return Response.json({ success: true, data: result });
       }
 
-      /* â”€â”€ Continue: Resume truncated output â”€â”€ */
+      /* ── Continue: Resume truncated output ── */
       case 'continue': {
         const { code, model = MAMMOTH_KEY ? 'claude-sonnet-4-20250514' : 'gemini-2.5-pro' } = body;
         if (!code) {
@@ -87,7 +86,7 @@ export async function POST(req: Request) {
         });
       }
 
-      /* â”€â”€ Execute: Full generation with real subsystem calls â”€â”€ */
+      /* ── Execute: Full generation with real subsystem calls ── */
       case 'jarvis-execute': {
         const {
           prompt,
@@ -100,14 +99,13 @@ export async function POST(req: Request) {
         }
 
         const safePrompt = sanitizeForPrompt(prompt!);
-        const subsystems = detectSubsystems(safePrompt);
 
-        // Real subsystem calls in parallel (with timeouts)
+        // ALWAYS call ALL subsystems — give full power on every generation
         const subsystemResults: string[] = [];
         const calls: Promise<void>[] = [];
 
-        // NotebookLM research (15s timeout) â€” only if detected AND no existing research
-        if (subsystems.includes('notebooklm') && !researchContext) {
+        // NotebookLM research (15s timeout) — ALWAYS unless user already provided research
+        if (!researchContext) {
           calls.push(
             (async () => {
               try {
@@ -125,30 +123,85 @@ export async function POST(req: Request) {
                     subsystemResults.push(`[RESEARCH]\n${text.slice(0, 8000)}\n[/RESEARCH]`);
                   }
                 }
-              } catch { /* timeout or unavailable â€” continue without */ }
+              } catch { /* timeout or unavailable — continue without */ }
             })()
           );
         }
 
-        // Stitch design (20s timeout) â€” ONLY if STITCH_API_KEY is set
-        if (subsystems.includes('stitch') && process.env.STITCH_API_KEY) {
+        // Stitch design (20s timeout) — ALWAYS if STITCH_API_KEY is set
+        if (process.env.STITCH_API_KEY) {
           calls.push(
             (async () => {
               try {
                 const res = await fetch(new URL('/api/stitch', req.url).href, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ action: 'generate', prompt: `UI design for: ${safePrompt.slice(0, 500)}`, mode: 'ui' }),
+                  body: JSON.stringify({ action: 'generate', prompt: `React UI design for: ${safePrompt.slice(0, 500)}`, mode: 'ui' }),
                   signal: AbortSignal.timeout(20000),
                 });
                 if (res.ok) {
                   const data = await res.json();
                   const html = data?.data?.html || data?.data?.result || '';
                   if (typeof html === 'string' && html.length > 100) {
-                    subsystemResults.push(`[STITCH DESIGN]\n${html.slice(0, 6000)}\n[/STITCH DESIGN]`);
+                    subsystemResults.push(`[STITCH DESIGN — Use as visual reference for React components]\n${html.slice(0, 6000)}\n[/STITCH DESIGN]`);
                   }
                 }
-              } catch { /* timeout or unavailable â€” continue without */ }
+              } catch { /* timeout or unavailable — continue without */ }
+            })()
+          );
+        }
+
+        // ReactBits catalog context — ALWAYS inject (no API call, static catalog)
+        try {
+          const { buildReactBitsContextSection } = await import('@/lib/system-prompts');
+          const rbContext = buildReactBitsContextSection();
+          if (rbContext) subsystemResults.push(rbContext);
+        } catch { /* non-critical */ }
+
+        // 21st.dev component patterns — ALWAYS fetch trending components (10s timeout)
+        if (process.env.TWENTY_FIRST_API_KEY) {
+          calls.push(
+            (async () => {
+              try {
+                const res = await fetch(new URL('/api/magic21st', req.url).href, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'search', query: safePrompt.slice(0, 200) }),
+                  signal: AbortSignal.timeout(10000),
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  const components = data?.data?.components || data?.components || [];
+                  if (Array.isArray(components) && components.length > 0) {
+                    const summary = components.slice(0, 5).map((c: Record<string, string>) =>
+                      `- ${c.name || c.title}: ${c.description || ''} ${c.code ? '```tsx\n' + String(c.code).slice(0, 1500) + '\n```' : ''}`
+                    ).join('\n');
+                    subsystemResults.push(`[21ST.DEV COMPONENTS — Use these React/shadcn patterns as inspiration]\n${summary}\n[/21ST.DEV]`);
+                  }
+                }
+              } catch { /* timeout or unavailable — continue without */ }
+            })()
+          );
+        }
+
+        // Figma design tokens — if FIGMA_ACCESS_TOKEN set and prompt mentions design/figma (15s timeout)
+        if (process.env.FIGMA_ACCESS_TOKEN) {
+          calls.push(
+            (async () => {
+              try {
+                const res = await fetch(new URL('/api/figma', req.url).href, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ token: process.env.FIGMA_ACCESS_TOKEN }),
+                  signal: AbortSignal.timeout(15000),
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data?.designTokens || data?.colors) {
+                    subsystemResults.push(`[FIGMA DESIGN TOKENS]\n${JSON.stringify(data.designTokens || data.colors || {}).slice(0, 3000)}\n[/FIGMA]`);
+                  }
+                }
+              } catch { /* timeout or unavailable — continue without */ }
             })()
           );
         }
@@ -177,7 +230,7 @@ export async function POST(req: Request) {
         });
       }
 
-      /* â”€â”€ Brain Analyze: Pre-analyze prompt â†’ return analysis + plan (no generation) â”€â”€ */
+      /* ── Brain Analyze: Pre-analyze prompt → return analysis + plan (no generation) ── */
       case 'brain-analyze': {
         const { prompt } = body;
         if (!validatePrompt(prompt)) {
@@ -195,7 +248,7 @@ export async function POST(req: Request) {
         });
       }
 
-      /* â”€â”€ Claude Code Terminal: Natural language â†’ actions â”€â”€ */
+      /* ── Claude Code Terminal: Natural language → actions ── */
       case 'claude-code-terminal': {
         const { prompt, model = MAMMOTH_KEY ? 'claude-sonnet-4-20250514' : 'gemini-2.5-pro' } = body;
         if (!validatePrompt(prompt)) {
@@ -226,7 +279,7 @@ export async function POST(req: Request) {
   }
 }
 
-/* â”€â”€ Model Routing â”€â”€ */
+/* ── Model Routing ── */
 
 const MAMMOTH_KEY = process.env.MAMMOTH_API_KEY || '';
 const MAMMOTH_URL = process.env.MAMMOTH_API_URL || 'https://api.mammoth.ai/v1';
@@ -281,7 +334,7 @@ async function streamToModel(opts: {
   return await streamViaGemini(opts);
 }
 
-/* â”€â”€ Ollama Cloud â”€â”€ */
+/* ── Ollama Cloud ── */
 async function streamViaOllama(opts: {
   model: string;
   systemPrompt: string;
@@ -340,7 +393,7 @@ async function streamViaOllama(opts: {
     const errText = await res.text().catch(() => '');
     console.error('[Ollama API Error]', res.status, errText.slice(0, 300));
     if (GOOGLE_KEY) {
-      console.log('[Fallback] Ollama â†’ Gemini');
+      console.log('[Fallback] Ollama → Gemini');
       return streamViaGemini(opts);
     }
     return Response.json({ error: `Ollama API error ${res.status}: ${errText.slice(0, 200)}` }, { status: res.status });
@@ -349,7 +402,7 @@ async function streamViaOllama(opts: {
   return createSSEResponse(res, (data) => data?.choices?.[0]?.delta?.content, opts.model);
 }
 
-/* â”€â”€ Mammoth (Anthropic) â”€â”€ */
+/* ── Mammoth (Anthropic) ── */
 async function streamViaMammoth(opts: {
   model: string;
   systemPrompt: string;
@@ -388,13 +441,13 @@ async function streamViaMammoth(opts: {
     const errText = await res.text().catch(() => '');
     console.error('[Mammoth API Error]', res.status, errText.slice(0, 300));
     if (GOOGLE_KEY) {
-      console.log('[Fallback] Mammoth â†’ Gemini');
+      console.log('[Fallback] Mammoth → Gemini');
       return streamViaGemini(opts);
     }
     return Response.json({ error: `Mammoth API error ${res.status}: ${errText.slice(0, 200)}` }, { status: res.status });
   }
 
-  // Parse Anthropic SSE â†’ our format
+  // Parse Anthropic SSE → our format
   return createSSEResponse(res, (data) => {
     if (data.type === 'content_block_delta' && data.delta?.text) return data.delta.text;
     if (data.choices?.[0]?.delta?.content) return data.choices[0].delta.content;
@@ -402,7 +455,7 @@ async function streamViaMammoth(opts: {
   }, undefined, (data) => data.type === 'message_stop');
 }
 
-/* â”€â”€ Gemini (fallback) â”€â”€ */
+/* ── Gemini (fallback) ── */
 async function streamViaGemini(opts: {
   model: string;
   systemPrompt: string;
@@ -448,7 +501,7 @@ async function streamViaGemini(opts: {
   return createSSEResponse(res, (data) => data?.choices?.[0]?.delta?.content);
 }
 
-/* â”€â”€ Shared SSE stream helper â”€â”€ */
+/* ── Shared SSE stream helper ── */
 function createSSEResponse(
   res: Response,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -514,7 +567,7 @@ function createSSEResponse(
   });
 }
 
-/* â”€â”€ Helpers â”€â”€ */
+/* ── Helpers ── */
 
 function mergeConsecutiveMessages(messages: { role: string; content: string }[]): { role: string; content: string }[] {
   const merged: { role: string; content: string }[] = [];
