@@ -2448,8 +2448,11 @@ export function buildSmartSystemPrompt(userPrompt: string, maxChars: number = 80
  * Detects domains from user prompt → injects relevant skill knowledge → adds quality gates.
  * This is what makes Aurion's output Claude Code-quality.
  */
-export function buildBrainEnhancedPrompt(userPrompt: string, maxChars: number = 80000): string {
-  const analysis = analyzePrompt(userPrompt);
+export function buildBrainEnhancedPrompt(userPrompt: string, maxChars: number = 80000, precomputedAnalysis?: { domains: { domain: string; confidence: number }[]; complexity: string; executionPlan: string; qualityGates: string[]; skillContext?: string }): string {
+  // Use pre-computed analysis from client brain-analyze call if available (avoids redundant work)
+  const analysis = precomputedAnalysis
+    ? { ...precomputedAnalysis, skillContext: precomputedAnalysis.skillContext || analyzePrompt(userPrompt).skillContext }
+    : analyzePrompt(userPrompt);
 
   // Start with the smart system prompt
   const basePrompt = buildSmartSystemPrompt(userPrompt, maxChars - 4000);

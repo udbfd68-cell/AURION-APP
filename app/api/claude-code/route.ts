@@ -33,6 +33,13 @@ interface ExecutionRequest {
   researchContext?: string;
   messages?: { role: string; content: string }[];
   images?: { data: string; type: string }[];
+  brainAnalysis?: {
+    domains: { domain: string; confidence: number }[];
+    complexity: string;
+    executionPlan: string;
+    qualityGates: string[];
+    skillContext?: string;
+  };
 }
 
 function validateAction(action: unknown): action is string {
@@ -248,7 +255,9 @@ export async function POST(req: Request) {
         subsystemStatus['reactbits'] = { status: subsystemResults.some(r => r.includes('[REACTBITS')) ? 'ok' : 'skipped' };
 
         // Build system prompt with Claude Code Brain intelligence (80K budget)
-        const systemPrompt = buildBrainEnhancedPrompt(safePrompt, 80000)
+        // Use client-provided brainAnalysis if available (avoids redundant server-side analysis)
+        const clientBrain = body.brainAnalysis || undefined;
+        const systemPrompt = buildBrainEnhancedPrompt(safePrompt, 80000, clientBrain)
           + (subsystemResults.length > 0 ? '\n\n' + subsystemResults.join('\n\n') : '');
 
         // Build user content with budget

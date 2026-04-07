@@ -110,6 +110,7 @@ export function useChat(options: UseChatOptions) {
     signal: AbortSignal,
     images?: { data: string; type: string }[],
     directResearchContext?: string,
+    clientBrainAnalysis?: { domains: { domain: string; confidence: number }[]; complexity: string; executionPlan: string; qualityGates: string[] } | null,
   ) => {
     const endpoint = '/api/claude-code';
     const effectiveResearch = directResearchContext || researchContext || undefined;
@@ -121,6 +122,7 @@ export function useChat(options: UseChatOptions) {
       model: useModel,
       researchContext: effectiveResearch,
       ...(images?.length ? { images } : {}),
+      ...(clientBrainAnalysis ? { brainAnalysis: clientBrainAnalysis } : {}),
     };
 
     const res = await fetchWithRetry(endpoint, {
@@ -296,7 +298,7 @@ export function useChat(options: UseChatOptions) {
     }
 
     try {
-      const generatedOutput = await streamToAssistant(allMessages, assistantMsg.id, useModelId, controller.signal, imgs, directResearchResult);
+      const generatedOutput = await streamToAssistant(allMessages, assistantMsg.id, useModelId, controller.signal, imgs, directResearchResult, brainAnalysis);
 
       // Quality Gates + Auto-Continue
       if (generatedOutput && generatedOutput.length > 200) {
@@ -390,11 +392,27 @@ export function useChat(options: UseChatOptions) {
                             try { const d = JSON.parse(payload); if (d.text) fixText += d.text; } catch { continue; }
                           }
                         }
-                        // Only use fix if it passes quality check better
+                        // Only use fix if it passes quality check better AND is substantial
                         if (fixText.length > currentOutput.length * 0.5) {
-                          setMessages(prev => prev.map(m =>
-                            m.id === assistantMsg.id ? { ...m, content: fixText } : m
-                          ));
+                          // Re-validate the fix before applying
+                          const fixQcRes = await fetch('/api/claude-code', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'quality-check', code: fixText }),
+                            signal: AbortSignal.timeout(3000),
+                          });
+                          const fixQc = fixQcRes.ok ? await fixQcRes.json() : null;
+                          const fixScore = fixQc?.data?.score ?? 0;
+                          if (fixScore > score) {
+                            // Fix is better — apply it but notify user
+                            setMessages(prev => prev.map(m =>
+                              m.id === assistantMsg.id ? { ...m, content: fixText } : m
+                            ));
+                            setError(`Auto-fixed: ${score}% → ${fixScore}%`);
+                          } else {
+                            // Fix is worse — keep original, just report
+                            setError(`Quality: ${score}% — auto-fix didn't improve (${fixScore}%). Keeping original.`);
+                          }
                         }
                       }
                     }
