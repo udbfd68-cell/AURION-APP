@@ -104,8 +104,13 @@ export async function POST(req: Request) {
         const subsystemResults: string[] = [];
         const calls: Promise<void>[] = [];
 
+        // Track subsystem status for visibility
+        const subsystemStatus: Record<string, { status: 'ok' | 'timeout' | 'error' | 'skipped'; ms?: number }> = {};
+        const subsystemTimers: Record<string, number> = {};
+
         // NotebookLM research (15s timeout) — ALWAYS unless user already provided research
         if (!researchContext) {
+          subsystemTimers['notebooklm'] = Date.now();
           calls.push(
             (async () => {
               try {
@@ -121,15 +126,23 @@ export async function POST(req: Request) {
                   if (result) {
                     const text = typeof result === 'string' ? result : JSON.stringify(result);
                     subsystemResults.push(`[RESEARCH]\n${text.slice(0, 8000)}\n[/RESEARCH]`);
+                    subsystemStatus['notebooklm'] = { status: 'ok', ms: Date.now() - subsystemTimers['notebooklm'] };
+                  } else {
+                    subsystemStatus['notebooklm'] = { status: 'error', ms: Date.now() - subsystemTimers['notebooklm'] };
                   }
+                } else {
+                  subsystemStatus['notebooklm'] = { status: 'error', ms: Date.now() - subsystemTimers['notebooklm'] };
                 }
-              } catch { /* timeout or unavailable — continue without */ }
+              } catch { subsystemStatus['notebooklm'] = { status: 'timeout', ms: Date.now() - subsystemTimers['notebooklm'] }; }
             })()
           );
+        } else {
+          subsystemStatus['notebooklm'] = { status: 'skipped' };
         }
 
         // Stitch design (20s timeout) — ALWAYS if STITCH_API_KEY is set
         if (process.env.STITCH_API_KEY) {
+          subsystemTimers['stitch'] = Date.now();
           calls.push(
             (async () => {
               try {
@@ -144,11 +157,18 @@ export async function POST(req: Request) {
                   const html = data?.data?.html || data?.data?.result || '';
                   if (typeof html === 'string' && html.length > 100) {
                     subsystemResults.push(`[STITCH DESIGN — Use as visual reference for React components]\n${html.slice(0, 6000)}\n[/STITCH DESIGN]`);
+                    subsystemStatus['stitch'] = { status: 'ok', ms: Date.now() - subsystemTimers['stitch'] };
+                  } else {
+                    subsystemStatus['stitch'] = { status: 'error', ms: Date.now() - subsystemTimers['stitch'] };
                   }
+                } else {
+                  subsystemStatus['stitch'] = { status: 'error', ms: Date.now() - subsystemTimers['stitch'] };
                 }
-              } catch { /* timeout or unavailable — continue without */ }
+              } catch { subsystemStatus['stitch'] = { status: 'timeout', ms: Date.now() - subsystemTimers['stitch'] }; }
             })()
           );
+        } else {
+          subsystemStatus['stitch'] = { status: 'skipped' };
         }
 
         // ReactBits catalog context — ALWAYS inject (no API call, static catalog)
@@ -160,6 +180,7 @@ export async function POST(req: Request) {
 
         // 21st.dev component patterns — ALWAYS fetch trending components (10s timeout)
         if (process.env.TWENTY_FIRST_API_KEY) {
+          subsystemTimers['21st.dev'] = Date.now();
           calls.push(
             (async () => {
               try {
@@ -177,15 +198,23 @@ export async function POST(req: Request) {
                       `- ${c.name || c.title}: ${c.description || ''} ${c.code ? '```tsx\n' + String(c.code).slice(0, 1500) + '\n```' : ''}`
                     ).join('\n');
                     subsystemResults.push(`[21ST.DEV COMPONENTS — Use these React/shadcn patterns as inspiration]\n${summary}\n[/21ST.DEV]`);
+                    subsystemStatus['21st.dev'] = { status: 'ok', ms: Date.now() - subsystemTimers['21st.dev'] };
+                  } else {
+                    subsystemStatus['21st.dev'] = { status: 'error', ms: Date.now() - subsystemTimers['21st.dev'] };
                   }
+                } else {
+                  subsystemStatus['21st.dev'] = { status: 'error', ms: Date.now() - subsystemTimers['21st.dev'] };
                 }
-              } catch { /* timeout or unavailable — continue without */ }
+              } catch { subsystemStatus['21st.dev'] = { status: 'timeout', ms: Date.now() - subsystemTimers['21st.dev'] }; }
             })()
           );
+        } else {
+          subsystemStatus['21st.dev'] = { status: 'skipped' };
         }
 
-        // Figma design tokens — if FIGMA_ACCESS_TOKEN set and prompt mentions design/figma (15s timeout)
+        // Figma design tokens — if FIGMA_ACCESS_TOKEN set (15s timeout)
         if (process.env.FIGMA_ACCESS_TOKEN) {
+          subsystemTimers['figma'] = Date.now();
           calls.push(
             (async () => {
               try {
@@ -199,14 +228,24 @@ export async function POST(req: Request) {
                   const data = await res.json();
                   if (data?.designTokens || data?.colors) {
                     subsystemResults.push(`[FIGMA DESIGN TOKENS]\n${JSON.stringify(data.designTokens || data.colors || {}).slice(0, 3000)}\n[/FIGMA]`);
+                    subsystemStatus['figma'] = { status: 'ok', ms: Date.now() - subsystemTimers['figma'] };
+                  } else {
+                    subsystemStatus['figma'] = { status: 'error', ms: Date.now() - subsystemTimers['figma'] };
                   }
+                } else {
+                  subsystemStatus['figma'] = { status: 'error', ms: Date.now() - subsystemTimers['figma'] };
                 }
-              } catch { /* timeout or unavailable — continue without */ }
+              } catch { subsystemStatus['figma'] = { status: 'timeout', ms: Date.now() - subsystemTimers['figma'] }; }
             })()
           );
+        } else {
+          subsystemStatus['figma'] = { status: 'skipped' };
         }
 
         if (calls.length > 0) await Promise.allSettled(calls);
+
+        // ReactBits status
+        subsystemStatus['reactbits'] = { status: subsystemResults.some(r => r.includes('[REACTBITS')) ? 'ok' : 'skipped' };
 
         // Build system prompt with Claude Code Brain intelligence (80K budget)
         const systemPrompt = buildBrainEnhancedPrompt(safePrompt, 80000)
@@ -221,12 +260,63 @@ export async function POST(req: Request) {
         const budgeted = budgetPromptSections(sections, 25000);
         const userContent = Array.from(budgeted.values()).filter(Boolean).join('\n\n');
 
-        return await streamToModel({
+        // Stream the model response, prepending subsystem status as first SSE event
+        const modelResponse = await streamToModel({
           model,
           systemPrompt,
           userContent,
           messages: body.messages,
           images: body.images,
+        });
+
+        // Inject subsystem status as metadata in the SSE stream
+        const { readable, writable } = new TransformStream();
+        const writer = writable.getWriter();
+        const statusEvent = `data: ${JSON.stringify({ subsystemStatus })}\n\n`;
+        
+        (async () => {
+          try {
+            await writer.write(new TextEncoder().encode(statusEvent));
+            const reader = modelResponse.body?.getReader();
+            if (reader) {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                await writer.write(value);
+              }
+            }
+          } finally {
+            await writer.close();
+          }
+        })();
+
+        return new Response(readable, {
+          headers: modelResponse.headers,
+        });
+      }
+
+      /* ── Quality Fix: Auto-fix quality issues via LLM ── */
+      case 'quality-fix': {
+        const { code, model = MAMMOTH_KEY ? 'claude-sonnet-4-20250514' : 'gemini-2.5-pro' } = body;
+        const qualityErrors = (body as unknown as Record<string, unknown>).errors as string[] || [];
+        if (!code) {
+          return Response.json({ error: 'Missing code' }, { status: 400 });
+        }
+        const fixSystemPrompt = `You are an expert code fixer. You receive code with specific quality issues and must fix ONLY those issues.
+Rules:
+- Fix the specific errors listed, nothing else
+- Output the COMPLETE corrected code (not a diff)
+- Maintain all existing functionality, styles, and structure
+- For React multi-file projects, keep the <<FILE:path>> format
+- For HTML, keep the complete document structure
+- Do NOT add new features or change the design`;
+
+        const fixUserContent = `Fix these quality issues:\n${qualityErrors.map(e => `• ${e}`).join('\n')}\n\nCode to fix:\n${code.slice(-8000)}`;
+
+        return await streamToModel({
+          model,
+          systemPrompt: fixSystemPrompt,
+          userContent: fixUserContent,
         });
       }
 

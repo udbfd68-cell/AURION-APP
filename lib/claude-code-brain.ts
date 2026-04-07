@@ -269,15 +269,31 @@ const SKILL_KNOWLEDGE: Record<string, string> = {
 
 /**
  * Get compiled skill knowledge for detected domains.
- * Returns relevant best practices text to inject into the system prompt.
+ * NOW reads REAL skill files from .agents/skills/ (pre-compiled at build time).
+ * Falls back to hardcoded knowledge if compiled skills are unavailable.
  */
 export function getSkillKnowledge(domains: DomainMatch[]): string {
   const knowledge: string[] = [];
-  const seen = new Set<string>();
 
   // Always include enterprise patterns for quality
   knowledge.push(SKILL_KNOWLEDGE['enterprise-agent']);
   knowledge.push(SKILL_KNOWLEDGE['enterprise-prompt']);
+
+  // Load REAL skills from compiled skill files (from .agents/skills/)
+  try {
+    const { getCompiledSkillsForDomains } = require('@/lib/compiled-skills');
+    const domainNames = domains.slice(0, 6).map(d => d.domain);
+    const realSkills = getCompiledSkillsForDomains(domainNames, 12000);
+    if (realSkills && realSkills.length > 100) {
+      knowledge.push(`\n# REAL SKILL KNOWLEDGE (from .agents/skills/ — ${domainNames.length} domains)\n` + realSkills);
+      return knowledge.join('\n\n');
+    }
+  } catch {
+    // Compiled skills not available, fall back to hardcoded
+  }
+
+  // Fallback: use hardcoded skill knowledge  
+  const seen = new Set<string>();
 
   // Map domains to skill knowledge keys
   const DOMAIN_TO_SKILL: Record<string, string[]> = {

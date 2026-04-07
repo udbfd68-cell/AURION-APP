@@ -4,7 +4,7 @@ import { fetchWithRetry } from '@/lib/client-utils';
 import type { Message } from '@/lib/client-utils';
 import { MODELS, assemblePreview } from '@/lib/cdn-models';
 import { getOptimalModel, generateId, extractPreviewHtml, extractAllCodeBlocks } from '@/lib/page-helpers';
-import { postProcessOutput } from '@/lib/claude-code-engine';
+import { postProcessOutput, validateGeneratedCode } from '@/lib/claude-code-engine';
 
 export interface UseChatOptions {
   // Shared state passed in from parent
@@ -157,6 +157,17 @@ export function useChat(options: UseChatOptions) {
         if (data.error) {
           const clean = data.error.replace(/\[GoogleGenerativeAI Error\]:?\s*/gi, '').replace(/Error fetching from https:\/\/[^\s]+/gi, '').replace(/\[{"@type"[\s\S]*/g, '').replace(/\s{2,}/g, ' ').trim().slice(0, 150) || 'Request failed. Please try again.';
           throw new Error(clean);
+        }
+        // Handle subsystem status metadata event
+        if (data.subsystemStatus) {
+          const statuses = data.subsystemStatus as Record<string, { status: string; ms?: number }>;
+          const failed = Object.entries(statuses)
+            .filter(([, v]) => v.status === 'timeout' || v.status === 'error')
+            .map(([k, v]) => `${k}: ${v.status}${v.ms ? ` (${Math.round(v.ms / 1000)}s)` : ''}`);
+          if (failed.length > 0) {
+            setError(`Subsystems: ${failed.join(', ')}`);
+          }
+          continue;
         }
         if (data.text) {
           accumulatedText += data.text;
@@ -336,20 +347,60 @@ export function useChat(options: UseChatOptions) {
         }
 
         // Quality gate (works for both HTML and React multi-file output)
+        // NOW: auto-fix if quality < 50% (up to 1 retry)
         if (isHtmlOutput || isReactOutput) {
           try {
+            const currentOutput = generatedOutput;
             const qcRes = await fetch('/api/claude-code', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'quality-check', code: output }),
+              body: JSON.stringify({ action: 'quality-check', code: currentOutput }),
               signal: AbortSignal.timeout(5000),
             });
             if (qcRes.ok) {
               const qcData = await qcRes.json();
               if (qcData?.data) {
-                const { score, errors, warnings } = qcData.data;
-                if (score < 50 && errors?.length > 0) {
-                  setError(`Quality: ${score}% — ${[...errors, ...warnings.slice(0, 3)].join(', ')}`);
+                const { score, errors: qcErrors, warnings } = qcData.data;
+                if (score < 50 && qcErrors?.length > 0 && !autoFixInFlightRef.current) {
+                  autoFixInFlightRef.current = true;
+                  // Auto-fix: send the errors back to the LLM for a targeted repair
+                  try {
+                    const fixRes = await fetch('/api/claude-code', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'quality-fix', code: currentOutput, errors: qcErrors, model: useModelId }),
+                      signal: AbortSignal.timeout(60000),
+                    });
+                    if (fixRes.ok) {
+                      const reader = fixRes.body?.getReader();
+                      const decoder = new TextDecoder();
+                      if (reader) {
+                        let fixText = '';
+                        let buf = '';
+                        while (true) {
+                          const { done, value } = await reader.read();
+                          if (done) break;
+                          buf += decoder.decode(value, { stream: true });
+                          const lines = buf.split('\n');
+                          buf = lines.pop() ?? '';
+                          for (const line of lines) {
+                            if (!line.startsWith('data: ')) continue;
+                            const payload = line.slice(6);
+                            if (payload === '[DONE]') break;
+                            try { const d = JSON.parse(payload); if (d.text) fixText += d.text; } catch { continue; }
+                          }
+                        }
+                        // Only use fix if it passes quality check better
+                        if (fixText.length > currentOutput.length * 0.5) {
+                          setMessages(prev => prev.map(m =>
+                            m.id === assistantMsg.id ? { ...m, content: fixText } : m
+                          ));
+                        }
+                      }
+                    }
+                  } catch { /* auto-fix failed, keep original */ }
+                } else if (score < 70 && (qcErrors?.length > 0 || warnings?.length > 0)) {
+                  setError(`Quality: ${score}% — ${[...qcErrors, ...warnings.slice(0, 2)].join(', ')}`);
                 }
               }
             }
@@ -362,6 +413,18 @@ export function useChat(options: UseChatOptions) {
           setMessages(prev => prev.map(m =>
             m.id === assistantMsg.id ? { ...m, content: ppResult.code } : m
           ));
+        }
+
+        // Code validation feedback loop — structural checks
+        const validation = validateGeneratedCode(ppResult.code || output);
+        if (!validation.valid || validation.fileIssues.length > 0) {
+          const issues = [
+            ...validation.errors,
+            ...validation.fileIssues.map(fi => `${fi.file}: ${fi.issue}`),
+          ].slice(0, 5);
+          if (issues.length > 0) {
+            setError(`Code issues: ${issues.join(' | ')}`);
+          }
         }
       }
     } catch (err: unknown) {

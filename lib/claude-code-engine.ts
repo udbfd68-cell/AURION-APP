@@ -208,6 +208,107 @@ export function budgetPromptSections(
 // OUTPUT QUALITY GATES — REAL VALIDATION WITH SCORES
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// CODE VALIDATION — Structural checks for generated code (no runtime needed)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface CodeValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  fileIssues: { file: string; issue: string }[];
+}
+
+export function validateGeneratedCode(output: string): CodeValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const fileIssues: { file: string; issue: string }[] = [];
+
+  const isReact = /<<FILE:src\//.test(output);
+
+  if (isReact) {
+    // Extract all file blocks
+    const fileRegex = /<<FILE:([^>]+)>>([\s\S]*?)(?:<\/FILE>>|<<\/FILE>>)/g;
+    const files: { path: string; content: string }[] = [];
+    let match;
+    while ((match = fileRegex.exec(output)) !== null) {
+      files.push({ path: match[1].trim(), content: match[2] });
+    }
+
+    if (files.length === 0) {
+      errors.push('No valid file blocks found — output may be truncated or malformed');
+    }
+
+    // Check for essential files in a React project
+    const paths = files.map(f => f.path);
+    if (!paths.some(p => /package\.json$/i.test(p))) warnings.push('Missing package.json');
+    if (!paths.some(p => /App\.(tsx|jsx|ts|js)$/i.test(p))) warnings.push('Missing App component');
+    if (!paths.some(p => /main\.(tsx|jsx|ts|js)$/i.test(p)) && !paths.some(p => /index\.(tsx|jsx|ts|js)$/i.test(p))) {
+      warnings.push('Missing entry point (main.tsx or index.tsx)');
+    }
+
+    for (const file of files) {
+      const { path: filePath, content } = file;
+      const isTsx = /\.(tsx|jsx)$/i.test(filePath);
+
+      if (isTsx) {
+        // Unclosed JSX — count opening vs closing divs
+        const openDivs = (content.match(/<div[\s>]/g) || []).length;
+        const closeDivs = (content.match(/<\/div>/g) || []).length;
+        if (openDivs - closeDivs > 2) {
+          fileIssues.push({ file: filePath, issue: `Unclosed <div> tags (${openDivs} opened, ${closeDivs} closed)` });
+        }
+
+        // Check for unterminated template literals
+        const backticks = (content.match(/`/g) || []).length;
+        if (backticks % 2 !== 0) {
+          fileIssues.push({ file: filePath, issue: 'Possibly unterminated template literal' });
+        }
+
+        // Check for missing return statement in component
+        if (/export (default )?function/.test(content) && !/(return|=>)\s*[\(\<]/.test(content)) {
+          fileIssues.push({ file: filePath, issue: 'Component may be missing return statement with JSX' });
+        }
+      }
+
+      // Duplicate declarations
+      const funcNames = content.match(/(?:function|const|let|var)\s+(\w+)/g) || [];
+      const nameCount: Record<string, number> = {};
+      for (const fn of funcNames) {
+        const name = fn.split(/\s+/).pop() || '';
+        nameCount[name] = (nameCount[name] || 0) + 1;
+      }
+      for (const [name, count] of Object.entries(nameCount)) {
+        if (count > 2) fileIssues.push({ file: filePath, issue: `"${name}" declared ${count} times` });
+      }
+
+      if (content.trim().length < 10) {
+        fileIssues.push({ file: filePath, issue: 'File is nearly empty' });
+      }
+    }
+  } else if (/<html/i.test(output)) {
+    // HTML single-file checks
+    const tags = ['html', 'head', 'body', 'style', 'script'];
+    for (const tag of tags) {
+      const opens = (output.match(new RegExp(`<${tag}[\\s>]`, 'gi')) || []).length;
+      const closes = (output.match(new RegExp(`</${tag}>`, 'gi')) || []).length;
+      if (opens > closes) {
+        errors.push(`Unclosed <${tag}> tag (${opens} opened, ${closes} closed)`);
+      }
+    }
+  }
+
+  if (output.includes('undefined') && /\bundefined\b.*\bundefined\b/s.test(output.slice(0, 2000))) {
+    warnings.push('Multiple "undefined" values — possible variable resolution issue');
+  }
+
+  return { valid: errors.length === 0, errors, warnings, fileIssues };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OUTPUT QUALITY GATES
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export interface QualityCheck {
   name: string;
   test: (output: string) => boolean;
@@ -276,13 +377,35 @@ export function runQualityChecks(output: string, checks: QualityCheck[] = HTML_Q
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export function buildContinuationPrompt(truncatedOutput: string): string {
-  const tail = truncatedOutput.slice(-2000);
   const isReact = /<<FILE:src\//.test(truncatedOutput) || /import.*from ['"]/.test(truncatedOutput);
+  
+  if (isReact) {
+    // Build a file inventory: list all <<FILE:path>> blocks with status
+    const fileRegex = /<<FILE:([^>]+)>>/g;
+    const closeRegex = /<\/FILE>>/g;
+    const openFiles: string[] = [];
+    let match;
+    while ((match = fileRegex.exec(truncatedOutput)) !== null) {
+      openFiles.push(match[1].trim());
+    }
+    const closedCount = (truncatedOutput.match(closeRegex) || []).length;
+    const completedFiles = openFiles.slice(0, closedCount);
+    const lastOpenFile = openFiles.length > closedCount ? openFiles[openFiles.length - 1] : null;
+    
+    // Get the tail from the last file being generated
+    const tail = truncatedOutput.slice(-3000);
+    
+    return `Output token limit hit. Resume EXACTLY where cut off — no recap, no apology, no re-generating completed files.\n\n` +
+      `FILE INVENTORY (already generated — do NOT repeat):\n${completedFiles.map(f => `  ✓ ${f}`).join('\n')}\n\n` +
+      (lastOpenFile ? `CURRENTLY MID-FILE: ${lastOpenFile} (continue from where it was cut)\n\n` : '') +
+      `REMAINING: Generate any files that haven't been started yet.\n\n` +
+      `Continue from this exact point:\n${tail}`;
+  }
+  
+  const tail = truncatedOutput.slice(-2000);
   return `Output token limit hit. Resume directly — no apology, no recap of what you were doing. ` +
     `Pick up mid-thought from exactly where the output was cut. ` +
-    (isReact
-      ? `Continue generating the remaining React component files from this point. Maintain the same <<FILE:path>> format:\n\n${tail}`
-      : `Continue generating the code from this point:\n\n${tail}`);
+    `Continue generating the code from this point:\n\n${tail}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
