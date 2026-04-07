@@ -6,7 +6,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { buildSystemPrompt } from '@/lib/system-prompts';
+import { buildBrainPromptFromMessages } from '@/lib/system-prompts';
 import { xaiSchema } from '@/lib/api-schemas';
 import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
 import { RATE_LIMITS } from '@/lib/rate-limiter';
@@ -15,8 +15,6 @@ export const runtime = 'edge';
 
 const XAI_URL = 'https://api.x.ai/v1/chat/completions';
 const XAI_KEY = process.env.XAI_API_KEY || '';
-
-const SYSTEM_PROMPT = buildSystemPrompt();
 
 export async function POST(req: NextRequest) {
   // â”€â”€ Security: Origin validation + Rate limiting â”€â”€
@@ -39,7 +37,7 @@ export async function POST(req: NextRequest) {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${XAI_KEY}` },
       body: JSON.stringify({
         model: modelId,
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
+        messages: [{ role: 'system', content: buildBrainPromptFromMessages(messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : '' })), 60000) }, ...messages],
         stream: true,
         max_tokens: 131072,
         temperature: 0.7,

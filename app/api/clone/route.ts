@@ -8,7 +8,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { type ClonePromptData, getModelHints, buildCloneSystemPrompt } from '@/lib/system-prompts';
+import { type ClonePromptData, getModelHints, buildCloneSystemPrompt, buildBrainEnhancedPrompt } from '@/lib/system-prompts';
 import { detectIndustry, generateDesignContext, PREMIUM_UI_PATTERNS, FRAMER_LEVEL_SYSTEM } from '@/lib/ui-ux-pro-max';
 import { extractStructuredContent, extractKeyCSS, extractSPAData, calculateVisualDiffHints, buildMultiViewportPrompt } from '@/lib/firecrawl';
 import {

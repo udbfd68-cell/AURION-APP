@@ -88,7 +88,7 @@ export async function POST(req: Request) {
         }
         return await streamToModel({
           model,
-          systemPrompt: buildSmartSystemPrompt('continue generation', 60000),
+          systemPrompt: buildBrainEnhancedPrompt(code.slice(0, 500), 60000),
           userContent: buildContinuationPrompt(code),
         });
       }
@@ -311,7 +311,9 @@ export async function POST(req: Request) {
         if (!code) {
           return Response.json({ error: 'Missing code' }, { status: 400 });
         }
-        const fixSystemPrompt = `You are an expert code fixer. You receive code with specific quality issues and must fix ONLY those issues.
+        const brainContext = buildBrainEnhancedPrompt(code.slice(0, 500), 40000);
+        const fixSystemPrompt = brainContext + `\n\n# QUALITY FIX MODE
+You are an expert code fixer. You receive code with specific quality issues and must fix ONLY those issues.
 Rules:
 - Fix the specific errors listed, nothing else
 - Output the COMPLETE corrected code (not a diff)

@@ -1,13 +1,11 @@
 import { NextRequest } from 'next/server';
-import { buildSystemPrompt } from '@/lib/system-prompts';
+import { buildBrainPromptFromMessages } from '@/lib/system-prompts';
 import { classifyError, calculateBackoff } from '@/lib/claude-code-engine';
 import { groqSchema } from '@/lib/api-schemas';
 import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
 import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export const runtime = 'edge';
-
-const SYSTEM_PROMPT = buildSystemPrompt();
 const MAX_RETRIES = 3;
 
 export async function POST(req: NextRequest) {
@@ -44,9 +42,10 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Build messages array with system prompt
+  // Build messages array with brain-enhanced system prompt
+  const brainPrompt = buildBrainPromptFromMessages(messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : '' })), 60000);
   const groqMessages = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: brainPrompt },
     ...messages.map((msg) => ({
       role: msg.role === 'assistant' ? 'assistant' : 'user',
       content: msg.content,

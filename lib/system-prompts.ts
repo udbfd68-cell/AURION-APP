@@ -2483,6 +2483,20 @@ export function buildCloneSystemPrompt(): string {
 }
 
 /**
+ * Build a brain-enhanced system prompt from a messages array.
+ * Extracts the last user message and enriches the prompt with domain detection + skills.
+ * Use this in ALL model routes to ensure brain controls every generation path.
+ */
+export function buildBrainPromptFromMessages(messages: { role: string; content: string }[], maxChars: number = 80000): string {
+  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+  if (!lastUserMsg || !lastUserMsg.content || lastUserMsg.content.length < 5) {
+    // Too short to analyze — fall back to keyword-based smart prompt
+    return buildSmartSystemPrompt(messages.map(m => m.content).join(' ').slice(0, 500), maxChars);
+  }
+  return buildBrainEnhancedPrompt(lastUserMsg.content, maxChars);
+}
+
+/**
  * Build the workspace context section appended to user messages in page.tsx.
  * This is a COMPACT version — the full prompt is in the system role.
  */

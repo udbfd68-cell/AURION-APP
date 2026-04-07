@@ -8,7 +8,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { buildSystemPrompt, buildImageAnalysisPrompt } from '@/lib/system-prompts';
+import { buildBrainPromptFromMessages, buildImageAnalysisPrompt } from '@/lib/system-prompts';
 import { ollamaSchema } from '@/lib/api-schemas';
 import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
 import { RATE_LIMITS } from '@/lib/rate-limiter';
@@ -48,8 +48,6 @@ const VISION_MODELS = new Set([
 // Default model when none specified
 const DEFAULT_CHAT_MODEL = 'gemini-3-flash-preview';
 
-// â”€â”€â”€ System Prompt â€” from centralized lib â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const SYSTEM_PROMPT = buildSystemPrompt();
 
 
 // â”€â”€â”€ Ollama Cloud SSE Stream â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -137,8 +135,8 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Build system prompt â€” add image analysis instructions if images are attached
-  let systemContent = SYSTEM_PROMPT;
+  // Build brain-enhanced system prompt — add image analysis instructions if images are attached
+  let systemContent = buildBrainPromptFromMessages(messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : '' })), 80000);
   if (images && images.length > 0) {
     systemContent += buildImageAnalysisPrompt(images.length);
   }

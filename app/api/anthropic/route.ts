@@ -6,7 +6,7 @@
  * - Context overflow recovery
  */
 import { NextRequest } from 'next/server';
-import { buildSystemPrompt } from '@/lib/system-prompts';
+import { buildBrainPromptFromMessages } from '@/lib/system-prompts';
 import { classifyError, calculateBackoff } from '@/lib/claude-code-engine';
 import { anthropicSchema } from '@/lib/api-schemas';
 import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
@@ -14,7 +14,6 @@ import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 export const runtime = 'edge';
 
-const SYSTEM_PROMPT = buildSystemPrompt();
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 
 export async function POST(req: NextRequest) {
@@ -110,7 +109,7 @@ export async function POST(req: NextRequest) {
           system: [
             {
               type: 'text',
-              text: SYSTEM_PROMPT,
+              text: buildBrainPromptFromMessages(messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : '' })), 80000),
               cache_control: { type: 'ephemeral' },
             },
           ],

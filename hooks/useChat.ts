@@ -267,7 +267,7 @@ export function useChat(options: UseChatOptions) {
           const res = await fetchWithRetry('/api/claude-code', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'jarvis-execute', prompt: allMessages[allMessages.length - 1]?.content || '', messages: allMessages.slice(0, -1), model: abModelB, ...(imgs?.length ? { images: imgs } : {}) }),
+            body: JSON.stringify({ action: 'jarvis-execute', prompt: allMessages[allMessages.length - 1]?.content || '', messages: allMessages.slice(0, -1), model: abModelB, ...(imgs?.length ? { images: imgs } : {}), ...(brainAnalysis ? { brainAnalysis } : {}) }),
             signal: abController.signal,
             timeout: 300000,
           }, 2);

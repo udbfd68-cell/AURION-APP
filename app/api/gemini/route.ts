@@ -11,7 +11,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { buildSystemPrompt, buildImageAnalysisPrompt, buildResearchEnhancedPrompt } from '@/lib/system-prompts';
+import { buildSystemPrompt, buildBrainPromptFromMessages, buildImageAnalysisPrompt, buildResearchEnhancedPrompt } from '@/lib/system-prompts';
 import { classifyError, calculateBackoff } from '@/lib/claude-code-engine';
 import { geminiSchema } from '@/lib/api-schemas';
 import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
@@ -21,8 +21,6 @@ export const runtime = 'edge';
 
 const GOOGLE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 const GOOGLE_KEY = process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_AI_STUDIO_KEY || '';
-
-const SYSTEM_PROMPT = buildSystemPrompt();
 
 // All Gemini models support vision
 const VISION_MODELS = new Set([
@@ -116,10 +114,10 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Build system prompt with optional image analysis + research context
+  // Build system prompt with brain enhancement + optional image analysis + research context
   let systemContent = researchContext
     ? buildResearchEnhancedPrompt(researchContext)
-    : SYSTEM_PROMPT;
+    : buildBrainPromptFromMessages(messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : '' })), 80000);
   if (images && images.length > 0) {
     systemContent += buildImageAnalysisPrompt(images.length);
   }

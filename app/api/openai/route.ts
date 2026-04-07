@@ -4,6 +4,7 @@
  */
 
 import { NextRequest } from 'next/server';
+import { buildBrainPromptFromMessages } from '@/lib/system-prompts';
 import { openaiSchema } from '@/lib/api-schemas';
 import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
 import { RATE_LIMITS } from '@/lib/rate-limiter';
@@ -42,7 +43,10 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: model || 'gpt-4o',
-        messages,
+        messages: [
+          { role: 'system', content: buildBrainPromptFromMessages(messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : '' })), 60000) },
+          ...messages,
+        ],
         stream,
         max_tokens: 128000,
       }),
