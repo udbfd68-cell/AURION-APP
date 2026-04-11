@@ -112,6 +112,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(components);
     }
 
+    if (action === 'debug') {
+      if (!query || typeof query !== 'string') {
+        return NextResponse.json({ error: 'Missing query' }, { status: 400 });
+      }
+      const res = await fetch21st('/api/fetch-ui', { message: query, searchQuery: query });
+      if (!res.ok) {
+        const text = await res.text();
+        return NextResponse.json({ error: `21st.dev failed (${res.status})`, details: text }, { status: res.status });
+      }
+      const data = await res.json();
+      // Return raw + parsed to see all fields
+      const raw = (data as { text?: string })?.text;
+      let parsed: unknown[] = [];
+      try { parsed = JSON.parse(raw || '[]'); } catch {}
+      return NextResponse.json({
+        rawKeys: Object.keys(data || {}),
+        rawText: typeof raw === 'string' ? raw.slice(0, 3000) : null,
+        parsedKeys: Array.isArray(parsed) ? parsed.map((c: unknown) => Object.keys(c as Record<string, unknown>)) : [],
+        parsed: Array.isArray(parsed) ? parsed.map((c: unknown) => {
+          const redacted = { ...(c as Record<string, unknown>) };
+          if (typeof redacted.componentCode === 'string') redacted.componentCode = (redacted.componentCode as string).slice(0, 100) + '…';
+          if (typeof redacted.demoCode === 'string') redacted.demoCode = (redacted.demoCode as string).slice(0, 100) + '…';
+          return redacted;
+        }) : parsed,
+      });
+    }
+
     if (action === 'component') {
       if (!slug || !username) {
         return NextResponse.json({ error: 'Missing slug or username' }, { status: 400 });
