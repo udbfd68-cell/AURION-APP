@@ -44,7 +44,7 @@ export default function HomePage() {
     isClaudeCodeStreaming, isEditMode, isExplaining, isFileModified, isLandscape, isRefining, isResearching, isStreaming, isStripeLoading,
     isSupabaseLoading, landingFileInputRef, landingInput, landingTextareaRef, layoutDebugActive, messages,
     minimapEnabled, model, monacoEditorRef, newConversation, newFileInputRef, newFileName, openFile, openPreviewNewTab,
-    openTabs, outputFramework, performResearch, pickedColor, previewDarkMode, previewHtml, previewLoading, previewZoom,
+    openTabs, outputFramework, performResearch, pickedColor, preview21stComponent, previewDarkMode, previewHtml, previewLoading, previewZoom,
     projectFiles, projects, refineClone, refineFeedback, refreshPreview, removeImage, renameInputRef, renameProjectId,
     renameProjectName, renameTarget, renameValue, researchContext, researchError, researchMode, researchQuery,
     researchResults, runA11yAudit, runDatabaseQuery, runPerfAudit, runSchemaTemplate, runSupabaseQuery,
@@ -57,7 +57,7 @@ export default function HomePage() {
     setError, setExpandedDirs, setExplorerContextMenu, setGridFlexDebugActive, setHistoryIdx, setHoveredImage,
     setIdeError, setIdeLoading, setIdeServiceId, setIdeStatus, setIdeUrl, setInput, setIntegrationKeys, setIsEditMode,
     setIsLandscape, setLandingInput, setLayoutDebugActive, setMessages, setMinimapEnabled, setModel, setNewFileName,
-    setOpenTabs, setOutputFramework, setPreviewDarkMode, setPreviewLoading, setPreviewZoom, setProjectFiles,
+    setOpenTabs, setOutputFramework, setPreview21stComponent, setPreviewDarkMode, setPreviewLoading, setPreviewZoom, setProjectFiles,
     setProjects, setRefineFeedback, setRenameProjectId, setRenameProjectName, setRenameTarget, setRenameValue,
     setResearchContext, setResearchMode, setResearchQuery, setResearchResults, setRuntimeErrors, setSandboxDb,
     setSandboxDbTable, setSandboxEmail, setSandboxEmailForm, setSandboxEmailLog, setSandboxMsg, setSandboxMsgForm,
@@ -151,7 +151,7 @@ export default function HomePage() {
               <Suspense fallback={<PanelLoader />}>
               <AnimatePresence initial={false}>
                 {activeTab === 'app' ? (
-                  <PreviewPanel {...{ hasPreviewContent, webContainer, selectedFile, refreshPreview, deviceMode, isLandscape, previewZoom, breakpointTestActive, breakpointTestIdx, BREAKPOINT_SIZES, previewLoading, wcInstalling, wcInstallProgress, iframeRef, setPreviewLoading, previewHtml, isEditMode, selectPromptData, setSelectPromptData, selectPromptInput, setSelectPromptInput, selectPromptRef, submitSelectPrompt, selectPromptLoading, browser21stQuery, setBrowser21stQuery, browser21stInputRef, search21stComponents, browser21stLoading, browser21stResults, inject21stComponent, injecting21stComponent, clonedHtml, setRefineFeedback, isRefining, refineFeedback, refineClone, stopClone, isCloning, cloneProgress, isStreaming, cloneError, setCloneError, setShowCloneModal, setProjectFiles, setSelectedFile, setActiveTab }} />
+                  <PreviewPanel {...{ hasPreviewContent, webContainer, selectedFile, refreshPreview, deviceMode, isLandscape, previewZoom, breakpointTestActive, breakpointTestIdx, BREAKPOINT_SIZES, previewLoading, wcInstalling, wcInstallProgress, iframeRef, setPreviewLoading, previewHtml, isEditMode, selectPromptData, setSelectPromptData, selectPromptInput, setSelectPromptInput, selectPromptRef, submitSelectPrompt, selectPromptLoading, browser21stQuery, setBrowser21stQuery, browser21stInputRef, search21stComponents, browser21stLoading, browser21stResults, inject21stComponent, injecting21stComponent, preview21stComponent, setPreview21stComponent, clonedHtml, setRefineFeedback, isRefining, refineFeedback, refineClone, stopClone, isCloning, cloneProgress, isStreaming, cloneError, setCloneError, setShowCloneModal, setProjectFiles, setSelectedFile, setActiveTab }} />
                 ) : activeTab === 'code' ? (
                   <CodeEditorPanel {...{ projectFiles, selectedFile, setSelectedFile, openTabs, setOpenTabs, openFile, closeTab, setProjectFiles, expandedDirs, setExpandedDirs, buildFileTree, explorerContextMenu, setExplorerContextMenu, renameTarget, setRenameTarget, renameValue, setRenameValue, renameInputRef, hoveredImage, setHoveredImage, tabContextMenu, setTabContextMenu, isFileModified, editorTheme, minimapEnabled, wordWrapEnabled, monacoEditorRef, setCursorPosition, showDiffView, vfsHistoryIdx, vfsHistory, splitFile, setSplitFile, isDragOver, handleDrop, handleDragOver, handleDragLeave, codeBlocks, CodeBlock, newFileName, setNewFileName, newFileInputRef, createNewFile, showToast }} />
                 ) : activeTab === 'database' ? (

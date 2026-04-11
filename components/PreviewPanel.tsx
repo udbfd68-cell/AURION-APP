@@ -128,6 +128,8 @@ export interface PreviewPanelProps {
   browser21stResults: Array<{ id?: string; name?: string; description?: string; tags?: string[]; code?: string; demoCode?: string; preview_url?: string; demo_url?: string }>;
   inject21stComponent: (comp: any) => void;
   injecting21stComponent: string | null;
+  preview21stComponent: { id?: string; name?: string; description?: string; tags?: string[]; code?: string; demoCode?: string; preview_url?: string; demo_url?: string } | null;
+  setPreview21stComponent: (comp: any) => void;
   clonedHtml: string | null;
   setRefineFeedback: (v: string) => void;
   isRefining: boolean;
@@ -155,7 +157,8 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
     selectPromptData, setSelectPromptData, selectPromptInput, setSelectPromptInput,
     selectPromptRef, submitSelectPrompt, selectPromptLoading, browser21stQuery,
     setBrowser21stQuery, browser21stInputRef, search21stComponents, browser21stLoading,
-    browser21stResults, inject21stComponent, injecting21stComponent, clonedHtml,
+    browser21stResults, inject21stComponent, injecting21stComponent,
+    preview21stComponent, setPreview21stComponent, clonedHtml,
     setRefineFeedback, isRefining, refineFeedback, refineClone, stopClone, isCloning,
     cloneProgress, isStreaming, cloneError, setCloneError, setShowCloneModal,
     setProjectFiles, setSelectedFile, setActiveTab, BREAKPOINT_SIZES,
@@ -319,35 +322,68 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
                       </div>
                     )}
                     {browser21stResults.length > 0 && (
-                      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
                         {browser21stResults.map((comp, i) => (
-                          <div key={comp.id || i} className="flex flex-col bg-[#111] border border-[#1e1e1e] rounded-xl overflow-hidden hover:border-indigo-500/30 transition-colors group">
+                          <div key={comp.id || i} className="flex flex-col bg-[#111] border border-[#1e1e1e] rounded-xl overflow-hidden hover:border-indigo-500/30 transition-colors group cursor-pointer" onClick={() => setPreview21stComponent(comp)}>
                             {/* Iframe preview */}
                             {(comp.demoCode || comp.code) && (
-                              <div className="relative w-full bg-[#09090b] border-b border-[#1a1a1a]" style={{ height: '170px' }}>
+                              <div className="relative w-full bg-[#09090b] border-b border-[#1a1a1a]" style={{ height: '140px' }}>
                                 <iframe
                                   srcDoc={build21stPreviewHtml(comp.demoCode || comp.code || '')}
                                   sandbox="allow-scripts"
                                   className="w-full h-full border-0 pointer-events-none"
                                   loading="lazy"
                                   title={comp.name || 'Component preview'}
-                                  style={{ transform: 'scale(0.35)', transformOrigin: 'top left', width: `${100 / 0.35}%`, height: `${100 / 0.35}%` }}
+                                  style={{ transform: 'scale(0.25)', transformOrigin: 'top left', width: '400%', height: '400%' }}
                                 />
                                 <div className="absolute inset-0" />
                               </div>
                             )}
-                            <div className="p-3 flex flex-col gap-2">
+                            <div className="p-2 flex flex-col gap-1.5">
                               <div className="flex items-start justify-between gap-1">
-                                <p className="text-[11px] font-semibold text-white leading-tight">{comp.name || 'Component'}</p>
-                                {comp.code && <span className="shrink-0 text-[8px] px-1.5 py-0.5 rounded bg-[#1a1a1a] text-emerald-400/70 font-mono">{Math.round(comp.code.length / 1000)}k</span>}
+                                <p className="text-[10px] font-semibold text-white leading-tight truncate">{comp.name || 'Component'}</p>
+                                {comp.code && <span className="shrink-0 text-[8px] px-1 py-0.5 rounded bg-[#1a1a1a] text-emerald-400/70 font-mono">{Math.round(comp.code.length / 1000)}k</span>}
                               </div>
-                              {comp.tags && comp.tags.length > 0 && (<div className="flex flex-wrap gap-1">{comp.tags.slice(0, 5).map(t => (<span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#1a1a1a] text-[#777]">{t}</span>))}</div>)}
-                              <button onClick={() => inject21stComponent(comp)} disabled={!!injecting21stComponent} className="w-full py-1.5 rounded-lg bg-indigo-500/15 text-indigo-300 text-[10px] font-medium hover:bg-indigo-500/25 transition-colors disabled:opacity-40 flex items-center justify-center gap-1.5 group-hover:bg-indigo-500/20">
-                                {injecting21stComponent === comp.name ? <><svg width="10" height="10" viewBox="0 0 24 24" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="30 70"/></svg> Injecting…</> : <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Use in page</>}
+                              <button onClick={(e) => { e.stopPropagation(); inject21stComponent(comp); }} disabled={!!injecting21stComponent} className="w-full py-1 rounded-lg bg-indigo-500/15 text-indigo-300 text-[9px] font-medium hover:bg-indigo-500/25 transition-colors disabled:opacity-40 flex items-center justify-center gap-1 group-hover:bg-indigo-500/20">
+                                {injecting21stComponent === comp.name ? <><svg width="9" height="9" viewBox="0 0 24 24" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="30 70"/></svg> Injecting…</> : <><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Use</>}
                               </button>
                             </div>
                           </div>
                         ))}
+                      </div>
+                    )}
+                    {/* ── Fullscreen Preview Modal ── */}
+                    {preview21stComponent && (
+                      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setPreview21stComponent(null)}>
+                        <div className="relative w-[90vw] h-[85vh] max-w-[1200px] bg-[#0d0d0d] rounded-2xl border border-[#222] shadow-2xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+                          {/* Modal header */}
+                          <div className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-[#222] bg-[#111]">
+                            <div className="flex items-center gap-3">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                              <span className="text-[14px] font-semibold text-white">{preview21stComponent.name || 'Component'}</span>
+                              {preview21stComponent.tags && preview21stComponent.tags.length > 0 && (
+                                <div className="flex gap-1.5">{preview21stComponent.tags.slice(0, 4).map(t => (<span key={t} className="text-[9px] px-2 py-0.5 rounded-full bg-[#1a1a1a] text-[#888]">{t}</span>))}</div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => { inject21stComponent(preview21stComponent); }} disabled={!!injecting21stComponent} className="px-4 py-1.5 rounded-lg bg-indigo-500/20 text-indigo-300 text-[11px] font-medium hover:bg-indigo-500/30 transition-colors disabled:opacity-40 flex items-center gap-2">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Use in page
+                              </button>
+                              <button onClick={() => setPreview21stComponent(null)} className="w-7 h-7 flex items-center justify-center text-[#555] hover:text-white transition-colors rounded-lg hover:bg-[#1a1a1a]">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                              </button>
+                            </div>
+                          </div>
+                          {/* Full-size iframe preview */}
+                          <div className="flex-1 relative bg-[#09090b]">
+                            <iframe
+                              srcDoc={build21stPreviewHtml(preview21stComponent.demoCode || preview21stComponent.code || '')}
+                              sandbox="allow-scripts"
+                              className="w-full h-full border-0"
+                              title={preview21stComponent.name || 'Component preview'}
+                            />
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
