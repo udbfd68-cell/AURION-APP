@@ -6,36 +6,93 @@ import { GlobeIcon, RefreshIcon } from '@/lib/page-helpers';
 import type { ActiveTab, VirtualFS } from '@/lib/types';
 
 /* ── Build an iframe-renderable HTML page from React/Tailwind component code ── */
+
+/** Find the largest `return (...)` block using balanced parentheses */
+function extractReturnJsx(code: string): string | null {
+  const results: string[] = [];
+  let searchFrom = 0;
+  while (true) {
+    const idx = code.indexOf('return (', searchFrom);
+    if (idx === -1) break;
+    const after = code.slice(idx + 7);
+    let depth = 0, start = -1, end = -1;
+    for (let i = 0; i < after.length; i++) {
+      if (after[i] === '(') { if (depth === 0) start = i; depth++; }
+      else if (after[i] === ')') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (start !== -1 && end !== -1) results.push(after.slice(start + 1, end).trim());
+    searchFrom = idx + 1;
+  }
+  if (results.length === 0) return null;
+  return results.reduce((a, b) => (a.length > b.length ? a : b));
+}
+
 function build21stPreviewHtml(code: string): string {
-  let cleaned = code
+  if (!code?.trim()) return '<!DOCTYPE html><html><body style="background:#09090b;color:#555;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><p>No preview</p></body></html>';
+
+  // Step 1: Strip non-visual code (imports, types, "use client", exports)
+  let text = code
     .replace(/^["']use client["'];?\s*/gm, '')
-    .replace(/^import\s+.*?;\s*$/gm, '')
+    .replace(/^import\b.*$/gm, '')
+    .replace(/(?:export\s+)?(?:interface|type)\s+\w+[^{]*\{[^}]*\}/gm, '')
+    .replace(/^export\s+default\s+function/gm, 'function')
     .replace(/^export\s+default\s+/gm, '')
     .replace(/^export\s+\{[^}]*\};?\s*$/gm, '')
-    .replace(/^export\s+/gm, '');
+    .replace(/^export\s+/gm, '')
+    .replace(/:\s*(?:\w+(?:Props|Type|Interface)|React\.\w+|string|number|boolean)(?:\[\])?\s*/g, ' ');
 
-  // Extract JSX from the return() of a function component
-  const returnMatch = cleaned.match(/return\s*\(\s*([\s\S]*)\s*\)\s*;?\s*\}[\s\S]*$/);
-  let jsx = returnMatch ? returnMatch[1] : cleaned;
+  // Step 2: Extract JSX from the largest return() block (balanced parens)
+  let jsx = extractReturnJsx(text);
 
-  // Convert React JSX → HTML
+  // Fallback: try arrow function implicit return => (...)
+  if (!jsx) {
+    const arrowMatch = text.match(/=>\s*\(([\s\S]+)\)\s*;?\s*(?:\}|$)/);
+    if (arrowMatch) jsx = arrowMatch[1];
+  }
+  // Last fallback: try return <div... without parens
+  if (!jsx) {
+    const directReturn = text.match(/return\s+(<[\s\S]+)/);
+    if (directReturn) jsx = directReturn[1];
+  }
+  if (!jsx) jsx = text;
+
+  // Step 3: Convert React JSX → HTML
   jsx = jsx
     .replace(/className=/g, 'class=')
     .replace(/htmlFor=/g, 'for=')
-    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
-    .replace(/\{`([^`]*)`\}/g, '$1')
-    .replace(/\{"([^"]*)"\}/g, '$1')
-    .replace(/\{'([^']*)'\}/g, '$1')
-    .replace(/<(\w+)([^>]*)\s\/>/g, '<$1$2></$1>')
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')               // JSX comments
+    .replace(/\{`([^`]*)`\}/g, '$1')                      // Template literals → text
+    .replace(/\{"([^"]*)"\}/g, '$1')                       // String expressions
+    .replace(/\{'([^']*)'\}/g, '$1')                       // String expressions
+    .replace(/<(\w+)([^>]*)\s\/>/g, '<$1$2></$1>');       // Self-closing → explicit close
+
+  // Step 4: Iteratively remove nested JS expressions {...{...}...}
+  for (let i = 0; i < 20; i++) {
+    const before: string = jsx;
+    jsx = jsx.replace(/\{[^{}]*\}/g, '');
+    if (jsx === before) break;
+  }
+
+  // Step 5: Convert PascalCase React components to divs
+  jsx = jsx
+    .replace(/<([A-Z][a-zA-Z0-9]*)([\s>\/])/g, '<div$2')
+    .replace(/<\/[A-Z][a-zA-Z0-9]*>/g, '</div>');
+
+  // Step 6: Fix SVG attributes + fragments
+  jsx = jsx
     .replace(/strokeWidth=/g, 'stroke-width=')
     .replace(/strokeLinecap=/g, 'stroke-linecap=')
     .replace(/strokeLinejoin=/g, 'stroke-linejoin=')
     .replace(/fillRule=/g, 'fill-rule=')
     .replace(/clipRule=/g, 'clip-rule=')
-    .replace(/\{[^{}]*\}/g, '')
     .replace(/<>/g, '<div>').replace(/<\/>/g, '</div>');
 
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><script src="https://cdn.tailwindcss.com"><\/script><script>tailwind.config={darkMode:'class',theme:{extend:{colors:{background:'#09090b',foreground:'#fafafa',primary:{DEFAULT:'#818cf8',foreground:'#fff'},secondary:{DEFAULT:'#27272a',foreground:'#fafafa'},muted:{DEFAULT:'#27272a',foreground:'#a1a1aa'},accent:{DEFAULT:'#27272a',foreground:'#fafafa'},destructive:{DEFAULT:'#ef4444',foreground:'#fff'},border:'#27272a',input:'#27272a',ring:'#818cf8'}}}}<\/script><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#09090b;color:#fafafa;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}body>*{width:100%;max-width:100%}img{max-width:100%;height:auto}a{color:inherit;text-decoration:none}</style></head><body class="dark">${jsx}</body></html>`;
+  // Step 7: Clean up empty artifacts
+  jsx = jsx
+    .replace(/<(\w+)(\s[^>]*)?>(\s*)<\/\1>/g, '')         // Remove empty tags
+    .replace(/\n\s*\n\s*\n/g, '\n');                       // Collapse blank lines
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><script src="https://cdn.tailwindcss.com"><\/script><script>tailwind.config={darkMode:'class',theme:{extend:{colors:{background:'#09090b',foreground:'#fafafa',primary:{DEFAULT:'#818cf8',foreground:'#fff'},'primary-foreground':'#fff',secondary:{DEFAULT:'#27272a',foreground:'#fafafa'},'secondary-foreground':'#fafafa',muted:{DEFAULT:'#27272a',foreground:'#a1a1aa'},'muted-foreground':'#a1a1aa',accent:{DEFAULT:'#27272a',foreground:'#fafafa'},'accent-foreground':'#fafafa',destructive:{DEFAULT:'#ef4444',foreground:'#fff'},border:'#27272a',input:'#27272a',ring:'#818cf8',card:{DEFAULT:'#111',foreground:'#fafafa'},'card-foreground':'#fafafa',popover:{DEFAULT:'#111',foreground:'#fafafa'}},borderRadius:{lg:'0.5rem',md:'calc(0.5rem - 2px)',sm:'calc(0.5rem - 4px)'}}}}<\/script><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#09090b;color:#fafafa;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}body>*{max-width:100%}img{max-width:100%;height:auto}a{color:inherit;text-decoration:none}button,input{font:inherit;color:inherit}[class*="rounded"]{border-radius:0.5rem}svg{display:inline-block;vertical-align:middle}</style></head><body class="dark">${jsx}</body></html>`;
 }
 
 export interface PreviewPanelProps {
@@ -261,19 +318,19 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
                       </div>
                     )}
                     {!browser21stLoading && browser21stResults.length > 0 && (
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
                         {browser21stResults.map((comp, i) => (
                           <div key={comp.id || i} className="flex flex-col bg-[#111] border border-[#1e1e1e] rounded-xl overflow-hidden hover:border-indigo-500/30 transition-colors group">
                             {/* Iframe preview */}
                             {comp.code && (
-                              <div className="relative w-full bg-[#09090b] border-b border-[#1a1a1a]" style={{ height: '200px' }}>
+                              <div className="relative w-full bg-[#09090b] border-b border-[#1a1a1a]" style={{ height: '170px' }}>
                                 <iframe
                                   srcDoc={build21stPreviewHtml(comp.code)}
                                   sandbox="allow-scripts"
                                   className="w-full h-full border-0 pointer-events-none"
                                   loading="lazy"
                                   title={comp.name || 'Component preview'}
-                                  style={{ transform: 'scale(0.5)', transformOrigin: 'top left', width: '200%', height: '200%' }}
+                                  style={{ transform: 'scale(0.35)', transformOrigin: 'top left', width: `${100 / 0.35}%`, height: `${100 / 0.35}%` }}
                                 />
                                 <div className="absolute inset-0" />
                               </div>

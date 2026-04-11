@@ -102,7 +102,9 @@ export async function POST(req: NextRequest) {
       if (!query || typeof query !== 'string') {
         return NextResponse.json({ error: 'Missing query' }, { status: 400 });
       }
-      const res = await fetch21st('/api/fetch-ui', { message: query, searchQuery: query });
+      // Request many variations from the AI-powered search
+      const enhancedMessage = `Find all available variations, styles and types of: ${query}. Return as many different component implementations as possible — different designs, layouts, color schemes. Include every matching component.`;
+      const res = await fetch21st('/api/fetch-ui', { message: enhancedMessage, searchQuery: query });
       if (!res.ok) {
         const text = await res.text();
         return NextResponse.json({ error: `21st.dev search failed (${res.status})`, details: text }, { status: res.status });
