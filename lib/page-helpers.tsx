@@ -1,7 +1,6 @@
-import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
-import hljs from 'highlight.js';
 import dynamic from 'next/dynamic';
 import type { Message } from '@/lib/client-utils';
 import { PREMIUM_FONTS_CDN, SHADCN_BASE_CSS } from '@/lib/cdn-models';
