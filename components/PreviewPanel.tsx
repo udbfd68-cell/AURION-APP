@@ -125,7 +125,7 @@ export interface PreviewPanelProps {
   browser21stInputRef: React.RefObject<HTMLInputElement | null>;
   search21stComponents: (query: string) => void;
   browser21stLoading: boolean;
-  browser21stResults: Array<{ id?: string; name?: string; description?: string; tags?: string[]; code?: string; preview_url?: string; demo_url?: string }>;
+  browser21stResults: Array<{ id?: string; name?: string; description?: string; tags?: string[]; code?: string; demoCode?: string; preview_url?: string; demo_url?: string }>;
   inject21stComponent: (comp: any) => void;
   injecting21stComponent: string | null;
   clonedHtml: string | null;
@@ -286,7 +286,7 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
                     <div className="flex items-center gap-2 shrink-0">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                       <span className="text-[12px] font-semibold text-white">21st.dev Components</span>
-                      {browser21stResults.length > 0 && <span className="text-[10px] text-indigo-400/70 font-mono">{browser21stResults.length} found</span>}
+                      {browser21stResults.length > 0 && <span className="text-[10px] text-indigo-400/70 font-mono">{browser21stResults.length} found{browser21stLoading ? ' (loading…)' : ''}</span>}
                     </div>
                     <form className="flex-1 flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); search21stComponents(browser21stQuery); }}>
                       <input ref={browser21stInputRef} value={browser21stQuery} onChange={(e) => setBrowser21stQuery(e.target.value)} placeholder="Search components… e.g. pricing card, nav bar, hero section" className="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-1.5 text-[11px] text-white placeholder-[#555] outline-none focus:border-indigo-500/50 transition-colors" autoFocus />
@@ -299,15 +299,16 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
                     </button>
                   </div>
                   <div className="shrink-0 px-4 py-2 flex flex-wrap gap-1.5 border-b border-[#1a1a1a]">
-                    {['Hero section', 'Pricing card', 'Navigation bar', 'Card grid', 'CTA button', 'Footer', 'Modal', 'Form', 'Feature grid', 'Testimonials'].map(chip => (
+                    {['Hero section', 'Pricing card', 'Navigation bar', 'Card grid', 'CTA button', 'Footer', 'Modal', 'Form', 'Feature grid', 'Testimonials', 'Dashboard', 'Login', 'Sidebar', 'Carousel', 'Table', 'Accordion', 'Calendar', 'Avatar', 'Toast', 'Gradient'].map(chip => (
                       <button key={chip} onClick={() => { setBrowser21stQuery(chip); search21stComponents(chip); }} className="px-2 py-0.5 rounded-full bg-[#1a1a1a] border border-[#252525] text-[10px] text-[#777] hover:text-white hover:border-indigo-500/40 transition-colors">{chip}</button>
                     ))}
                   </div>
                   <div className="flex-1 min-h-0 overflow-y-auto p-3">
-                    {browser21stLoading && (
+                    {browser21stLoading && browser21stResults.length === 0 && (
                       <div className="flex flex-col items-center justify-center h-40 gap-3">
                         <svg width="20" height="20" viewBox="0 0 24 24" className="animate-spin text-indigo-400"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="30 70"/></svg>
-                        <p className="text-[12px] text-[#555]">Searching 21st.dev…</p>
+                        <p className="text-[12px] text-[#555]">Loading 21st.dev components…</p>
+                        <p className="text-[9px] text-[#333]">Fetching all categories in parallel…</p>
                       </div>
                     )}
                     {!browser21stLoading && browser21stResults.length === 0 && (
@@ -317,15 +318,15 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
                         <p className="text-[10px] text-[#333]">or click a quick category chip</p>
                       </div>
                     )}
-                    {!browser21stLoading && browser21stResults.length > 0 && (
+                    {browser21stResults.length > 0 && (
                       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
                         {browser21stResults.map((comp, i) => (
                           <div key={comp.id || i} className="flex flex-col bg-[#111] border border-[#1e1e1e] rounded-xl overflow-hidden hover:border-indigo-500/30 transition-colors group">
                             {/* Iframe preview */}
-                            {comp.code && (
+                            {(comp.demoCode || comp.code) && (
                               <div className="relative w-full bg-[#09090b] border-b border-[#1a1a1a]" style={{ height: '170px' }}>
                                 <iframe
-                                  srcDoc={build21stPreviewHtml(comp.code)}
+                                  srcDoc={build21stPreviewHtml(comp.demoCode || comp.code || '')}
                                   sandbox="allow-scripts"
                                   className="w-full h-full border-0 pointer-events-none"
                                   loading="lazy"

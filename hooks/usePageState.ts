@@ -710,7 +710,7 @@ export function usePageState() {
     injecting21stComponent, setInjecting21stComponent,
     browser21stInputRef,
     search21stComponents, inject21stComponent,
-  } = use21stBrowser({ setTerminalLines, previewHtml, sendToAI, panelActions });
+  } = use21stBrowser({ setTerminalLines, previewHtml, sendToAI, panelActions, show21stBrowser });
 
   // Landing → Workspace transition
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
