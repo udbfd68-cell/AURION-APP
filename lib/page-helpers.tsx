@@ -1,9 +1,12 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import hljs from 'highlight.js';
+import dynamic from 'next/dynamic';
 import type { Message } from '@/lib/client-utils';
 import { PREMIUM_FONTS_CDN, SHADCN_BASE_CSS } from '@/lib/cdn-models';
+
+const MonacoEditorLazy = dynamic(() => import('@monaco-editor/react'), { ssr: false });
 
 const TAG_COLORS: Record<string, string> = {
   Vision: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
@@ -139,30 +142,95 @@ function extractAllCodeBlocks(messages: Message[]): { language: string; code: st
 }
 
 /* ────────── Code Block with copy ────────── */
+// Map markdown/hljs language names to Monaco language IDs
+const toMonacoLang = (lang?: string): string => {
+  if (!lang) return 'plaintext';
+  const map: Record<string, string> = {
+    js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+    py: 'python', sh: 'shell', bash: 'shell', zsh: 'shell',
+    yml: 'yaml', md: 'markdown', dockerfile: 'dockerfile',
+    rb: 'ruby', rs: 'rust', go: 'go', java: 'java', cs: 'csharp',
+    cpp: 'cpp', c: 'c', swift: 'swift', kt: 'kotlin',
+    sql: 'sql', graphql: 'graphql', json: 'json', xml: 'xml',
+    html: 'html', css: 'css', scss: 'scss', less: 'less',
+    php: 'php', lua: 'lua', r: 'r', dart: 'dart', toml: 'ini',
+    plaintext: 'plaintext', text: 'plaintext',
+  };
+  return map[lang.toLowerCase()] || lang.toLowerCase();
+};
+
 function CodeBlock({ code, language }: { code: string; language?: string }) {
   const [copied, setCopied] = useState(false);
-  const highlighted = language
-    ? hljs.highlight(code, { language, ignoreIllegals: true }).value
-    : hljs.highlightAuto(code).value;
+  const [collapsed, setCollapsed] = useState(false);
+  const monacoLang = toMonacoLang(language);
+  const lineCount = code.split('\n').length;
+  // Cap height: min 3 lines, max 25 lines, 19px per line + 10px padding
+  const editorHeight = Math.min(Math.max(lineCount, 3), 25) * 19 + 10;
 
   return (
     <div className="relative group my-3 rounded-lg overflow-hidden border border-[#2a2a2a]">
-      <div className="flex items-center justify-between bg-gray-800 px-4 py-1.5 text-xs text-gray-400">
-        <span>{language ?? 'code'}</span>
+      {/* Tab bar like VS Code */}
+      <div className="flex items-center justify-between bg-[#1e1e1e] px-3 py-1 text-[11px] border-b border-[#2a2a2a]">
+        <div className="flex items-center gap-2">
+          <span className="text-[#569cd6] font-mono">{language ?? 'code'}</span>
+          <span className="text-[#555]">{lineCount} lines</span>
+          {lineCount > 25 && (
+            <button onClick={() => setCollapsed(!collapsed)} className="text-[#666] hover:text-[#ccc] transition-colors">
+              {collapsed ? '▶ expand' : '▼ collapse'}
+            </button>
+          )}
+        </div>
         <button
           onClick={() => {
             navigator.clipboard.writeText(code);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
           }}
-          className="hover:text-white transition-colors"
+          className="flex items-center gap-1 text-[#666] hover:text-white transition-colors"
         >
-          {copied ? 'Copied!' : 'Copy'}
+          {copied ? (
+            <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg> Copied</>
+          ) : (
+            <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</>
+          )}
         </button>
       </div>
-      <pre className="p-4 overflow-x-auto bg-gray-900 text-sm leading-relaxed">
-        <code dangerouslySetInnerHTML={{ __html: highlighted }} />
-      </pre>
+      {/* Monaco Editor */}
+      {!collapsed && (
+        <div style={{ height: editorHeight }}>
+          <MonacoEditorLazy
+            height="100%"
+            language={monacoLang}
+            value={code}
+            theme="vs-dark"
+            options={{
+              readOnly: true,
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              lineNumbers: 'on',
+              lineNumbersMinChars: 3,
+              glyphMargin: false,
+              folding: true,
+              renderLineHighlight: 'none',
+              overviewRulerLanes: 0,
+              hideCursorInOverviewRuler: true,
+              overviewRulerBorder: false,
+              scrollbar: { vertical: 'auto', horizontal: 'auto', verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+              fontSize: 13,
+              fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
+              fontLigatures: true,
+              padding: { top: 8, bottom: 4 },
+              contextmenu: false,
+              domReadOnly: true,
+              bracketPairColorization: { enabled: true },
+              guides: { bracketPairs: true, indentation: true },
+              renderWhitespace: 'none',
+              wordWrap: 'off',
+              automaticLayout: true,
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
