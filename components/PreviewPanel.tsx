@@ -5,6 +5,39 @@ import { usePanelStore } from '@/stores/usePanelStore';
 import { GlobeIcon, RefreshIcon } from '@/lib/page-helpers';
 import type { ActiveTab, VirtualFS } from '@/lib/types';
 
+/* ── Build an iframe-renderable HTML page from React/Tailwind component code ── */
+function build21stPreviewHtml(code: string): string {
+  let cleaned = code
+    .replace(/^["']use client["'];?\s*/gm, '')
+    .replace(/^import\s+.*?;\s*$/gm, '')
+    .replace(/^export\s+default\s+/gm, '')
+    .replace(/^export\s+\{[^}]*\};?\s*$/gm, '')
+    .replace(/^export\s+/gm, '');
+
+  // Extract JSX from the return() of a function component
+  const returnMatch = cleaned.match(/return\s*\(\s*([\s\S]*)\s*\)\s*;?\s*\}[\s\S]*$/);
+  let jsx = returnMatch ? returnMatch[1] : cleaned;
+
+  // Convert React JSX → HTML
+  jsx = jsx
+    .replace(/className=/g, 'class=')
+    .replace(/htmlFor=/g, 'for=')
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    .replace(/\{`([^`]*)`\}/g, '$1')
+    .replace(/\{"([^"]*)"\}/g, '$1')
+    .replace(/\{'([^']*)'\}/g, '$1')
+    .replace(/<(\w+)([^>]*)\s\/>/g, '<$1$2></$1>')
+    .replace(/strokeWidth=/g, 'stroke-width=')
+    .replace(/strokeLinecap=/g, 'stroke-linecap=')
+    .replace(/strokeLinejoin=/g, 'stroke-linejoin=')
+    .replace(/fillRule=/g, 'fill-rule=')
+    .replace(/clipRule=/g, 'clip-rule=')
+    .replace(/\{[^{}]*\}/g, '')
+    .replace(/<>/g, '<div>').replace(/<\/>/g, '</div>');
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><script src="https://cdn.tailwindcss.com"><\/script><script>tailwind.config={darkMode:'class',theme:{extend:{colors:{background:'#09090b',foreground:'#fafafa',primary:{DEFAULT:'#818cf8',foreground:'#fff'},secondary:{DEFAULT:'#27272a',foreground:'#fafafa'},muted:{DEFAULT:'#27272a',foreground:'#a1a1aa'},accent:{DEFAULT:'#27272a',foreground:'#fafafa'},destructive:{DEFAULT:'#ef4444',foreground:'#fff'},border:'#27272a',input:'#27272a',ring:'#818cf8'}}}}<\/script><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#09090b;color:#fafafa;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}body>*{width:100%;max-width:100%}img{max-width:100%;height:auto}a{color:inherit;text-decoration:none}</style></head><body class="dark">${jsx}</body></html>`;
+}
+
 export interface PreviewPanelProps {
   hasPreviewContent: boolean;
   webContainer: { previewUrl: string | null };
@@ -228,20 +261,33 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
                       </div>
                     )}
                     {!browser21stLoading && browser21stResults.length > 0 && (
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         {browser21stResults.map((comp, i) => (
-                          <div key={comp.id || i} className="flex flex-col bg-[#111] border border-[#1e1e1e] rounded-xl p-3 gap-2 hover:border-indigo-500/30 transition-colors group">
-                            <div className="flex-1">
-                              <div className="flex items-start justify-between gap-1 mb-1">
+                          <div key={comp.id || i} className="flex flex-col bg-[#111] border border-[#1e1e1e] rounded-xl overflow-hidden hover:border-indigo-500/30 transition-colors group">
+                            {/* Iframe preview */}
+                            {comp.code && (
+                              <div className="relative w-full bg-[#09090b] border-b border-[#1a1a1a]" style={{ height: '200px' }}>
+                                <iframe
+                                  srcDoc={build21stPreviewHtml(comp.code)}
+                                  sandbox="allow-scripts"
+                                  className="w-full h-full border-0 pointer-events-none"
+                                  loading="lazy"
+                                  title={comp.name || 'Component preview'}
+                                  style={{ transform: 'scale(0.5)', transformOrigin: 'top left', width: '200%', height: '200%' }}
+                                />
+                                <div className="absolute inset-0" />
+                              </div>
+                            )}
+                            <div className="p-3 flex flex-col gap-2">
+                              <div className="flex items-start justify-between gap-1">
                                 <p className="text-[11px] font-semibold text-white leading-tight">{comp.name || 'Component'}</p>
                                 {comp.code && <span className="shrink-0 text-[8px] px-1.5 py-0.5 rounded bg-[#1a1a1a] text-emerald-400/70 font-mono">{Math.round(comp.code.length / 1000)}k</span>}
                               </div>
-                              <p className="text-[10px] text-[#666] leading-snug line-clamp-2">{comp.description || ''}</p>
-                              {comp.tags && comp.tags.length > 0 && (<div className="flex flex-wrap gap-1 mt-1.5">{comp.tags.slice(0, 5).map(t => (<span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#1a1a1a] text-[#777]">{t}</span>))}</div>)}
+                              {comp.tags && comp.tags.length > 0 && (<div className="flex flex-wrap gap-1">{comp.tags.slice(0, 5).map(t => (<span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#1a1a1a] text-[#777]">{t}</span>))}</div>)}
+                              <button onClick={() => inject21stComponent(comp)} disabled={!!injecting21stComponent} className="w-full py-1.5 rounded-lg bg-indigo-500/15 text-indigo-300 text-[10px] font-medium hover:bg-indigo-500/25 transition-colors disabled:opacity-40 flex items-center justify-center gap-1.5 group-hover:bg-indigo-500/20">
+                                {injecting21stComponent === comp.name ? <><svg width="10" height="10" viewBox="0 0 24 24" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="30 70"/></svg> Injecting…</> : <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Use in page</>}
+                              </button>
                             </div>
-                            <button onClick={() => inject21stComponent(comp)} disabled={!!injecting21stComponent} className="w-full py-1.5 rounded-lg bg-indigo-500/15 text-indigo-300 text-[10px] font-medium hover:bg-indigo-500/25 transition-colors disabled:opacity-40 flex items-center justify-center gap-1.5 group-hover:bg-indigo-500/20">
-                              {injecting21stComponent === comp.name ? <><svg width="10" height="10" viewBox="0 0 24 24" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="30 70"/></svg> Injecting…</> : <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Use in page</>}
-                            </button>
                           </div>
                         ))}
                       </div>
