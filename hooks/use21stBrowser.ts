@@ -27,42 +27,9 @@ interface Use21stBrowserDeps {
 
 // Exhaustive component categories — each fires one API call returning ~3 components
 const BROWSE_CATEGORIES = [
-  // Heroes
-  'hero section', 'hero banner gradient', 'hero animated text', 'hero dark landing', 'hero dithering card',
-  // Pricing
-  'pricing card', 'pricing table comparison', 'pricing toggle monthly yearly',
-  // Navigation
-  'navigation bar', 'header navbar responsive', 'sidebar navigation', 'mobile hamburger menu',
-  // Cards
-  'card grid', 'product card ecommerce', 'profile card avatar', 'feature card icon',
-  'blog post card', 'stats card dashboard', 'team member card',
-  // Buttons & CTAs
-  'CTA button animated', 'button group variant', 'gradient button glow', 'shimmer button effect',
-  // Forms & Inputs
-  'contact form', 'login form', 'signup form registration', 'search bar command palette',
-  'file upload drag drop', 'multi step form wizard',
-  // Footer
-  'footer section links', 'footer newsletter signup',
-  // Modals & Overlays
-  'modal dialog popup', 'drawer sidebar sheet', 'command palette', 'tooltip hover info',
-  // Layout
-  'bento grid layout', 'masonry grid gallery', 'dock taskbar', 'kanban board columns',
-  // Data Display
-  'data table sortable', 'chart bar graph', 'progress bar steps', 'timeline vertical horizontal',
-  // Testimonials & Social
-  'testimonials carousel', 'reviews star rating', 'marquee scroll infinite',
-  // Feedback
-  'notification toast', 'skeleton loading placeholder', 'error page 404',
-  // Interactive
-  'accordion FAQ', 'tabs panel', 'carousel slider', 'date picker calendar',
-  'dropdown select combobox', 'toggle switch dark mode',
-  // Animation & Effects
-  'animated gradient background', 'text reveal animation', 'parallax scroll effect',
-  'particles background', 'globe 3d animated', 'typewriter text effect',
-  'aurora northern lights', 'spotlight hover card',
-  // Special
-  'badge chip label', 'comparison before after', 'code block syntax highlight',
-  'payment checkout stripe', 'cookie consent banner', 'waitlist early access',
+  'hero section', 'pricing card', 'navigation bar', 'card grid', 'CTA button animated',
+  'contact form', 'footer section', 'modal dialog', 'bento grid layout',
+  'testimonials carousel', 'accordion FAQ', 'carousel slider',
 ];
 
 async function fetchCategory(query: string, signal?: AbortSignal): Promise<Component21st[]> {
@@ -116,7 +83,6 @@ export function use21stBrowser(deps: Use21stBrowserDeps) {
   }, [show21stBrowser]);
 
   const browseAll = useCallback(async () => {
-    // Cancel any in-flight requests
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -125,8 +91,9 @@ export function use21stBrowser(deps: Use21stBrowserDeps) {
     setBrowser21stResults([]);
     setTerminalLines(prev => [...prev, `$ 21st.dev: loading ${BROWSE_CATEGORIES.length} categories…`]);
 
-    const batchSize = 3;
+    // Load all categories in 2 small batches
     const allResults: Component21st[] = [];
+    const batchSize = 3;
 
     for (let i = 0; i < BROWSE_CATEGORIES.length; i += batchSize) {
       if (controller.signal.aborted) break;
@@ -137,12 +104,10 @@ export function use21stBrowser(deps: Use21stBrowserDeps) {
       for (const result of batchResults) {
         if (result.status === 'fulfilled') allResults.push(...result.value);
       }
-      // Progressive update every batch
       const deduped = dedupeComponents(allResults);
       setBrowser21stResults([...deduped]);
-      // Small delay between batches to avoid throttling
       if (i + batchSize < BROWSE_CATEGORIES.length && !controller.signal.aborted) {
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 300));
       }
     }
 
@@ -163,56 +128,16 @@ export function use21stBrowser(deps: Use21stBrowserDeps) {
     setBrowser21stLoading(true);
     setBrowser21stResults([]);
 
-    // Always fire multiple related queries
-    const queries = new Set<string>([q]);
-    const lower = q.toLowerCase();
-
-    // Add word-level variations
-    const words = q.trim().split(/\s+/);
-    if (words.length >= 2) queries.add(words[0]);
-    queries.add(`${q} component`);
-    queries.add(`${q} section`);
-
-    // Keyword-specific expansions
-    const expansions: Record<string, string[]> = {
-      pricing: ['pricing card', 'pricing table', 'pricing section', 'pricing tiers', 'subscription plan'],
-      hero: ['hero section', 'hero banner', 'landing page hero', 'hero animated', 'hero gradient dark'],
-      nav: ['navigation bar', 'header navbar', 'sidebar navigation', 'mobile menu', 'bottom tab bar'],
-      card: ['card grid', 'product card', 'profile card', 'feature card', 'blog card', 'stats card'],
-      button: ['CTA button', 'button group', 'animated button', 'gradient button', 'shimmer button'],
-      form: ['contact form', 'login form', 'signup form', 'input field animated', 'multi step form'],
-      footer: ['footer section', 'footer links', 'footer newsletter'],
-      modal: ['modal dialog', 'drawer sidebar', 'popup overlay', 'alert dialog', 'command palette'],
-      table: ['data table', 'table grid sortable', 'comparison table'],
-      testimonial: ['testimonials carousel', 'reviews section', 'customer quotes', 'social proof'],
-      dashboard: ['dashboard layout', 'analytics dashboard', 'stats dashboard', 'admin panel'],
-      login: ['login form', 'signup form', 'auth page', 'password reset'],
-      animation: ['animated gradient', 'text animation', 'parallax scroll', 'particles', 'typewriter'],
-      sidebar: ['sidebar navigation', 'drawer sidebar', 'dock taskbar'],
-    };
-    for (const [key, vals] of Object.entries(expansions)) {
-      if (lower.includes(key)) {
-        vals.forEach(v => queries.add(v));
-        break;
-      }
-    }
-
     try {
-      const queryArr = Array.from(queries).slice(0, 10);
-      const allResults = await Promise.allSettled(
-        queryArr.map(query => fetchCategory(query, controller.signal))
-      );
-      const merged: Component21st[] = [];
-      for (const r of allResults) {
-        if (r.status === 'fulfilled') merged.push(...r.value);
-      }
-      const final = dedupeComponents(merged);
+      // Single clean query — API returns ~3 relevant components
+      const results = await fetchCategory(q, controller.signal);
       if (!controller.signal.aborted) {
+        const final = dedupeComponents(results);
         setBrowser21stResults(final);
         if (final.length === 0) {
           setTerminalLines(prev => [...prev, `$ ℹ 21st.dev: no components found for "${q}"`]);
         } else {
-          setTerminalLines(prev => [...prev, `$ ✓ 21st.dev: found ${final.length} components for "${q}" (${queryArr.length} queries)`]);
+          setTerminalLines(prev => [...prev, `$ ✓ 21st.dev: found ${final.length} components for "${q}"`]);
         }
       }
     } catch (e) {

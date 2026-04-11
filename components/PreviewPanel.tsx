@@ -5,94 +5,181 @@ import { usePanelStore } from '@/stores/usePanelStore';
 import { GlobeIcon, RefreshIcon } from '@/lib/page-helpers';
 import type { ActiveTab, VirtualFS } from '@/lib/types';
 
-/* ── Build an iframe-renderable HTML page from React/Tailwind component code ── */
-
-/** Find the largest `return (...)` block using balanced parentheses */
-function extractReturnJsx(code: string): string | null {
-  const results: string[] = [];
-  let searchFrom = 0;
-  while (true) {
-    const idx = code.indexOf('return (', searchFrom);
-    if (idx === -1) break;
-    const after = code.slice(idx + 7);
-    let depth = 0, start = -1, end = -1;
-    for (let i = 0; i < after.length; i++) {
-      if (after[i] === '(') { if (depth === 0) start = i; depth++; }
-      else if (after[i] === ')') { depth--; if (depth === 0) { end = i; break; } }
-    }
-    if (start !== -1 && end !== -1) results.push(after.slice(start + 1, end).trim());
-    searchFrom = idx + 1;
-  }
-  if (results.length === 0) return null;
-  return results.reduce((a, b) => (a.length > b.length ? a : b));
-}
+/* ── Build a REAL React sandbox that renders components with Babel + React 18 + Tailwind ── */
 
 function build21stPreviewHtml(code: string): string {
   if (!code?.trim()) return '<!DOCTYPE html><html><body style="background:#09090b;color:#555;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><p>No preview</p></body></html>';
 
-  // Step 1: Strip non-visual code (imports, types, "use client", exports)
-  let text = code
+  // Strip TypeScript syntax before escaping (Babel standalone only handles JSX, not TSX)
+  let cleaned = code
+    // Remove "use client" directive
     .replace(/^["']use client["'];?\s*/gm, '')
-    .replace(/^import\b.*$/gm, '')
-    .replace(/(?:export\s+)?(?:interface|type)\s+\w+[^{]*\{[^}]*\}/gm, '')
+    // Remove TypeScript imports
+    .replace(/^import\s+type\s+.*$/gm, '')
+    .replace(/^import\s*\{[^}]*\}\s*from\s*['"][^'"]*['"]\s*;?\s*$/gm, '')
+    .replace(/^import\s+\w+\s+from\s+['"][^'"]*['"]\s*;?\s*$/gm, '')
+    .replace(/^import\s+\*\s+as\s+\w+\s+from\s+['"][^'"]*['"]\s*;?\s*$/gm, '')
+    // Remove interface/type declarations  
+    .replace(/(?:export\s+)?interface\s+\w+[^{]*\{[^}]*\}/gm, '')
+    .replace(/(?:export\s+)?type\s+\w+\s*=\s*[^;]*;/gm, '')
+    // Remove type annotations from parameters: (x: string) → (x)
+    .replace(/:\s*(?:React\.(?:FC|ReactNode|ReactElement|CSSProperties|MouseEvent|ChangeEvent|FormEvent|KeyboardEvent|Ref|RefObject|MutableRefObject|Dispatch|SetStateAction)\s*(?:<[^>]*>)?|(?:string|number|boolean|void|any|unknown|never|null|undefined|object)\s*(?:\[\])?(?:\s*\|\s*(?:string|number|boolean|void|any|unknown|never|null|undefined|object)\s*(?:\[\])?)*)/g, '')
+    // Remove generic type params from function declarations: function Foo<T>( → function Foo(
+    .replace(/(<\w+(?:\s+extends\s+[^>]*)?>)\s*(?=\()/g, '')
+    // Remove 'as Type' assertions
+    .replace(/\s+as\s+\w+(?:<[^>]*>)?/g, '')
+    // Remove type assertions with angle brackets (but not JSX)
+    .replace(/(?<=[\s(,=])<(?:string|number|boolean|any|unknown|Record|Array|Partial|Required|Pick|Omit)\b[^>]*>/g, '')
+    // Fix 'export default function' 
     .replace(/^export\s+default\s+function/gm, 'function')
     .replace(/^export\s+default\s+/gm, '')
     .replace(/^export\s+\{[^}]*\};?\s*$/gm, '')
-    .replace(/^export\s+/gm, '')
-    .replace(/:\s*(?:\w+(?:Props|Type|Interface)|React\.\w+|string|number|boolean)(?:\[\])?\s*/g, ' ');
+    .replace(/^export\s+(?=(?:function|const|let|var|class)\s)/gm, '');
 
-  // Step 2: Extract JSX from the largest return() block (balanced parens)
-  let jsx = extractReturnJsx(text);
+  // Escape the code for embedding in a script tag
+  const escaped = cleaned
+    .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
+    .replace(/\$\{/g, '\\${')
+    .replace(/<\/script>/gi, '<\\/script>');
 
-  // Fallback: try arrow function implicit return => (...)
-  if (!jsx) {
-    const arrowMatch = text.match(/=>\s*\(([\s\S]+)\)\s*;?\s*(?:\}|$)/);
-    if (arrowMatch) jsx = arrowMatch[1];
+  return `<!DOCTYPE html><html lang="en" class="dark"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<script src="https://cdn.tailwindcss.com"><\/script>
+<script>tailwind.config={darkMode:'class',theme:{extend:{colors:{background:'#09090b',foreground:'#fafafa',primary:{DEFAULT:'#818cf8',foreground:'#fff'},'primary-foreground':'#fff',secondary:{DEFAULT:'#27272a',foreground:'#fafafa'},'secondary-foreground':'#fafafa',muted:{DEFAULT:'#27272a',foreground:'#a1a1aa'},'muted-foreground':'#a1a1aa',accent:{DEFAULT:'#27272a',foreground:'#fafafa'},'accent-foreground':'#fafafa',destructive:{DEFAULT:'#ef4444',foreground:'#fff'},border:'#27272a',input:'#27272a',ring:'#818cf8',card:{DEFAULT:'#18181b',foreground:'#fafafa'},'card-foreground':'#fafafa',popover:{DEFAULT:'#18181b',foreground:'#fafafa'}},borderRadius:{lg:'0.75rem',md:'calc(0.75rem - 2px)',sm:'calc(0.75rem - 4px)'}}}}<\/script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin><\/script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin><\/script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/lucide-react@0.344.0/dist/umd/lucide-react.min.js" crossorigin><\/script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body,#root{height:100%;width:100%}
+body{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#09090b;color:#fafafa;overflow:auto}
+#root{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
+img{max-width:100%;height:auto}a{color:inherit;text-decoration:none}
+/* shadcn-like base utilities */
+.inline-flex{display:inline-flex}.items-center{align-items:center}.justify-center{justify-content:center}
+button,input,select,textarea{font:inherit;color:inherit;background:transparent;border:none;outline:none}
+[data-slot="card"]{background:#18181b;border:1px solid #27272a;border-radius:0.75rem;padding:1.5rem}
+[data-slot="badge"]{display:inline-flex;align-items:center;border-radius:9999px;padding:0.125rem 0.625rem;font-size:0.75rem;font-weight:600}
+[data-slot="button"]{display:inline-flex;align-items:center;justify-content:center;border-radius:0.5rem;padding:0.5rem 1rem;font-size:0.875rem;font-weight:500;transition:all 0.15s}
+[data-slot="input"]{display:flex;width:100%;border-radius:0.5rem;border:1px solid #27272a;background:#09090b;padding:0.5rem 0.75rem;font-size:0.875rem}
+[data-slot="separator"]{height:1px;width:100%;background:#27272a}
+</style>
+</head><body class="dark">
+<div id="root"></div>
+<script type="text/babel" data-type="module">
+// Provide shadcn-like component stubs so imports don't crash
+const cn = (...args) => args.filter(Boolean).join(' ');
+
+// Card components
+const Card = React.forwardRef(({className, ...props}, ref) => <div ref={ref} data-slot="card" className={cn("rounded-xl border bg-card text-card-foreground shadow", className)} {...props} />);
+const CardHeader = React.forwardRef(({className, ...props}, ref) => <div ref={ref} className={cn("flex flex-col space-y-1.5 p-6", className)} {...props} />);
+const CardTitle = React.forwardRef(({className, ...props}, ref) => <h3 ref={ref} className={cn("font-semibold leading-none tracking-tight", className)} {...props} />);
+const CardDescription = React.forwardRef(({className, ...props}, ref) => <p ref={ref} className={cn("text-sm text-muted-foreground", className)} {...props} />);
+const CardContent = React.forwardRef(({className, ...props}, ref) => <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />);
+const CardFooter = React.forwardRef(({className, ...props}, ref) => <div ref={ref} className={cn("flex items-center p-6 pt-0", className)} {...props} />);
+const CardAction = React.forwardRef(({className, ...props}, ref) => <div ref={ref} className={cn("", className)} {...props} />);
+
+// Button
+const buttonVariants = ({variant='default', size='default', className=''} = {}) => {
+  const base = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50';
+  const variants = {default:'bg-primary text-primary-foreground shadow hover:bg-primary/90',destructive:'bg-destructive text-white shadow-sm hover:bg-destructive/90',outline:'border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground',secondary:'bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80',ghost:'hover:bg-accent hover:text-accent-foreground',link:'text-primary underline-offset-4 hover:underline'};
+  const sizes = {default:'h-9 px-4 py-2',sm:'h-8 rounded-md px-3 text-xs',lg:'h-10 rounded-md px-8',icon:'h-9 w-9'};
+  return cn(base, variants[variant]||variants.default, sizes[size]||sizes.default, className);
+};
+const Button = React.forwardRef(({className, variant, size, asChild, ...props}, ref) => <button ref={ref} data-slot="button" className={buttonVariants({variant,size,className})} {...props} />);
+
+// Badge
+const Badge = ({className, variant='default', ...props}) => {
+  const variants = {default:'bg-primary/20 text-primary border-transparent',secondary:'bg-secondary text-secondary-foreground border-transparent',destructive:'bg-destructive/20 text-destructive border-transparent',outline:'border border-border text-foreground'};
+  return <span data-slot="badge" className={cn('inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold', variants[variant]||variants.default, className)} {...props} />;
+};
+
+// Input
+const Input = React.forwardRef(({className, type='text', ...props}, ref) => <input ref={ref} type={type} data-slot="input" className={cn('flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring', className)} {...props} />);
+
+// Label
+const Label = React.forwardRef(({className, ...props}, ref) => <label ref={ref} className={cn('text-sm font-medium leading-none', className)} {...props} />);
+
+// Separator
+const Separator = ({className, orientation='horizontal', ...props}) => <div data-slot="separator" className={cn('shrink-0 bg-border', orientation==='horizontal'?'h-[1px] w-full':'h-full w-[1px]', className)} {...props} />;
+
+// Avatar
+const Avatar = ({className, ...props}) => <span className={cn('relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full', className)} {...props} />;
+const AvatarImage = ({className, src, alt, ...props}) => <img className={cn('aspect-square h-full w-full', className)} src={src||'https://api.dicebear.com/7.x/shapes/svg?seed=ui'} alt={alt||''} {...props} />;
+const AvatarFallback = ({className, ...props}) => <span className={cn('flex h-full w-full items-center justify-center rounded-full bg-muted', className)} {...props} />;
+
+// Switch (toggle)
+const Switch = ({checked, onCheckedChange, className, ...props}) => {
+  const [on, setOn] = React.useState(checked||false);
+  return <button role="switch" aria-checked={on} onClick={()=>{setOn(!on);onCheckedChange?.(!on)}} className={cn('peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors',on?'bg-primary':'bg-input',className)} {...props}><span className={cn('pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform',on?'translate-x-4':'translate-x-0')}/></button>;
+};
+
+// Tabs
+const Tabs = ({defaultValue, children, className, ...props}) => { const [val,setVal]=React.useState(defaultValue); return <div className={cn('',className)} data-value={val} {...props}>{React.Children.map(children,c=>React.isValidElement(c)?React.cloneElement(c,{_val:val,_setVal:setVal}):c)}</div>; };
+const TabsList = ({children, className, _val, _setVal, ...props}) => <div className={cn('inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground',className)} {...props}>{React.Children.map(children,c=>React.isValidElement(c)?React.cloneElement(c,{_val,_setVal}):c)}</div>;
+const TabsTrigger = ({value, children, className, _val, _setVal, ...props}) => <button className={cn('inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all',_val===value?'bg-background text-foreground shadow':'',className)} onClick={()=>_setVal?.(value)} {...props}>{children}</button>;
+const TabsContent = ({value, children, className, _val, ...props}) => _val===value?<div className={cn('mt-2',className)} {...props}>{children}</div>:null;
+
+// Progress
+const Progress = ({value=0, className, ...props}) => <div className={cn('relative h-2 w-full overflow-hidden rounded-full bg-primary/20',className)} {...props}><div className="h-full bg-primary transition-all" style={{width:value+'%'}}/></div>;
+
+// Slot passthrough
+const Slot = React.forwardRef(({children,...props},ref) => React.isValidElement(children)?React.cloneElement(children,{...props,ref}):children);
+
+// Lucide icons fallback
+const LucideIcons = typeof lucideReact !== 'undefined' ? lucideReact : {};
+const createIcon = (name) => LucideIcons[name] || (({className,...p}) => <span className={cn('inline-block w-4 h-4',className)} {...p}>⬜</span>);
+const Check = createIcon('Check'), ChevronDown = createIcon('ChevronDown'), ChevronRight = createIcon('ChevronRight'), ChevronUp = createIcon('ChevronUp'), Circle = createIcon('Circle'), X = createIcon('X'), Plus = createIcon('Plus'), Minus = createIcon('Minus'), Search = createIcon('Search'), Star = createIcon('Star'), Heart = createIcon('Heart'), ArrowRight = createIcon('ArrowRight'), ArrowLeft = createIcon('ArrowLeft'), Mail = createIcon('Mail'), User = createIcon('User'), Settings = createIcon('Settings'), Menu = createIcon('Menu'), Sun = createIcon('Sun'), Moon = createIcon('Moon'), Github = createIcon('Github'), Twitter = createIcon('Twitter'), Zap = createIcon('Zap'), Sparkles = createIcon('Sparkles'), Crown = createIcon('Crown'), Shield = createIcon('Shield'), Lock = createIcon('Lock'), Eye = createIcon('Eye'), EyeOff = createIcon('EyeOff'), Copy = createIcon('Copy'), Download = createIcon('Download'), Upload = createIcon('Upload'), Trash = createIcon('Trash'), Edit = createIcon('Edit'), ExternalLink = createIcon('ExternalLink'), Link = createIcon('Link'), Image = createIcon('Image'), Calendar = createIcon('Calendar'), Clock = createIcon('Clock'), MapPin = createIcon('MapPin'), Phone = createIcon('Phone'), Globe = createIcon('Globe'), Code = createIcon('Code'), Terminal = createIcon('Terminal'), Loader2 = createIcon('Loader2'), AlertCircle = createIcon('AlertCircle'), Info = createIcon('Info'), CheckCircle = createIcon('CheckCircle'), XCircle = createIcon('XCircle'), Bell = createIcon('Bell'), Bookmark = createIcon('Bookmark'), Home = createIcon('Home'), BarChart = createIcon('BarChart'), PieChart = createIcon('PieChart'), TrendingUp = createIcon('TrendingUp'), DollarSign = createIcon('DollarSign'), CreditCard = createIcon('CreditCard'), ShoppingCart = createIcon('ShoppingCart'), Package = createIcon('Package'), Truck = createIcon('Truck'), Gift = createIcon('Gift'), Award = createIcon('Award'), Target = createIcon('Target'), Flame = createIcon('Flame'), Rocket = createIcon('Rocket'), Lightning = createIcon('Lightning'), Coffee = createIcon('Coffee'), Music = createIcon('Music'), Video = createIcon('Video'), Camera = createIcon('Camera'), Mic = createIcon('Mic'), Volume2 = createIcon('Volume2'), Wifi = createIcon('Wifi'), Bluetooth = createIcon('Bluetooth'), Battery = createIcon('Battery'), Cloud = createIcon('Cloud'), Database = createIcon('Database'), Server = createIcon('Server'), Cpu = createIcon('Cpu'), HardDrive = createIcon('HardDrive'), Monitor = createIcon('Monitor'), Smartphone = createIcon('Smartphone'), Tablet = createIcon('Tablet'), Laptop = createIcon('Laptop'), Watch = createIcon('Watch'), Headphones = createIcon('Headphones');
+
+// Motion stubs (framer-motion)
+const motion = new Proxy({}, { get: (_, tag) => React.forwardRef(({initial,animate,exit,transition,whileHover,whileTap,whileInView,variants,layout,...props},ref) => React.createElement(tag, {...props, ref})) });
+const AnimatePresence = ({children}) => children;
+const useInView = () => ({ref:React.useRef(),inView:true});
+const useAnimation = () => ({start:()=>{},set:()=>{}});
+
+// Utility hooks stubs
+const useMediaQuery = () => true;
+const useTheme = () => ({theme:'dark',setTheme:()=>{}});
+
+try {
+  const __code = \`${escaped}\`;
+
+  // Extract the default export component
+  const transformedCode = Babel.transform(__code, {
+    presets: ['react'],
+    plugins: [],
+    filename: 'component.tsx',
+  }).code;
+
+  // Execute and find the component
+  const module = { exports: {} };
+  const exports = module.exports;
+  const require = (mod) => {
+    if (mod === 'react' || mod === 'React') return React;
+    if (mod === 'react-dom' || mod === 'react-dom/client') return ReactDOM;
+    if (mod.includes('lucide')) return LucideIcons;
+    if (mod.includes('framer-motion') || mod.includes('motion')) return { motion, AnimatePresence, useInView, useAnimation };
+    if (mod.includes('next/image')) return { default: ({src,alt,className,...p}) => React.createElement('img',{src:src||'https://api.dicebear.com/7.x/shapes/svg?seed=next',alt:alt||'',className,...p}) };
+    if (mod.includes('next/link')) return { default: ({href,children,className,...p}) => React.createElement('a',{href:href||'#',className,...p},children) };
+    return {};
+  };
+  const fn = new Function('React','ReactDOM','require','module','exports','cn','Card','CardHeader','CardTitle','CardDescription','CardContent','CardFooter','CardAction','Button','buttonVariants','Badge','Input','Label','Separator','Avatar','AvatarImage','AvatarFallback','Switch','Tabs','TabsList','TabsTrigger','TabsContent','Progress','Slot','motion','AnimatePresence','useInView','useAnimation','useMediaQuery','useTheme','Check','ChevronDown','ChevronRight','ChevronUp','Circle','X','Plus','Minus','Search','Star','Heart','ArrowRight','ArrowLeft','Mail','User','Settings','Menu','Sun','Moon','Github','Twitter','Zap','Sparkles','Crown','Shield','Lock','Eye','EyeOff','Copy','Download','Upload','Trash','Edit','ExternalLink','Link','Image','Calendar','Clock','MapPin','Phone','Globe','Code','Terminal','Loader2','AlertCircle','Info','CheckCircle','XCircle','Bell','Bookmark','Home','BarChart','PieChart','TrendingUp','DollarSign','CreditCard','ShoppingCart','Package','Truck','Gift','Award','Target','Flame','Rocket','Lightning','Coffee','Music','Video','Camera','Mic','Volume2','Wifi','Bluetooth','Battery','Cloud','Database','Server','Cpu','HardDrive','Monitor','Smartphone','Tablet','Laptop','Watch','Headphones', transformedCode + '\\nreturn module.exports.default || module.exports;');
+  const Component = fn(React,ReactDOM,require,module,exports,cn,Card,CardHeader,CardTitle,CardDescription,CardContent,CardFooter,CardAction,Button,buttonVariants,Badge,Input,Label,Separator,Avatar,AvatarImage,AvatarFallback,Switch,Tabs,TabsList,TabsTrigger,TabsContent,Progress,Slot,motion,AnimatePresence,useInView,useAnimation,useMediaQuery,useTheme,Check,ChevronDown,ChevronRight,ChevronUp,Circle,X,Plus,Minus,Search,Star,Heart,ArrowRight,ArrowLeft,Mail,User,Settings,Menu,Sun,Moon,Github,Twitter,Zap,Sparkles,Crown,Shield,Lock,Eye,EyeOff,Copy,Download,Upload,Trash,Edit,ExternalLink,Link,Image,Calendar,Clock,MapPin,Phone,Globe,Code,Terminal,Loader2,AlertCircle,Info,CheckCircle,XCircle,Bell,Bookmark,Home,BarChart,PieChart,TrendingUp,DollarSign,CreditCard,ShoppingCart,Package,Truck,Gift,Award,Target,Flame,Rocket,Lightning,Coffee,Music,Video,Camera,Mic,Volume2,Wifi,Bluetooth,Battery,Cloud,Database,Server,Cpu,HardDrive,Monitor,Smartphone,Tablet,Laptop,Watch,Headphones);
+
+  if (typeof Component === 'function' || (typeof Component === 'object' && Component)) {
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(Component.default || Component));
+  } else {
+    document.getElementById('root').innerHTML = '<p style="color:#555">Could not render component</p>';
   }
-  // Last fallback: try return <div... without parens
-  if (!jsx) {
-    const directReturn = text.match(/return\s+(<[\s\S]+)/);
-    if (directReturn) jsx = directReturn[1];
-  }
-  if (!jsx) jsx = text;
-
-  // Step 3: Convert React JSX → HTML
-  jsx = jsx
-    .replace(/className=/g, 'class=')
-    .replace(/htmlFor=/g, 'for=')
-    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')               // JSX comments
-    .replace(/\{`([^`]*)`\}/g, '$1')                      // Template literals → text
-    .replace(/\{"([^"]*)"\}/g, '$1')                       // String expressions
-    .replace(/\{'([^']*)'\}/g, '$1')                       // String expressions
-    .replace(/<(\w+)([^>]*)\s\/>/g, '<$1$2></$1>');       // Self-closing → explicit close
-
-  // Step 4: Iteratively remove nested JS expressions {...{...}...}
-  for (let i = 0; i < 20; i++) {
-    const before: string = jsx;
-    jsx = jsx.replace(/\{[^{}]*\}/g, '');
-    if (jsx === before) break;
-  }
-
-  // Step 5: Convert PascalCase React components to divs
-  jsx = jsx
-    .replace(/<([A-Z][a-zA-Z0-9]*)([\s>\/])/g, '<div$2')
-    .replace(/<\/[A-Z][a-zA-Z0-9]*>/g, '</div>');
-
-  // Step 6: Fix SVG attributes + fragments
-  jsx = jsx
-    .replace(/strokeWidth=/g, 'stroke-width=')
-    .replace(/strokeLinecap=/g, 'stroke-linecap=')
-    .replace(/strokeLinejoin=/g, 'stroke-linejoin=')
-    .replace(/fillRule=/g, 'fill-rule=')
-    .replace(/clipRule=/g, 'clip-rule=')
-    .replace(/<>/g, '<div>').replace(/<\/>/g, '</div>');
-
-  // Step 7: Clean up empty artifacts
-  jsx = jsx
-    .replace(/<(\w+)(\s[^>]*)?>(\s*)<\/\1>/g, '')         // Remove empty tags
-    .replace(/\n\s*\n\s*\n/g, '\n');                       // Collapse blank lines
-
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><script src="https://cdn.tailwindcss.com"><\/script><script>tailwind.config={darkMode:'class',theme:{extend:{colors:{background:'#09090b',foreground:'#fafafa',primary:{DEFAULT:'#818cf8',foreground:'#fff'},'primary-foreground':'#fff',secondary:{DEFAULT:'#27272a',foreground:'#fafafa'},'secondary-foreground':'#fafafa',muted:{DEFAULT:'#27272a',foreground:'#a1a1aa'},'muted-foreground':'#a1a1aa',accent:{DEFAULT:'#27272a',foreground:'#fafafa'},'accent-foreground':'#fafafa',destructive:{DEFAULT:'#ef4444',foreground:'#fff'},border:'#27272a',input:'#27272a',ring:'#818cf8',card:{DEFAULT:'#111',foreground:'#fafafa'},'card-foreground':'#fafafa',popover:{DEFAULT:'#111',foreground:'#fafafa'}},borderRadius:{lg:'0.5rem',md:'calc(0.5rem - 2px)',sm:'calc(0.5rem - 4px)'}}}}<\/script><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#09090b;color:#fafafa;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}body>*{max-width:100%}img{max-width:100%;height:auto}a{color:inherit;text-decoration:none}button,input{font:inherit;color:inherit}[class*="rounded"]{border-radius:0.5rem}svg{display:inline-block;vertical-align:middle}</style></head><body class="dark">${jsx}</body></html>`;
+} catch(e) {
+  console.error('Render error:', e);
+  document.getElementById('root').innerHTML = '<p style="color:#ef4444;font-size:13px;padding:20px;font-family:monospace">Render Error: ' + (e.message||e).toString().replace(/</g,'&lt;') + '</p>';
+}
+<\/script>
+</body></html>`;
 }
 
 export interface PreviewPanelProps {
@@ -322,69 +409,41 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
                       </div>
                     )}
                     {browser21stResults.length > 0 && (
-                      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-                        {browser21stResults.map((comp, i) => {
-                          // Extract dominant Tailwind colors from code for visual preview
-                          const codeStr = comp.demoCode || comp.code || '';
-                          const colorMatch = codeStr.match(/(?:bg|from|to|via|text|border)-(?:indigo|violet|purple|blue|cyan|teal|emerald|green|lime|yellow|amber|orange|red|pink|rose|fuchsia|sky|slate|zinc|neutral|stone|gray)[-/]?\d*/g);
-                          const colors = [...new Set((colorMatch || []).slice(0, 6))];
-                          // Count approximate lines
-                          const lineCount = codeStr.split('\n').length;
-                          // Detect component type from code patterns
-                          const hasGrid = /grid|flex.*gap|columns/i.test(codeStr);
-                          const hasImage = /img|image|svg|icon/i.test(codeStr);
-                          const hasInput = /input|textarea|form|button/i.test(codeStr);
-                          const hasAnimation = /animate|motion|transition|framer/i.test(codeStr);
-
-                          return (
-                            <div key={comp.id || i} className="flex flex-col bg-[#111] border border-[#1e1e1e] rounded-xl overflow-hidden hover:border-indigo-500/40 transition-all group cursor-pointer hover:shadow-lg hover:shadow-indigo-500/5" onClick={() => setPreview21stComponent(comp)}>
-                              {/* Visual preview card — NO iframe */}
-                              <div className="relative w-full bg-[#09090b] border-b border-[#1a1a1a] p-3" style={{ height: '120px' }}>
-                                {/* Color palette dots */}
-                                <div className="flex gap-1 mb-2">
-                                  {colors.length > 0 ? colors.map((c, ci) => (
-                                    <span key={ci} className={`w-3 h-3 rounded-full ${c.replace(/text-|border-/, 'bg-')} opacity-70`} title={c} />
-                                  )) : (
-                                    <span className="w-3 h-3 rounded-full bg-zinc-700 opacity-50" />
-                                  )}
-                                </div>
-                                {/* Wireframe layout hint */}
-                                <div className="flex flex-col gap-1">
-                                  {hasGrid && <div className="flex gap-0.5">
-                                    <div className="h-2 flex-1 rounded-sm bg-[#1e1e1e]" />
-                                    <div className="h-2 flex-1 rounded-sm bg-[#1e1e1e]" />
-                                    <div className="h-2 flex-1 rounded-sm bg-[#1e1e1e]" />
-                                  </div>}
-                                  <div className="h-1.5 w-3/4 rounded-sm bg-[#1a1a1a]" />
-                                  <div className="h-1.5 w-1/2 rounded-sm bg-[#161616]" />
-                                  {hasImage && <div className="h-6 w-full rounded-sm bg-[#141414] flex items-center justify-center"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>}
-                                  {hasInput && <div className="h-3 w-full rounded-sm bg-[#141414] border border-[#222]" />}
-                                  {hasAnimation && <div className="absolute top-2 right-2"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="1.5" className="animate-pulse"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>}
-                                </div>
-                                {/* Code size badge */}
-                                <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1">
-                                  <span className="text-[7px] px-1 py-0.5 rounded bg-[#1a1a1a] text-[#444] font-mono">{lineCount}L</span>
-                                </div>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {browser21stResults.slice(0, 6).map((comp, i) => (
+                          <div key={comp.id || i} className="flex flex-col bg-[#111] border border-[#1e1e1e] rounded-xl overflow-hidden hover:border-indigo-500/40 transition-all group cursor-pointer hover:shadow-lg hover:shadow-indigo-500/5" onClick={() => setPreview21stComponent(comp)}>
+                            {/* Real React iframe preview */}
+                            {(comp.demoCode || comp.code) && (
+                              <div className="relative w-full bg-[#09090b] border-b border-[#1a1a1a]" style={{ height: '220px' }}>
+                                <iframe
+                                  srcDoc={build21stPreviewHtml(comp.demoCode || comp.code || '')}
+                                  sandbox="allow-scripts"
+                                  className="w-full h-full border-0 pointer-events-none"
+                                  loading="lazy"
+                                  title={comp.name || 'Component preview'}
+                                  style={{ transform: 'scale(0.4)', transformOrigin: 'top left', width: '250%', height: '250%' }}
+                                />
+                                <div className="absolute inset-0 bg-transparent group-hover:bg-indigo-500/[0.03] transition-colors" />
                                 {/* Hover overlay */}
-                                <div className="absolute inset-0 bg-indigo-500/0 group-hover:bg-indigo-500/5 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                  <span className="text-[9px] text-indigo-300 bg-black/60 px-2 py-0.5 rounded-full">Click to preview</span>
+                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <span className="text-[11px] text-indigo-300 bg-black/70 backdrop-blur-sm px-3 py-1 rounded-full font-medium">Click to expand</span>
                                 </div>
                               </div>
-                              <div className="p-2 flex flex-col gap-1.5">
-                                <div className="flex items-start justify-between gap-1">
-                                  <p className="text-[10px] font-semibold text-white leading-tight truncate">{comp.name || 'Component'}</p>
-                                  {comp.code && <span className="shrink-0 text-[8px] px-1 py-0.5 rounded bg-[#1a1a1a] text-emerald-400/70 font-mono">{Math.round(comp.code.length / 1000)}k</span>}
-                                </div>
-                                {comp.tags && comp.tags.length > 0 && (
-                                  <div className="flex flex-wrap gap-0.5">{comp.tags.slice(0, 3).map(t => (<span key={t} className="text-[8px] px-1 py-0.5 rounded bg-[#1a1a1a] text-[#555]">{t}</span>))}</div>
-                                )}
-                                <button onClick={(e) => { e.stopPropagation(); inject21stComponent(comp); }} disabled={!!injecting21stComponent} className="w-full py-1 rounded-lg bg-indigo-500/15 text-indigo-300 text-[9px] font-medium hover:bg-indigo-500/25 transition-colors disabled:opacity-40 flex items-center justify-center gap-1 group-hover:bg-indigo-500/20">
-                                  {injecting21stComponent === comp.name ? <><svg width="9" height="9" viewBox="0 0 24 24" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="30 70"/></svg> Injecting…</> : <><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Use</>}
-                                </button>
+                            )}
+                            <div className="p-3 flex flex-col gap-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-[12px] font-semibold text-white leading-tight">{comp.name || 'Component'}</p>
+                                {comp.code && <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-[#1a1a1a] text-emerald-400/70 font-mono">{Math.round(comp.code.length / 1000)}k</span>}
                               </div>
+                              {comp.tags && comp.tags.length > 0 && (
+                                <div className="flex flex-wrap gap-1">{comp.tags.slice(0, 4).map(t => (<span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#1a1a1a] text-[#666]">{t}</span>))}</div>
+                              )}
+                              <button onClick={(e) => { e.stopPropagation(); inject21stComponent(comp); }} disabled={!!injecting21stComponent} className="w-full py-1.5 rounded-lg bg-indigo-500/15 text-indigo-300 text-[10px] font-medium hover:bg-indigo-500/25 transition-colors disabled:opacity-40 flex items-center justify-center gap-1.5 group-hover:bg-indigo-500/20">
+                                {injecting21stComponent === comp.name ? <><svg width="10" height="10" viewBox="0 0 24 24" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="30 70"/></svg> Injecting…</> : <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Use in page</>}
+                              </button>
                             </div>
-                          );
-                        })}
+                          </div>
+                        ))}
                       </div>
                     )}
                     {/* ── Fullscreen Preview Modal ── */}
