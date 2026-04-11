@@ -31,10 +31,15 @@ function parse21stResponse(data: { text?: string } | unknown): unknown[] {
       const deps = c.registryDependencies?.npmDependencies;
       const tags = deps ? Object.keys(deps).slice(0, 5) : [];
       const files = c.registryDependencies?.filesWithRegistry;
+      // Collect actual shadcn component source code from registry
+      const registryFiles: Record<string, string> = {};
       if (files) {
-        for (const path of Object.keys(files).slice(0, 3)) {
+        for (const [path, fileData] of Object.entries(files)) {
           const name = path.split('/').pop()?.replace('.tsx', '').replace('.ts', '');
           if (name && !tags.includes(name)) tags.push(name);
+          if (fileData.code) {
+            registryFiles[path] = fileData.code;
+          }
         }
       }
       return {
@@ -46,6 +51,7 @@ function parse21stResponse(data: { text?: string } | unknown): unknown[] {
         tags,
         similarity: c.similarity,
         npmDependencies: deps || {},
+        registryFiles,
       };
     });
   } catch {

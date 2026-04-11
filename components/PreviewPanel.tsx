@@ -7,7 +7,7 @@ import type { ActiveTab, VirtualFS } from '@/lib/types';
 
 /* ── Build a REAL React sandbox that renders components with Babel + React 18 + Tailwind ── */
 
-function build21stPreviewHtml(code: string): string {
+function build21stPreviewHtml(code: string, registryFiles?: Record<string, string>, mainComponentCode?: string, componentName?: string): string {
   if (!code?.trim()) return '<!DOCTYPE html><html><body style="background:#09090b;color:#555;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><p>No preview</p></body></html>';
 
   // Strip TypeScript syntax before escaping (Babel standalone only handles JSX, not TSX)
@@ -30,6 +30,8 @@ function build21stPreviewHtml(code: string): string {
     .replace(/\s+as\s+\w+(?:<[^>]*>)?/g, '')
     // Remove type assertions with angle brackets (but not JSX)
     .replace(/(?<=[\s(,=])<(?:string|number|boolean|any|unknown|Record|Array|Partial|Required|Pick|Omit)\b[^>]*>/g, '')
+    // Replace dynamic import() with __dynamicImport() shim
+    .replace(/\bimport\s*\(/g, 'window.__dynamicImport(')
     // Fix 'export default function' 
     .replace(/^export\s+default\s+function/gm, 'function')
     .replace(/^export\s+default\s+/gm, '')
@@ -42,6 +44,59 @@ function build21stPreviewHtml(code: string): string {
     .replace(/`/g, '\\`')
     .replace(/\$\{/g, '\\${')
     .replace(/<\/script>/gi, '<\\/script>');
+
+  // Build registry module map from actual shadcn code provided by the API
+  const registryEntries: string[] = [];
+  if (registryFiles) {
+    for (const [path, fileCode] of Object.entries(registryFiles)) {
+      const stripped = fileCode
+        .replace(/^["']use client["'];?\s*/gm, '')
+        .replace(/^import\s+type\s+.*$/gm, '')
+        .replace(/^import\s*\{[^}]*\}\s*from\s*['"][^'"]*['"]\s*;?\s*$/gm, '')
+        .replace(/^import\s+\*\s+as\s+\w+\s+from\s+['"][^'"]*['"]\s*;?\s*$/gm, '')
+        .replace(/^import\s+\w+\s+from\s+['"][^'"]*['"]\s*;?\s*$/gm, '')
+        .replace(/(?:export\s+)?interface\s+\w+[^{]*\{[^}]*\}/gm, '')
+        .replace(/(?:export\s+)?type\s+\w+\s*=\s*[^;]*;/gm, '')
+        .replace(/:\s*(?:React\.(?:FC|ReactNode|ReactElement|CSSProperties|MouseEvent|ChangeEvent|FormEvent|KeyboardEvent|Ref|RefObject|MutableRefObject|Dispatch|SetStateAction)\s*(?:<[^>]*>)?|(?:string|number|boolean|void|any|unknown|never|null|undefined|object)\s*(?:\[\])?(?:\s*\|\s*(?:string|number|boolean|void|any|unknown|never|null|undefined|object)\s*(?:\[\])?)*)/g, '')
+        .replace(/(<\w+(?:\s+extends\s+[^>]*)?>)\s*(?=\()/g, '')
+        .replace(/\s+as\s+\w+(?:<[^>]*>)?/g, '')
+        .replace(/^export\s+default\s+function/gm, 'function')
+        .replace(/^export\s+default\s+/gm, '')
+        .replace(/^export\s+\{[^}]*\};?\s*$/gm, '')
+        .replace(/^export\s+(?=(?:function|const|let|var|class)\s)/gm, '');
+      const escapedFile = stripped
+        .replace(/\\/g, '\\\\')
+        .replace(/`/g, '\\`')
+        .replace(/\$\{/g, '\\${')
+        .replace(/<\/script>/gi, '<\\/script>');
+      // Map path like "/components/ui/card.tsx" to import alias "@/components/ui/card"
+      const alias = '@' + path.replace(/\.tsx?$/, '');
+      registryEntries.push(`"${alias}": \`${escapedFile}\``);
+    }
+  }
+  const registryMapJs = registryEntries.length > 0
+    ? `const __registryFiles = {${registryEntries.join(',\n')}};\n`
+    : `const __registryFiles = {};\n`;
+
+  // If we have the main component code + a separate demo that imports it, register the component
+  let mainComponentRegistered = '';
+  if (mainComponentCode && componentName) {
+    const slug = componentName.replace(/\s+/g, '-').toLowerCase();
+    const alias = `@/components/ui/${slug}`;
+    // Strip TS + clean the main component code
+    const mainCleaned = mainComponentCode
+      .replace(/^["']use client["'];?\s*/gm, '')
+      .replace(/^import\s+type\s+.*$/gm, '')
+      .replace(/^import\s*\{[^}]*type\s+[^}]*\}\s*from\s*['"][^'"]*['"]\s*;?\s*$/gm, '')
+      .replace(/(?:export\s+)?interface\s+\w+[^{]*\{[^}]*\}/gm, '')
+      .replace(/(?:export\s+)?type\s+\w+\s*=\s*[^;]*;/gm, '')
+      .replace(/:\s*(?:React\.(?:FC|ReactNode|ReactElement|CSSProperties|MouseEvent|ChangeEvent|FormEvent|KeyboardEvent|Ref|RefObject|MutableRefObject|Dispatch|SetStateAction)\s*(?:<[^>]*>)?|(?:string|number|boolean|void|any|unknown|never|null|undefined|object)\s*(?:\[\])?(?:\s*\|\s*(?:string|number|boolean|void|any|unknown|never|null|undefined|object)\s*(?:\[\])?)*)/g, '')
+      .replace(/(<\w+(?:\s+extends\s+[^>]*)?>)\s*(?=\()/g, '')
+      .replace(/\s+as\s+\w+(?:<[^>]*>)?/g, '');
+    const mainEscaped = mainCleaned
+      .replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${').replace(/<\/script>/gi, '<\\/script>');
+    mainComponentRegistered = `__registryFiles["${alias}"] = \`${mainEscaped}\`;\n`;
+  }
 
   return `<!DOCTYPE html><html lang="en" class="dark"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -69,6 +124,9 @@ button,input,select,textarea{font:inherit;color:inherit;background:transparent;b
 </head><body class="dark">
 <div id="root"></div>
 <script type="text/babel" data-type="module">
+// Registry files from API (actual shadcn component source code)
+${registryMapJs}
+${mainComponentRegistered}
 // Provide shadcn-like component stubs so imports don't crash
 const cn = (...args) => args.filter(Boolean).join(' ');
 
@@ -156,6 +214,9 @@ try {
   // Execute and find the component
   const module = { exports: {} };
   const exports = module.exports;
+  const __compiledModules = {};
+  // Shim dynamic import() to go through require()
+  window.__dynamicImport = (mod) => Promise.resolve(require(mod));
   const require = (mod) => {
     if (mod === 'react' || mod === 'React') return React;
     if (mod === 'react-dom' || mod === 'react-dom/client') return ReactDOM;
@@ -163,7 +224,27 @@ try {
     if (mod.includes('framer-motion') || mod.includes('motion')) return { motion, AnimatePresence, useInView, useAnimation };
     if (mod.includes('next/image')) return { default: ({src,alt,className,...p}) => React.createElement('img',{src:src||'https://api.dicebear.com/7.x/shapes/svg?seed=next',alt:alt||'',className,...p}) };
     if (mod.includes('next/link')) return { default: ({href,children,className,...p}) => React.createElement('a',{href:href||'#',className,...p},children) };
-    return {};
+    // Check registry files for real component source code
+    const registryKey = Object.keys(__registryFiles).find(k => mod === k || mod.endsWith(k.replace('@/','/')));
+    if (registryKey && !__compiledModules[registryKey]) {
+      try {
+        const regCode = Babel.transform(__registryFiles[registryKey], { presets: ['react'], filename: 'reg.tsx' }).code;
+        const regModule = { exports: {} };
+        const regExports = regModule.exports;
+        const regFn = new Function('React','require','module','exports','cn', regCode + '\\nreturn module.exports;');
+        __compiledModules[registryKey] = regFn(React, require, regModule, regExports, cn);
+      } catch(e) { __compiledModules[registryKey] = {}; }
+    }
+    if (__compiledModules[registryKey]) return __compiledModules[registryKey];
+    if (mod.includes('@radix-ui/react-slot')) return { Slot };
+    if (mod.includes('class-variance-authority')) return { cva: (...args) => (props={}) => { const base=args[0]||''; return cn(base, props.className||''); }, type: null };
+    if (mod.includes('@/lib/utils')) return { cn };
+    // Return proxy for unknown modules — components that use them will render with placeholders instead of crashing
+    return new Proxy({}, { get: (_, prop) => {
+      if (prop === 'default') return React.forwardRef((props, ref) => React.createElement('div', {...props, ref, style: {background:'#1a1a2e',border:'1px dashed #333',borderRadius:'8px',padding:'12px',minHeight:'40px',...(props.style||{})}}));
+      if (prop === '__esModule') return true;
+      return React.forwardRef((props, ref) => React.createElement('div', {...props, ref}));
+    }});
   };
   const fn = new Function('React','ReactDOM','require','module','exports','cn','Card','CardHeader','CardTitle','CardDescription','CardContent','CardFooter','CardAction','Button','buttonVariants','Badge','Input','Label','Separator','Avatar','AvatarImage','AvatarFallback','Switch','Tabs','TabsList','TabsTrigger','TabsContent','Progress','Slot','motion','AnimatePresence','useInView','useAnimation','useMediaQuery','useTheme','Check','ChevronDown','ChevronRight','ChevronUp','Circle','X','Plus','Minus','Search','Star','Heart','ArrowRight','ArrowLeft','Mail','User','Settings','Menu','Sun','Moon','Github','Twitter','Zap','Sparkles','Crown','Shield','Lock','Eye','EyeOff','Copy','Download','Upload','Trash','Edit','ExternalLink','Link','Image','Calendar','Clock','MapPin','Phone','Globe','Code','Terminal','Loader2','AlertCircle','Info','CheckCircle','XCircle','Bell','Bookmark','Home','BarChart','PieChart','TrendingUp','DollarSign','CreditCard','ShoppingCart','Package','Truck','Gift','Award','Target','Flame','Rocket','Lightning','Coffee','Music','Video','Camera','Mic','Volume2','Wifi','Bluetooth','Battery','Cloud','Database','Server','Cpu','HardDrive','Monitor','Smartphone','Tablet','Laptop','Watch','Headphones', transformedCode + '\\nreturn module.exports.default || module.exports;');
   const Component = fn(React,ReactDOM,require,module,exports,cn,Card,CardHeader,CardTitle,CardDescription,CardContent,CardFooter,CardAction,Button,buttonVariants,Badge,Input,Label,Separator,Avatar,AvatarImage,AvatarFallback,Switch,Tabs,TabsList,TabsTrigger,TabsContent,Progress,Slot,motion,AnimatePresence,useInView,useAnimation,useMediaQuery,useTheme,Check,ChevronDown,ChevronRight,ChevronUp,Circle,X,Plus,Minus,Search,Star,Heart,ArrowRight,ArrowLeft,Mail,User,Settings,Menu,Sun,Moon,Github,Twitter,Zap,Sparkles,Crown,Shield,Lock,Eye,EyeOff,Copy,Download,Upload,Trash,Edit,ExternalLink,Link,Image,Calendar,Clock,MapPin,Phone,Globe,Code,Terminal,Loader2,AlertCircle,Info,CheckCircle,XCircle,Bell,Bookmark,Home,BarChart,PieChart,TrendingUp,DollarSign,CreditCard,ShoppingCart,Package,Truck,Gift,Award,Target,Flame,Rocket,Lightning,Coffee,Music,Video,Camera,Mic,Volume2,Wifi,Bluetooth,Battery,Cloud,Database,Server,Cpu,HardDrive,Monitor,Smartphone,Tablet,Laptop,Watch,Headphones);
@@ -212,10 +293,10 @@ export interface PreviewPanelProps {
   browser21stInputRef: React.RefObject<HTMLInputElement | null>;
   search21stComponents: (query: string) => void;
   browser21stLoading: boolean;
-  browser21stResults: Array<{ id?: string; name?: string; description?: string; tags?: string[]; code?: string; demoCode?: string; preview_url?: string; demo_url?: string }>;
+  browser21stResults: Array<{ id?: string; name?: string; description?: string; tags?: string[]; code?: string; demoCode?: string; preview_url?: string; demo_url?: string; registryFiles?: Record<string, string> }>;
   inject21stComponent: (comp: any) => void;
   injecting21stComponent: string | null;
-  preview21stComponent: { id?: string; name?: string; description?: string; tags?: string[]; code?: string; demoCode?: string; preview_url?: string; demo_url?: string } | null;
+  preview21stComponent: { id?: string; name?: string; description?: string; tags?: string[]; code?: string; demoCode?: string; preview_url?: string; demo_url?: string; registryFiles?: Record<string, string> } | null;
   setPreview21stComponent: (comp: any) => void;
   clonedHtml: string | null;
   setRefineFeedback: (v: string) => void;
@@ -416,7 +497,7 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
                             {(comp.demoCode || comp.code) && (
                               <div className="relative w-full bg-[#09090b] border-b border-[#1a1a1a]" style={{ height: '220px' }}>
                                 <iframe
-                                  srcDoc={build21stPreviewHtml(comp.demoCode || comp.code || '')}
+                                  srcDoc={build21stPreviewHtml(comp.demoCode || comp.code || '', comp.registryFiles, comp.demoCode ? comp.code : undefined, comp.name)}
                                   sandbox="allow-scripts"
                                   className="w-full h-full border-0 pointer-events-none"
                                   loading="lazy"
@@ -471,7 +552,7 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
                           {/* Full-size iframe preview */}
                           <div className="flex-1 relative bg-[#09090b]">
                             <iframe
-                              srcDoc={build21stPreviewHtml(preview21stComponent.demoCode || preview21stComponent.code || '')}
+                              srcDoc={build21stPreviewHtml(preview21stComponent.demoCode || preview21stComponent.code || '', preview21stComponent.registryFiles, preview21stComponent.demoCode ? preview21stComponent.code : undefined, preview21stComponent.name)}
                               sandbox="allow-scripts"
                               className="w-full h-full border-0"
                               title={preview21stComponent.name || 'Component preview'}
