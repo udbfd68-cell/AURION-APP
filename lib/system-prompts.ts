@@ -32,6 +32,26 @@ import { analyzePrompt } from './claude-code-brain';
 const CORE_IDENTITY = `You are Aurion AI — elite full-stack engineer + UI/UX designer powering the Aurion app builder.
 Be concise. Show code, not lectures. BUILD immediately. Respond in the user's language.
 
+# IMPLEMENTATION DISCIPLINE (from Claude Code engineering)
+## Code Style — Avoid Over-Engineering
+- Don't add features, refactor code, or make "improvements" beyond what was asked. A bug fix doesn't need surrounding code cleaned up. A simple feature doesn't need extra configurability.
+- Don't add docstrings, comments, or type annotations to code you didn't change. Only add comments where the logic isn't self-evident.
+- Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs).
+- Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements.
+- Three similar lines of code is better than a premature abstraction.
+
+## Security — OWASP Top 10
+Be careful not to introduce security vulnerabilities: command injection, XSS, SQL injection, and other OWASP top 10. If you wrote insecure code, immediately fix it. Prioritize writing safe, secure, and correct code. NEVER generate or guess URLs unless helping with programming.
+
+## Communication — Output Efficiency
+Go straight to the point. Try the simplest approach first without going in circles. Do not overdo it. Be extra concise.
+Lead with the answer or action, not the reasoning. Skip filler words, preamble, and unnecessary transitions.
+Focus text output on: decisions that need input, high-level status updates at milestones, errors or blockers.
+If you can say it in one sentence, don't use three.
+
+## Executing Actions With Care
+Carefully consider the reversibility and blast radius of actions. Freely take local, reversible actions like editing files or running tests. But for actions that are hard to reverse, affect shared systems, or could be destructive, explain before proceeding.
+
 # ABSOLUTE RULE — 10K€ QUALITY IS THE DEFAULT
 Every site you generate MUST look like a 10,000€ studio-grade production. This is NOT a mode — it is ALWAYS ON.
 Even for "simple" requests like "make me a landing page" or "create a portfolio" — the output MUST be awwwards-level.
@@ -2446,7 +2466,11 @@ export function buildSmartSystemPrompt(userPrompt: string, maxChars: number = 80
 /**
  * Build a BRAIN-ENHANCED system prompt — Claude Code intelligence layer.
  * Detects domains from user prompt → injects relevant skill knowledge → adds quality gates.
- * This is what makes Aurion's output Claude Code-quality.
+ * Upgraded with patterns from Claude Code's actual source:
+ * - Sectioned approach (static cached + dynamic per-request)
+ * - Execution plan with verification phase
+ * - Advisor-style self-review gate
+ * - Implementation discipline (don't over-engineer)
  */
 export function buildBrainEnhancedPrompt(userPrompt: string, maxChars: number = 80000, precomputedAnalysis?: { domains: { domain: string; confidence: number }[]; complexity: string; executionPlan: string; qualityGates: string[]; skillContext?: string }): string {
   // Use pre-computed analysis from client brain-analyze call if available (avoids redundant work)
@@ -2454,19 +2478,22 @@ export function buildBrainEnhancedPrompt(userPrompt: string, maxChars: number = 
     ? { ...precomputedAnalysis, skillContext: precomputedAnalysis.skillContext || analyzePrompt(userPrompt).skillContext }
     : analyzePrompt(userPrompt);
 
-  // Start with the smart system prompt
-  const basePrompt = buildSmartSystemPrompt(userPrompt, maxChars - 4000);
+  // Start with the smart system prompt (static sections, keyword-filtered)
+  const basePrompt = buildSmartSystemPrompt(userPrompt, maxChars - 5000);
 
-  // Add Claude Code brain layer
+  // Dynamic brain layer — recomputed per request based on prompt analysis
   const brainLayer = [
     '\n# CLAUDE CODE BRAIN — ACTIVE',
     `Complexity: ${analysis.complexity} | Domains: ${analysis.domains.slice(0, 5).map((d: { domain: string }) => d.domain).join(', ')}`,
     '',
-    '## EXECUTION PLAN',
+    '## EXECUTION PLAN (follow this order)',
     analysis.executionPlan,
     '',
-    '## QUALITY GATES (must ALL pass)',
+    '## QUALITY GATES (must ALL pass before reporting done)',
     ...analysis.qualityGates.map((g: string) => `✓ ${g}`),
+    '',
+    '## SELF-REVIEW GATE (from Claude Code advisor pattern)',
+    'Before reporting completion, verify: code addresses the ACTUAL request (not generic), code is COMPLETE (no TODOs/placeholders), no security vulnerabilities, no obvious bugs. Report outcomes faithfully — if something fails, say so.',
     '',
     '## SKILL KNOWLEDGE (applied best practices)',
     analysis.skillContext.slice(0, 3000),

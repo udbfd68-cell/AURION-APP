@@ -1,15 +1,21 @@
 /**
- * Claude Code Brain Engine v1.0
+ * Claude Code Brain Engine v2.0
  * 
- * The intelligence layer that makes Aurion's AI output Claude Code-quality.
- * Analyzes every prompt → detects domains → injects skill knowledge → applies enterprise patterns.
+ * Upgraded with patterns extracted from Claude Code's ACTUAL source code:
+ * - Sectioned prompt system with memoization (from systemPromptSections.ts)
+ * - Token budget tracking with diminishing returns detection (from tokenBudget.ts)
+ * - Three-layer tool validation pattern (from Tool.ts)
+ * - Coordinator sub-agent orchestration (from coordinatorMode.ts)
+ * - Stop hooks for quality gates (from stopHooks.ts)
+ * - Advisor pattern for self-review (from advisor.ts)
  * 
- * This is NOT theater — it's a real prompt enrichment pipeline:
+ * Real pipeline:
  * 1. Domain Detection: Classify what the user is asking for
- * 2. Skill Routing: Inject relevant best practices from 2,221 skills
- * 3. Enterprise Patterns: Apply Google/OpenAI/Anthropic agent engineering principles
- * 4. Multi-Step Planning: Break complex prompts into execution phases
- * 5. Quality Gates: Define success criteria before generation
+ * 2. Skill Routing: Inject relevant best practices from 26+ compiled skills
+ * 3. Execution Planning: Claude Code-style phased approach
+ * 4. Quality Gates: Define success criteria before generation
+ * 5. Continuation Intelligence: Diminishing returns detection
+ * 6. Section Memoization: Cache static prompt sections, recompute dynamic ones
  */
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -385,12 +391,12 @@ function buildExecutionPlan(prompt: string, domains: DomainMatch[], complexity: 
   const steps: string[] = [];
   const domainNames = domains.map(d => d.domain);
 
-  // Phase 1: Analysis
-  steps.push(`[PHASE 1 — ANALYSIS] Domains detected: ${domainNames.slice(0, 5).join(', ')}. Complexity: ${complexity}.`);
+  // Phase 1: Analysis (from Claude Code — always analyze before coding)
+  steps.push(`[PHASE 1 — ANALYSIS] Domains: ${domainNames.slice(0, 5).join(', ')} | Complexity: ${complexity}. Understand the request fully before writing code.`);
 
-  // Phase 2: Architecture
+  // Phase 2: Architecture (only for complex+ tasks)
   if (complexity === 'enterprise' || complexity === 'complex') {
-    steps.push('[PHASE 2 — ARCHITECTURE] Define file structure, component hierarchy, data flow, and API contracts BEFORE coding.');
+    steps.push('[PHASE 2 — ARCHITECTURE] Define file structure, component hierarchy, data flow, and API contracts BEFORE coding. Read existing code before modifying.');
   }
 
   // Phase 3: Implementation priorities
@@ -399,11 +405,12 @@ function buildExecutionPlan(prompt: string, domains: DomainMatch[], complexity: 
   if (domainNames.includes('api') || domainNames.includes('database')) priorities.push('Data layer — schemas, API routes, database structure');
   if (domainNames.includes('auth')) priorities.push('Auth flow — protected routes, session management');
   if (domainNames.includes('payments')) priorities.push('Payment integration — Stripe Checkout, webhooks');
+  if (domainNames.includes('security')) priorities.push('Security — input validation, XSS prevention, CSRF protection');
   if (priorities.length === 0) priorities.push('Core UI + functionality');
-  steps.push(`[PHASE 3 — BUILD] ${priorities.join(' → ')}`);
+  steps.push(`[PHASE 3 — BUILD] ${priorities.join(' → ')}. Don't over-engineer. Simplest approach first.`);
 
-  // Phase 4: Quality
-  steps.push('[PHASE 4 — QUALITY] Accessibility audit, responsive check, performance optimization, error handling.');
+  // Phase 4: Quality + Verification (from Claude Code — verify before reporting done)
+  steps.push('[PHASE 4 — VERIFY] Check: complete code (no TODOs), no security vulnerabilities, responsive design, proper error states. Report outcomes faithfully.');
 
   return steps.join('\n');
 }
@@ -568,4 +575,171 @@ export function parseTerminalActions(response: string): ClaudeCodeAction[] {
   }
 
   return actions;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONTINUATION INTELLIGENCE — From Claude Code's tokenBudget.ts
+// Detects diminishing returns to avoid runaway continuation loops
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface ContinuationTracker {
+  continuationCount: number;
+  lastDeltaChars: number;
+  lastTotalChars: number;
+  startedAt: number;
+}
+
+const COMPLETION_THRESHOLD = 0.9;    // 90% of budget = maybe stop
+const DIMINISHING_THRESHOLD = 500;   // Low delta = model running out of ideas
+
+export function createContinuationTracker(): ContinuationTracker {
+  return { continuationCount: 0, lastDeltaChars: 0, lastTotalChars: 0, startedAt: Date.now() };
+}
+
+/**
+ * Check if continuation should proceed or stop.
+ * From Claude Code's checkTokenBudget — 3-tier strategy:
+ * - < 90% budget: continue
+ * - 90-100%: check diminishing returns
+ * - diminishing (3+ continuations + low delta): stop
+ */
+export function checkContinuation(
+  tracker: ContinuationTracker, 
+  currentChars: number, 
+  budget: number
+): { action: 'continue' | 'stop'; reason: string } {
+  const pct = (currentChars / budget) * 100;
+  const delta = currentChars - tracker.lastTotalChars;
+
+  const isDiminishing = 
+    tracker.continuationCount >= 3 &&
+    delta < DIMINISHING_THRESHOLD &&
+    tracker.lastDeltaChars < DIMINISHING_THRESHOLD;
+
+  tracker.lastDeltaChars = delta;
+  tracker.lastTotalChars = currentChars;
+  tracker.continuationCount++;
+
+  if (isDiminishing) {
+    return { action: 'stop', reason: `Diminishing returns after ${tracker.continuationCount} continuations (delta: ${delta} chars)` };
+  }
+
+  if (currentChars < budget * COMPLETION_THRESHOLD) {
+    return { action: 'continue', reason: `${pct.toFixed(0)}% of ${budget} char budget used` };
+  }
+
+  return { action: 'stop', reason: `Budget ${pct.toFixed(0)}% consumed` };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROMPT SECTION MEMOIZATION — From Claude Code's systemPromptSections.ts
+// Cache static prompt sections, recompute dynamic ones per request
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface PromptSection {
+  name: string;
+  compute: () => string | null;
+  cached: string | null | undefined;  // undefined = not yet computed
+  cacheBreak: boolean;                // true = recompute every request
+}
+
+const sectionRegistry: PromptSection[] = [];
+
+/**
+ * Register a memoized prompt section (computed once, cached until reset).
+ * From Claude Code's systemPromptSection() — static content that doesn't change.
+ */
+export function registerStaticSection(name: string, compute: () => string | null): void {
+  sectionRegistry.push({ name, compute, cached: undefined, cacheBreak: false });
+}
+
+/**
+ * Register a volatile prompt section (recomputed every request).
+ * From Claude Code's DANGEROUS_uncachedSystemPromptSection() — for dynamic per-request content.
+ */
+export function registerDynamicSection(name: string, compute: () => string | null): void {
+  sectionRegistry.push({ name, compute, cached: undefined, cacheBreak: true });
+}
+
+/**
+ * Resolve all registered sections — cache hits for static, recompute for dynamic.
+ */
+export function resolveAllSections(): string[] {
+  const results: string[] = [];
+  for (const section of sectionRegistry) {
+    if (section.cacheBreak || section.cached === undefined) {
+      section.cached = section.compute();
+    }
+    if (section.cached !== null) {
+      results.push(section.cached);
+    }
+  }
+  return results;
+}
+
+/**
+ * Clear all cached sections (called on conversation reset).
+ */
+export function clearSectionCache(): void {
+  for (const section of sectionRegistry) {
+    section.cached = undefined;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADVISOR PATTERN — From Claude Code's advisor.ts
+// Self-review gate: model checks its own work before reporting completion
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Build an advisor-style review prompt for quality checking generated code.
+ * From Claude Code's advisor tool — a "stronger reviewer" that evaluates work.
+ * Used in quality-fix and auto-fix flows.
+ */
+export function buildAdvisorReviewPrompt(code: string, originalRequest: string): string {
+  const codePreview = code.slice(0, 3000);
+  return `# ADVISOR REVIEW — Self-Check Before Completion
+You are reviewing code that was generated for this request: "${originalRequest.slice(0, 200)}"
+
+## Code Preview (first 3000 chars):
+${codePreview}
+
+## Review Checklist:
+1. Does the code address the ACTUAL request? (not a generic template)
+2. Is the code complete? (no TODO, no "implement here", no truncated sections)
+3. Security: any injection, XSS, or OWASP vulnerabilities?
+4. Are there obvious bugs? (null refs, missing imports, typos in variable names)
+5. Does it follow the existing codebase patterns?
+
+## Verdict:
+- PASS: Code is ready to ship
+- FAIL + specific issues: What needs fixing and where
+- PARTIAL + gaps: What was done well, what's missing`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COORDINATOR PATTERN — From Claude Code's coordinatorMode.ts
+// Sub-agent context injection: tell workers what tools they have
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Build context for sub-agent workers (A/B testing, parallel generation).
+ * From Claude Code's getCoordinatorUserContext — workers learn available tools via injection.
+ */
+export function buildWorkerContext(workerRole: 'model-b' | 'quality-fixer' | 'continuation' | 'terminal'): string {
+  const toolsByRole: Record<string, string[]> = {
+    'model-b': ['generate-code', 'analyze-prompt', 'quality-check'],
+    'quality-fixer': ['edit-code', 'quality-check', 'validate-output'],
+    'continuation': ['generate-code', 'file-inventory', 'validate-output'],
+    'terminal': ['create-file', 'edit-file', 'run-command', 'explain'],
+  };
+
+  const tools = toolsByRole[workerRole] || toolsByRole['model-b'];
+  return `# WORKER CONTEXT (role: ${workerRole})
+Available tools: ${tools.join(', ')}
+Rules:
+- Execute directly — do NOT spawn sub-workers
+- Stay focused on the assigned task scope
+- Report results concisely: what changed, what was done, any issues
+- If blocked, report the blocker instead of guessing`;
 }

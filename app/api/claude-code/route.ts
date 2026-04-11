@@ -19,7 +19,7 @@ import {
 } from '@/lib/claude-code-engine';
 
 import { buildSmartSystemPrompt, buildBrainEnhancedPrompt } from '@/lib/system-prompts';
-import { buildTerminalModePrompt, analyzePrompt } from '@/lib/claude-code-brain';
+import { buildTerminalModePrompt, analyzePrompt, buildWorkerContext, buildAdvisorReviewPrompt } from '@/lib/claude-code-brain';
 import { claudeCodeSchema } from '@/lib/api-schemas';
 import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-utils';
 import { RATE_LIMITS } from '@/lib/rate-limiter';
@@ -86,9 +86,10 @@ export async function POST(req: Request) {
         if (!code) {
           return Response.json({ error: 'Missing truncated code' }, { status: 400 });
         }
+        const continueWorkerCtx = buildWorkerContext('continuation');
         return await streamToModel({
           model,
-          systemPrompt: buildBrainEnhancedPrompt(code.slice(0, 500), 60000),
+          systemPrompt: buildBrainEnhancedPrompt(code.slice(0, 500), 60000) + '\n\n' + continueWorkerCtx,
           userContent: buildContinuationPrompt(code),
         });
       }
@@ -312,7 +313,8 @@ export async function POST(req: Request) {
           return Response.json({ error: 'Missing code' }, { status: 400 });
         }
         const brainContext = buildBrainEnhancedPrompt(code.slice(0, 500), 40000);
-        const fixSystemPrompt = brainContext + `\n\n# QUALITY FIX MODE
+        const workerCtx = buildWorkerContext('quality-fixer');
+        const fixSystemPrompt = brainContext + '\n\n' + workerCtx + `\n\n# QUALITY FIX MODE
 You are an expert code fixer. You receive code with specific quality issues and must fix ONLY those issues.
 Rules:
 - Fix the specific errors listed, nothing else
@@ -320,7 +322,8 @@ Rules:
 - Maintain all existing functionality, styles, and structure
 - For React multi-file projects, keep the <<FILE:path>> format
 - For HTML, keep the complete document structure
-- Do NOT add new features or change the design`;
+- Do NOT add new features or change the design
+- Report outcomes faithfully: if you can't fix something, say so`;
 
         const fixUserContent = `Fix these quality issues:\n${qualityErrors.map(e => `• ${e}`).join('\n')}\n\nCode to fix:\n${code.slice(-8000)}`;
 
