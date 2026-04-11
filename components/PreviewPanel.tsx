@@ -35,7 +35,7 @@ export interface PreviewPanelProps {
   browser21stInputRef: React.RefObject<HTMLInputElement | null>;
   search21stComponents: (query: string) => void;
   browser21stLoading: boolean;
-  browser21stResults: Array<{ id?: string; name?: string; description?: string; tags?: string[]; preview_url?: string; demo_url?: string }>;
+  browser21stResults: Array<{ id?: string; name?: string; description?: string; tags?: string[]; code?: string; preview_url?: string; demo_url?: string }>;
   inject21stComponent: (comp: any) => void;
   injecting21stComponent: string | null;
   clonedHtml: string | null;
@@ -196,6 +196,7 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
                     <div className="flex items-center gap-2 shrink-0">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                       <span className="text-[12px] font-semibold text-white">21st.dev Components</span>
+                      {browser21stResults.length > 0 && <span className="text-[10px] text-indigo-400/70 font-mono">{browser21stResults.length} found</span>}
                     </div>
                     <form className="flex-1 flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); search21stComponents(browser21stQuery); }}>
                       <input ref={browser21stInputRef} value={browser21stQuery} onChange={(e) => setBrowser21stQuery(e.target.value)} placeholder="Search components… e.g. pricing card, nav bar, hero section" className="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-1.5 text-[11px] text-white placeholder-[#555] outline-none focus:border-indigo-500/50 transition-colors" autoFocus />
@@ -231,11 +232,13 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
                         {browser21stResults.map((comp, i) => (
                           <div key={comp.id || i} className="flex flex-col bg-[#111] border border-[#1e1e1e] rounded-xl p-3 gap-2 hover:border-indigo-500/30 transition-colors group">
                             <div className="flex-1">
-                              <p className="text-[11px] font-semibold text-white leading-tight mb-1">{comp.name || 'Component'}</p>
+                              <div className="flex items-start justify-between gap-1 mb-1">
+                                <p className="text-[11px] font-semibold text-white leading-tight">{comp.name || 'Component'}</p>
+                                {comp.code && <span className="shrink-0 text-[8px] px-1.5 py-0.5 rounded bg-[#1a1a1a] text-emerald-400/70 font-mono">{Math.round(comp.code.length / 1000)}k</span>}
+                              </div>
                               <p className="text-[10px] text-[#666] leading-snug line-clamp-2">{comp.description || ''}</p>
-                              {comp.tags && comp.tags.length > 0 && (<div className="flex flex-wrap gap-1 mt-1.5">{comp.tags.slice(0, 3).map(t => (<span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#1a1a1a] text-[#777]">{t}</span>))}</div>)}
+                              {comp.tags && comp.tags.length > 0 && (<div className="flex flex-wrap gap-1 mt-1.5">{comp.tags.slice(0, 5).map(t => (<span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#1a1a1a] text-[#777]">{t}</span>))}</div>)}
                             </div>
-                            {(comp.preview_url || comp.demo_url) && <a href={comp.preview_url || comp.demo_url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-indigo-400/70 hover:text-indigo-300 transition-colors underline truncate">Preview ↗</a>}
                             <button onClick={() => inject21stComponent(comp)} disabled={!!injecting21stComponent} className="w-full py-1.5 rounded-lg bg-indigo-500/15 text-indigo-300 text-[10px] font-medium hover:bg-indigo-500/25 transition-colors disabled:opacity-40 flex items-center justify-center gap-1.5 group-hover:bg-indigo-500/20">
                               {injecting21stComponent === comp.name ? <><svg width="10" height="10" viewBox="0 0 24 24" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="30 70"/></svg> Injecting…</> : <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Use in page</>}
                             </button>

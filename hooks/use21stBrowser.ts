@@ -9,9 +9,12 @@ export type Component21st = {
   slug?: string;
   username?: string;
   code?: string;
+  demoCode?: string;
   preview_url?: string;
   demo_url?: string;
   tags?: string[];
+  similarity?: number;
+  npmDependencies?: Record<string, string>;
 };
 
 interface Use21stBrowserDeps {
