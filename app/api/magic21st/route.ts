@@ -4,7 +4,7 @@ import { applyRateLimit, validateOrigin, parseBody, errors } from '@/lib/api-uti
 import { RATE_LIMITS } from '@/lib/rate-limiter';
 
 const API_KEY = process.env.TWENTY_FIRST_API_KEY;
-const BASE_URL = 'https://21st.dev';
+const BASE_URL = 'https://magic.21st.dev';
 
 export const runtime = 'edge';
 
@@ -27,25 +27,21 @@ export async function POST(req: NextRequest) {
   }
 
   const { query, action = 'search', slug, username } = body;
-  const authHeaders = {
-    'x-api-key': API_KEY,
-    Authorization: `Bearer ${API_KEY}`,
+  const authHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(API_KEY ? { 'x-api-key': API_KEY } : {}),
   };
 
   try {
-    // Search components by keyword
+    // Search components by keyword — uses 21st.dev's fetch-ui endpoint
     if (action === 'search') {
       if (!query || typeof query !== 'string') {
         return NextResponse.json({ error: 'Missing query for search' }, { status: 400 });
       }
-      const url = `${BASE_URL}/api/search?q=${encodeURIComponent(query)}&limit=12`;
-      const res = await fetch(url, {
+      const res = await fetch(`${BASE_URL}/api/fetch-ui`, {
         method: 'POST',
-        headers: {
-          ...authHeaders,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
+        headers: authHeaders,
+        body: JSON.stringify({ message: query, searchQuery: query }),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -60,9 +56,10 @@ export async function POST(req: NextRequest) {
       if (!slug || !username) {
         return NextResponse.json({ error: 'Missing slug or username for component fetch' }, { status: 400 });
       }
-      const url = `${BASE_URL}/r/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`;
-      const res = await fetch(url, {
+      const res = await fetch(`${BASE_URL}/api/fetch-ui`, {
+        method: 'POST',
         headers: authHeaders,
+        body: JSON.stringify({ message: `${username}/${slug}`, searchQuery: slug }),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -77,13 +74,10 @@ export async function POST(req: NextRequest) {
       if (!query || typeof query !== 'string') {
         return NextResponse.json({ error: 'Missing query for magic' }, { status: 400 });
       }
-      const res = await fetch(`${BASE_URL}/api/magic`, {
+      const res = await fetch(`${BASE_URL}/api/fetch-ui`, {
         method: 'POST',
-        headers: {
-          ...authHeaders,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message: query }),
+        headers: authHeaders,
+        body: JSON.stringify({ message: query, searchQuery: query }),
       });
       if (!res.ok) {
         const text = await res.text();
