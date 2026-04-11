@@ -87,14 +87,11 @@ export default function HomePage() {
         landingInput={landingInput}
         landingTextareaRef={landingTextareaRef}
         model={model}
-        outputFramework={outputFramework}
         removeImage={removeImage}
         selectedModel={selectedModel}
         setCloneUrl={setCloneUrl}
         setLandingInput={setLandingInput}
         setModel={setModel}
-        setOutputFramework={setOutputFramework}
-        setShowBackendGenerator={setShowBackendGenerator}
         setShowCloneModal={setShowCloneModal}
         setShowModelMenu={setShowModelMenu}
         setShowTemplates={setShowTemplates}
@@ -123,7 +120,7 @@ export default function HomePage() {
           streamingChars={streamingChars} streamStartTime={streamStartTime} model={model}
           textareaRef={textareaRef} input={input} setInput={setInput} sendMessage={sendMessage}
           setModel={setModel} selectedModel={selectedModel} setAbMode={setAbMode}
-          setAbModelB={setAbModelB} outputFramework={outputFramework} setOutputFramework={setOutputFramework}
+          setAbModelB={setAbModelB}
           researchMode={researchMode} fileInputRef={fileInputRef} handleImageSelect={handleImageSelect}
           stopStream={stopStream} attachedImages={attachedImages} removeImage={removeImage}
         />
@@ -177,7 +174,7 @@ export default function HomePage() {
           </div>
 
           {/* Terminal */}
-          <TerminalSection {...{ terminalHeight, termDragRef, runtimeErrors, setRuntimeErrors, autoFixEnabled, setAutoFixEnabled, webContainer, outputFramework, setOutputFramework, setShowTestRunner, fixRuntimeError, isStreaming, terminalLines, setTerminalLines, terminalInput, setTerminalInput, runTerminalCommand, terminalHistory, historyIdx, setHistoryIdx, terminalInputRef, terminalEndRef, claudeCodeMode, setClaudeCodeMode, runClaudeCodeCommand, isClaudeCodeStreaming }} />
+          <TerminalSection {...{ terminalHeight, termDragRef, runtimeErrors, setRuntimeErrors, autoFixEnabled, setAutoFixEnabled, webContainer, setShowTestRunner, fixRuntimeError, isStreaming, terminalLines, setTerminalLines, terminalInput, setTerminalInput, runTerminalCommand, terminalHistory, historyIdx, setHistoryIdx, terminalInputRef, terminalEndRef, claudeCodeMode, setClaudeCodeMode, runClaudeCodeCommand, isClaudeCodeStreaming }} />
         </div>
       </div>
 

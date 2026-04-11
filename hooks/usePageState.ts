@@ -689,7 +689,7 @@ export function usePageState() {
     setClonedHtml, setCloneError,
     generationHistory, setGenerationHistory,
     buildWorkspaceContext: buildWorkspaceCtx, researchMode, researchContext, setResearchContext,
-    enhanceWithResearch, outputFramework, activeTab, deviceMode,
+    enhanceWithResearch, activeTab, deviceMode,
   });
 
   // Sync setAttachedImages ref for useWorkspace

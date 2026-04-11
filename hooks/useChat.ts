@@ -5,6 +5,7 @@ import type { Message } from '@/lib/client-utils';
 import { MODELS, assemblePreview } from '@/lib/cdn-models';
 import { getOptimalModel, generateId, extractPreviewHtml, extractAllCodeBlocks } from '@/lib/page-helpers';
 import { postProcessOutput, validateGeneratedCode } from '@/lib/claude-code-engine';
+import { autoDetectFramework } from '@/lib/claude-code-brain';
 
 export interface UseChatOptions {
   // Shared state passed in from parent
@@ -30,7 +31,6 @@ export interface UseChatOptions {
   researchContext: string;
   setResearchContext: (ctx: string) => void;
   enhanceWithResearch: (tool: string, prompt: string) => Promise<string>;
-  outputFramework: string;
   activeTab: string;
   deviceMode: string;
 }
@@ -50,7 +50,6 @@ export function useChat(options: UseChatOptions) {
     researchContext,
     setResearchContext,
     enhanceWithResearch,
-    outputFramework,
   } = options;
 
   // A/B Mode
@@ -183,19 +182,13 @@ export function useChat(options: UseChatOptions) {
     return accumulatedText;
   }, [researchContext]);
 
-  // Build framework instructions
-  const getFrameworkInstructions = useCallback(() => {
-    const FW_MAP: Record<string, string> = {
-      react: '\n[FRAMEWORK: React + TypeScript + Vite]\nGenerate a COMPLETE multi-file React project. Use TypeScript everywhere (.tsx/.ts). Use shadcn/ui patterns: Button, Card, Input, Dialog, Sheet, Tabs, Badge, Avatar. Use Tailwind CSS utility classes. Use Lucide React icons. Export default function components. Use useState, useEffect, useCallback hooks.\nProject structure: src/main.tsx (entry), src/App.tsx (root), src/components/*.tsx, src/hooks/*.ts, src/lib/utils.ts. Use <<FILE:src/components/Navbar.tsx>> format for EACH file.\nAlso generate: package.json, vite.config.ts, tailwind.config.js, tsconfig.json, postcss.config.js.\n',
-      nextjs: '\n[FRAMEWORK: Next.js 14+ App Router + TypeScript]\nGenerate a COMPLETE multi-file Next.js project. Use TypeScript. Server/Client components (mark "use client" when needed). Use shadcn/ui components + Tailwind CSS. Use Next.js Image, Link, metadata.\nProject structure: app/layout.tsx, app/page.tsx, app/globals.css, components/*.tsx, lib/*.ts. Use <<FILE:app/about/page.tsx>> for routes, <<FILE:components/Header.tsx>> for components.\nAlso generate: package.json, next.config.js, tailwind.config.ts, tsconfig.json.\n',
-      vue: '\n[FRAMEWORK: Vue 3 SFC + TypeScript + Vite]\nGenerate a COMPLETE multi-file Vue 3 project. Use <script setup lang="ts"> syntax. Use Composition API (ref, computed, onMounted, watch). Use Tailwind CSS.\nProject structure: src/App.vue (root), src/main.ts (entry), src/components/*.vue, src/composables/*.ts, src/stores/*.ts (Pinia). Use <<FILE:src/components/Navbar.vue>> format.\nAlso generate: package.json, vite.config.ts, tailwind.config.js.\n',
-      svelte: '\n[FRAMEWORK: Svelte 4 + Vite]\nGenerate a COMPLETE multi-file Svelte project. Use <script> with TypeScript where possible. Use reactive statements ($:). Use Tailwind CSS.\nProject structure: src/App.svelte (root), src/main.js (entry), src/lib/components/*.svelte, src/lib/stores/*.ts. Use <<FILE:src/lib/components/Navbar.svelte>> format.\nAlso generate: package.json, vite.config.js, tailwind.config.js.\n',
-      angular: '\n[FRAMEWORK: Angular 17+ Standalone]\nGenerate a COMPLETE multi-file Angular project. Use standalone components (no NgModules). Use Angular signals where possible. Use TypeScript.\nProject structure: src/app/app.component.ts (root), src/app/components/*.ts, src/app/services/*.ts, src/main.ts (bootstrap). Use <<FILE:src/app/components/header.component.ts>> format.\nAlso generate: package.json, tsconfig.json, angular.json, src/styles.css.\n',
-      python: '\n[FRAMEWORK: Python FastAPI + SQLAlchemy]\nGenerate a COMPLETE multi-file Python backend. Use FastAPI with type hints. Use Pydantic for models. Use SQLAlchemy for ORM. Use async/await.\nProject structure: main.py (entry), app/routes/*.py, app/models/*.py, app/schemas/*.py, app/database.py, app/config.py. Use <<FILE:app/routes/users.py>> format.\nAlso generate: requirements.txt, .env, Dockerfile, README.md.\nFor the frontend, also generate a simple HTML file in static/index.html with Tailwind CSS.\n',
-      fullstack: '\n[FRAMEWORK: Full-Stack — React Frontend + Express/Node Backend]\nGenerate a COMPLETE full-stack project with BOTH frontend and backend code.\nFrontend: React + TypeScript + Vite + Tailwind in src/. Use shadcn/ui patterns.\nBackend: Express + TypeScript in server/. REST API with proper routes, middleware, error handling.\nProject structure: src/main.tsx, src/App.tsx, src/components/*.tsx, server/index.ts, server/routes/*.ts, server/middleware/*.ts.\nUse <<FILE:server/routes/api.ts>> and <<FILE:src/components/Dashboard.tsx>> format.\nAlso generate: package.json (with both deps), vite.config.ts (with proxy), tsconfig.json.\n',
-    };
-    return FW_MAP[outputFramework] || '';
-  }, [outputFramework]);
+  // Build framework instructions — AUTO-DETECTED from prompt (no manual selector)
+  const getFrameworkInstructions = useCallback((promptText?: string) => {
+    const text = promptText || input || '';
+    if (!text.trim()) return '';
+    const { instructions } = autoDetectFramework(text);
+    return instructions;
+  }, [input]);
 
   // Main send function
   const sendToAI = useCallback(async (text: string, imgs?: { data: string; type: string }[]) => {
@@ -247,7 +240,7 @@ export function useChat(options: UseChatOptions) {
       } catch { /* continue without research */ }
     }
 
-    const fwInstructions = getFrameworkInstructions();
+    const fwInstructions = getFrameworkInstructions(text);
     const allMessages = [...messages, userMsg].map(({ role, content }) => ({ role, content }));
     if (allMessages.length > 0) {
       allMessages[allMessages.length - 1] = {
@@ -461,7 +454,7 @@ export function useChat(options: UseChatOptions) {
         return prev;
       });
     }
-  }, [isStreaming, messages, model, streamToAssistant, buildWorkspaceContext, abMode, abModelB, outputFramework, recordGeneration, researchMode, researchContext, enhanceWithResearch, setResearchContext, getFrameworkInstructions]);
+  }, [isStreaming, messages, model, streamToAssistant, buildWorkspaceContext, abMode, abModelB, recordGeneration, researchMode, researchContext, enhanceWithResearch, setResearchContext, getFrameworkInstructions]);
 
   const sendMessage = useCallback(() => {
     const text = input.trim();

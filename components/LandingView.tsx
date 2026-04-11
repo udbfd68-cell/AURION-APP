@@ -14,14 +14,11 @@ interface LandingViewProps {
   landingInput: string;
   landingTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
   model: string;
-  outputFramework: string;
   removeImage: (idx: number) => void;
   selectedModel: { name: string; id: string; provider: string };
   setCloneUrl: (v: string) => void;
   setLandingInput: (v: string) => void;
   setModel: (v: string) => void;
-  setOutputFramework: (v: any) => void;
-  setShowBackendGenerator: (v: boolean) => void;
   setShowCloneModal: (v: boolean) => void;
   setShowModelMenu: (v: boolean) => void;
   setShowTemplates: (v: boolean) => void;
@@ -32,9 +29,9 @@ interface LandingViewProps {
 
 const LandingView = React.memo(function LandingView({
   attachedImages, cloneUrl, cloneWebsite, enterWorkspace, handleImageSelect,
-  landingFileInputRef, landingInput, landingTextareaRef, model, outputFramework,
-  removeImage, selectedModel, setCloneUrl, setLandingInput, setModel, setOutputFramework,
-  setShowBackendGenerator, setShowCloneModal, setShowModelMenu, setShowTemplates,
+  landingFileInputRef, landingInput, landingTextareaRef, model,
+  removeImage, selectedModel, setCloneUrl, setLandingInput, setModel,
+  setShowCloneModal, setShowModelMenu, setShowTemplates,
   setView, showCloneModal, showModelMenu,
 }: LandingViewProps) {
 
@@ -95,23 +92,8 @@ const LandingView = React.memo(function LandingView({
                 )}
               </AnimatePresence>
             </div>
-            {/* Framework selector */}
-            <select value={outputFramework} onChange={e => setOutputFramework(e.target.value as typeof outputFramework)} className="px-2 py-1.5 rounded-lg bg-[#222] hover:bg-[#2a2a2a] text-[11px] text-[#888] hover:text-white transition-colors border-none outline-none cursor-pointer appearance-none" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'8\' height=\'8\' viewBox=\'0 0 20 20\' fill=\'%23666\'%3E%3Cpath d=\'M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center', paddingRight: '18px' }}>
-              <option value="html">HTML</option>
-              <option value="react">React</option>
-              <option value="nextjs">Next.js</option>
-              <option value="vue">Vue</option>
-              <option value="svelte">Svelte</option>
-              <option value="angular">Angular</option>
-              <option value="python">Python</option>
-              <option value="fullstack">Full-Stack</option>
-            </select>
             <button onClick={() => setShowCloneModal(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#222] hover:bg-[#2a2a2a] text-[11px] text-[#888] hover:text-white transition-colors">
               <GlobeIcon /> Clone
-            </button>
-            <button onClick={() => setShowBackendGenerator(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#222] hover:bg-[#2a2a2a] text-[11px] text-purple-400 hover:text-purple-300 transition-colors" title="Generate Backend">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
-              Backend
             </button>
             <button onClick={() => setLandingInput('Create a CINEMATIC 3D scroll landing page. MANDATORY: preloader animation, aurora gradient hero with split text reveal, horizontal scroll gallery pinned with GSAP ScrollTrigger, 3D parallax image reveals, glassmorphic cards with hover tilt (perspective 1000px rotateX/Y), infinite marquee logos, scroll word-color-reveal section, staggered stats counters, gradient glow CTA, glass footer. Use Lenis smooth scroll, GSAP ScrollTrigger for 5+ animations. Dark theme with glass morphism. 1500+ lines minimum. Topic: ')} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-500/20 hover:border-cyan-500/40 text-[11px] text-cyan-400 hover:text-cyan-300 transition-all group" title="Mode 3D Cinématique — Génère des sites avec scroll 3D, parallax et animations immersives">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-12 transition-transform"><path d="M12 3L2 9l10 6 10-6-10-6z"/><path d="M2 17l10 6 10-6"/><path d="M2 13l10 6 10-6"/></svg>

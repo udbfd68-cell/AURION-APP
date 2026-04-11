@@ -56,7 +56,7 @@ const ResearchSidePanel = React.memo(function ResearchSidePanel(props: ResearchS
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-orange-400"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/><circle cx="12" cy="15" r="2"/></svg>
-                  <span className="text-[11px] text-[#ccc]">Jarvis Brain</span>
+                  <span className="text-[11px] text-[#ccc]">Brain Engine</span>
                 </div>
                 <span className="text-[9px] text-orange-400 font-medium">Active</span>
               </div>
@@ -131,13 +131,13 @@ const ResearchSidePanel = React.memo(function ResearchSidePanel(props: ResearchS
                 </div>
               )}
 
-              {/* Jarvis Brain Status */}
+              {/* Brain Engine Status */}
               <div className="mt-4 space-y-2">
                 <span className="text-[10px] font-medium text-[#888] uppercase tracking-wider">Orchestrator Status</span>
                 <div className="p-3 rounded-lg bg-gradient-to-br from-orange-500/5 to-red-500/5 border border-orange-500/20">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
-                    <span className="text-[11px] text-orange-400 font-medium">🧠 Jarvis Active</span>
+                    <span className="text-[11px] text-orange-400 font-medium">🧠 Brain Active</span>
                   </div>
                   <ul className="space-y-1 text-[10px] text-[#888]">
                     <li className="flex items-center gap-1.5"><span className="text-emerald-400">✓</span> Multi-model routing (auto-fallback)</li>
@@ -167,13 +167,13 @@ const ResearchSidePanel = React.memo(function ResearchSidePanel(props: ResearchS
                     <div className="text-[9px] text-[#666] mt-0.5">{researchMode ? 'Active' : 'Off'}</div>
                   </div>
                   <div className="p-2 rounded-lg border text-center border-orange-500/30 bg-orange-500/5">
-                    <div className="text-[10px] font-medium text-orange-400">Jarvis Brain</div>
+                    <div className="text-[10px] font-medium text-orange-400">Brain Engine</div>
                     <div className="text-[9px] text-[#666] mt-0.5">Active</div>
                   </div>
                 </div>
                 {researchMode && (
                   <div className="p-2 rounded-lg bg-gradient-to-r from-violet-500/10 to-orange-500/10 border border-[#333] text-center">
-                    <span className="text-[10px] font-medium bg-gradient-to-r from-violet-400 to-orange-400 bg-clip-text text-transparent">🧠 JARVIS GOD MODE</span>
+                    <span className="text-[10px] font-medium bg-gradient-to-r from-violet-400 to-orange-400 bg-clip-text text-transparent">🧠 DEEP MODE</span>
                     <p className="text-[9px] text-[#666] mt-0.5">Research-enhanced orchestration</p>
                   </div>
                 )}

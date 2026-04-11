@@ -13,8 +13,6 @@ export interface TerminalSectionProps {
   autoFixEnabled: boolean;
   setAutoFixEnabled: (v: boolean | ((p: boolean) => boolean)) => void;
   webContainer: { state: { status: string }; previewUrl?: string | null; startDevServer: () => void; [key: string]: any };
-  outputFramework: string;
-  setOutputFramework: (v: any) => void;
   setShowTestRunner: (v: boolean) => void;
   fixRuntimeError: (error: { message: string; line?: number }) => void;
   isStreaming: boolean;
@@ -39,8 +37,8 @@ const TerminalSection = React.memo(function TerminalSection(props: TerminalSecti
   const panelActions = usePanelStore();
   const {
     terminalHeight, termDragRef, runtimeErrors, setRuntimeErrors,
-    autoFixEnabled, setAutoFixEnabled, webContainer, outputFramework,
-    setOutputFramework, setShowTestRunner, fixRuntimeError, isStreaming,
+    autoFixEnabled, setAutoFixEnabled, webContainer,
+    setShowTestRunner, fixRuntimeError, isStreaming,
     terminalLines, setTerminalLines, terminalInput, setTerminalInput,
     runTerminalCommand, terminalHistory, historyIdx, setHistoryIdx,
     terminalInputRef, terminalEndRef,
@@ -78,8 +76,6 @@ const TerminalSection = React.memo(function TerminalSection(props: TerminalSecti
           <TerminalPanel
             showTerminal={showTerminal}
             webContainer={webContainer}
-            outputFramework={outputFramework}
-            setOutputFramework={setOutputFramework}
             setShowTestRunner={setShowTestRunner}
             runtimeErrors={runtimeErrors}
             fixRuntimeError={fixRuntimeError}

@@ -42,8 +42,6 @@ export interface ChatPanelProps {
   selectedModel: { name: string; [key: string]: any };
   setAbMode: (fn: (prev: boolean) => boolean) => void;
   setAbModelB: (v: string) => void;
-  outputFramework: string;
-  setOutputFramework: (v: any) => void;
   researchMode: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
   handleImageSelect: (e: any) => void;
@@ -59,7 +57,7 @@ const ChatPanel = React.memo(function ChatPanel({
   error, setError, sendToAI, followUpSuggestions, chatEndRef,
   streamingChars, streamStartTime, model, textareaRef, input, setInput,
   sendMessage, setModel, selectedModel, setAbMode, setAbModelB,
-  outputFramework, setOutputFramework, researchMode, fileInputRef,
+  researchMode, fileInputRef,
   handleImageSelect, stopStream, attachedImages, removeImage,
 }: ChatPanelProps) {
   const { showModelMenu } = usePanelStore();
@@ -251,34 +249,18 @@ const ChatPanel = React.memo(function ChatPanel({
                         {MODELS.filter(m => m.id !== model).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                       </select>
                     )}
-                    {/* Framework selector */}
-                    <select value={outputFramework} onChange={e => setOutputFramework(e.target.value as typeof outputFramework)} className="bg-[#222] border border-[#333] rounded-md px-1.5 py-0.5 text-[9px] text-[#888] outline-none cursor-pointer" title="Output framework">
-                      <option value="html">HTML</option>
-                      <option value="react">React</option>
-                      <option value="nextjs">Next.js</option>
-                      <option value="vue">Vue</option>
-                      <option value="svelte">Svelte</option>
-                      <option value="angular">Angular</option>
-                      <option value="python">Python</option>
-                      <option value="fullstack">Full-Stack</option>
-                    </select>
                     {/* 3D Cinematic mode button */}
                     <button onClick={() => setInput('Create a CINEMATIC 3D scroll landing page. MANDATORY: preloader animation, aurora gradient hero with split text reveal, horizontal scroll gallery pinned with GSAP ScrollTrigger, 3D parallax image reveals, glassmorphic cards with hover tilt (perspective 1000px rotateX/Y), infinite marquee logos, scroll word-color-reveal section, staggered stats counters, gradient glow CTA, glass footer. Use Lenis smooth scroll, GSAP ScrollTrigger for 5+ animations. Dark theme with glass morphism. 1500+ lines minimum. Topic: ')} className="flex items-center gap-1 px-2 py-1 rounded-md bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-500/20 hover:border-cyan-500/40 text-[10px] text-cyan-400 hover:text-cyan-300 transition-all group" title="Mode 3D Cinématique">
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-12 transition-transform"><path d="M12 3L2 9l10 6 10-6-10-6z"/><path d="M2 17l10 6 10-6"/><path d="M2 13l10 6 10-6"/></svg>
                       3D
                     </button>
-                    {/* Research & Claude Code mode indicators */}
+                    {/* Research mode indicator */}
                     {researchMode && (
-                      <button onClick={() => panelActions.setPanel('showResearchPanel', true)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-violet-500/10 border border-violet-500/20 text-[10px] text-violet-400 hover:bg-violet-500/20 transition-all" title="NotebookLM Research Active">
+                      <button onClick={() => panelActions.setPanel('showResearchPanel', true)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-violet-500/10 border border-violet-500/20 text-[10px] text-violet-400 hover:bg-violet-500/20 transition-all" title="Research Active">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
                         <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
                       </button>
                     )}
-                    <button onClick={() => panelActions.setPanel('showResearchPanel', true)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/30 text-[10px] text-orange-400 hover:bg-orange-500/20 transition-all" title="Jarvis Brain Active — Click for Status">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/><circle cx="12" cy="15" r="2"/></svg>
-                        <span className="font-medium">JARVIS</span>
-                        <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
-                      </button>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />

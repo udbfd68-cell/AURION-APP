@@ -106,6 +106,84 @@ export function detectDomains(prompt: string): DomainMatch[] {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// AUTO-DETECT FRAMEWORK — Let the brain decide what to build
+// ═══════════════════════════════════════════════════════════════════════════════
+
+type OutputFramework = 'html' | 'react' | 'nextjs' | 'vue' | 'svelte' | 'angular' | 'python' | 'fullstack';
+
+/**
+ * Auto-detect the best output framework from user prompt + detected domains.
+ * This replaces the manual selector — the AI decides like other app builders.
+ * Also decides whether backend is needed and returns appropriate instructions.
+ */
+export function autoDetectFramework(prompt: string, domains?: DomainMatch[]): { framework: OutputFramework; instructions: string; needsBackend: boolean } {
+  const d = domains || detectDomains(prompt);
+  const domainSet = new Set(d.map(m => m.domain));
+  const lp = prompt.toLowerCase();
+
+  // Explicit framework mentions take priority
+  if (/next\.?js|app\s*router|server\s*(component|action)/i.test(prompt)) return buildFwResult('nextjs', domainSet);
+  if (/\bvue\b|nuxt|pinia|vuex/i.test(prompt)) return buildFwResult('vue', domainSet);
+  if (/\bsvelte\b|sveltekit/i.test(prompt)) return buildFwResult('svelte', domainSet);
+  if (/\bangular\b|rxjs|ng-/i.test(prompt)) return buildFwResult('angular', domainSet);
+  if (/\breact\b|jsx|tsx|shadcn|vite.*react/i.test(prompt)) return buildFwResult('react', domainSet);
+  if (/\bpython\b|fastapi|flask|django|pip\b/i.test(prompt)) return buildFwResult('python', domainSet);
+  if (/full[\-\s]?stack|backend.*frontend|frontend.*backend/i.test(prompt)) return buildFwResult('fullstack', domainSet);
+
+  // Domain-based inference
+  if (domainSet.has('fullstack')) return buildFwResult('fullstack', domainSet);
+  if (domainSet.has('nextjs')) return buildFwResult('nextjs', domainSet);
+
+  // Complex apps with auth/payments/database → React (multi-file project)
+  const complexSignals = ['auth', 'payments', 'database', 'saas', 'ecommerce'].filter(s => domainSet.has(s as SkillDomain));
+  if (complexSignals.length >= 2) return buildFwResult('fullstack', domainSet);
+  if (complexSignals.length >= 1) return buildFwResult('react', domainSet);
+
+  // Dashboard/admin → React
+  if (/dashboard|admin|panel|manage|crud/i.test(prompt)) return buildFwResult('react', domainSet);
+
+  // Multi-page app → React
+  if (/multi.*page|routing|router|navigation.*page/i.test(prompt)) return buildFwResult('react', domainSet);
+
+  // Simple sites: landing, portfolio, single page → HTML
+  if (domainSet.has('landing') || domainSet.has('portfolio') || /simple|basic|one.*page|single.*page/i.test(prompt)) return buildFwResult('html', domainSet);
+
+  // API/bot/agent without frontend → Python
+  if ((domainSet.has('api') || /bot\b|agent|script|automat/i.test(prompt)) && !domainSet.has('ui-design')) return buildFwResult('python', domainSet);
+
+  // Default: React for most app requests, HTML for simpler things
+  const wordCount = prompt.split(/\s+/).length;
+  if (wordCount > 40 || d.length >= 3) return buildFwResult('react', domainSet);
+  return buildFwResult('html', domainSet);
+}
+
+const FW_INSTRUCTIONS: Record<OutputFramework, string> = {
+  html: '', // No special instructions needed for HTML — brain handles it
+  react: `\n[FRAMEWORK: React + TypeScript + Vite]\nGenerate a COMPLETE multi-file React project. Use TypeScript everywhere (.tsx/.ts). Use shadcn/ui patterns: Button, Card, Input, Dialog, Sheet, Tabs, Badge, Avatar. Use Tailwind CSS utility classes. Use Lucide React icons. Export default function components. Use useState, useEffect, useCallback hooks.\nProject structure: src/main.tsx (entry), src/App.tsx (root), src/components/*.tsx, src/hooks/*.ts, src/lib/utils.ts. Use <<FILE:src/components/Navbar.tsx>> format for EACH file.\nAlso generate: package.json, vite.config.ts, tailwind.config.js, tsconfig.json, postcss.config.js.\n`,
+  nextjs: `\n[FRAMEWORK: Next.js 14+ App Router + TypeScript]\nGenerate a COMPLETE multi-file Next.js project. Use TypeScript. Server/Client components (mark "use client" when needed). Use shadcn/ui components + Tailwind CSS. Use Next.js Image, Link, metadata.\nProject structure: app/layout.tsx, app/page.tsx, app/globals.css, components/*.tsx, lib/*.ts. Use <<FILE:app/about/page.tsx>> for routes, <<FILE:components/Header.tsx>> for components.\nAlso generate: package.json, next.config.js, tailwind.config.ts, tsconfig.json.\n`,
+  vue: `\n[FRAMEWORK: Vue 3 SFC + TypeScript + Vite]\nGenerate a COMPLETE multi-file Vue 3 project. Use <script setup lang="ts"> syntax. Use Composition API (ref, computed, onMounted, watch). Use Tailwind CSS.\nProject structure: src/App.vue (root), src/main.ts (entry), src/components/*.vue, src/composables/*.ts, src/stores/*.ts (Pinia). Use <<FILE:src/components/Navbar.vue>> format.\nAlso generate: package.json, vite.config.ts, tailwind.config.js.\n`,
+  svelte: `\n[FRAMEWORK: Svelte 4 + Vite]\nGenerate a COMPLETE multi-file Svelte project. Use <script> with TypeScript where possible. Use reactive statements ($:). Use Tailwind CSS.\nProject structure: src/App.svelte (root), src/main.js (entry), src/lib/components/*.svelte, src/lib/stores/*.ts. Use <<FILE:src/lib/components/Navbar.svelte>> format.\nAlso generate: package.json, vite.config.js, tailwind.config.js.\n`,
+  angular: `\n[FRAMEWORK: Angular 17+ Standalone]\nGenerate a COMPLETE multi-file Angular project. Use standalone components (no NgModules). Use Angular signals where possible. Use TypeScript.\nProject structure: src/app/app.component.ts (root), src/app/components/*.ts, src/app/services/*.ts, src/main.ts (bootstrap). Use <<FILE:src/app/components/header.component.ts>> format.\nAlso generate: package.json, tsconfig.json, angular.json, src/styles.css.\n`,
+  python: `\n[FRAMEWORK: Python FastAPI + SQLAlchemy]\nGenerate a COMPLETE multi-file Python backend. Use FastAPI with type hints. Use Pydantic for models. Use SQLAlchemy for ORM. Use async/await.\nProject structure: main.py (entry), app/routes/*.py, app/models/*.py, app/schemas/*.py, app/database.py, app/config.py. Use <<FILE:app/routes/users.py>> format.\nAlso generate: requirements.txt, .env, Dockerfile, README.md.\nFor the frontend, also generate a simple HTML file in static/index.html with Tailwind CSS.\n`,
+  fullstack: `\n[FRAMEWORK: Full-Stack — React Frontend + Express/Node Backend]\nGenerate a COMPLETE full-stack project with BOTH frontend and backend code.\nFrontend: React + TypeScript + Vite + Tailwind in src/. Use shadcn/ui patterns.\nBackend: Express + TypeScript in server/. REST API with proper routes, middleware, error handling.\nProject structure: src/main.tsx, src/App.tsx, src/components/*.tsx, server/index.ts, server/routes/*.ts, server/middleware/*.ts.\nUse <<FILE:server/routes/api.ts>> and <<FILE:src/components/Dashboard.tsx>> format.\nAlso generate: package.json (with both deps), vite.config.ts (with proxy), tsconfig.json.\n`,
+};
+
+function buildFwResult(fw: OutputFramework, domainSet: Set<string>): { framework: OutputFramework; instructions: string; needsBackend: boolean } {
+  const needsBackend = fw === 'fullstack' || fw === 'python' ||
+    domainSet.has('api') || domainSet.has('database') || domainSet.has('auth') ||
+    domainSet.has('payments') || domainSet.has('fullstack');
+
+  let instructions = FW_INSTRUCTIONS[fw];
+
+  // If backend is needed but framework is pure frontend, add backend instructions
+  if (needsBackend && !['fullstack', 'python'].includes(fw)) {
+    instructions += `\n[BACKEND REQUIRED — AUTO-DETECTED]\nAlso generate a backend alongside the frontend:\n- server/index.ts (Express entry), server/routes/*.ts, server/middleware/*.ts\n- Use <<FILE:server/routes/api.ts>> format for backend files\n- Include proper error handling, input validation (Zod), and CORS\n- Generate database schema if data persistence is needed\n`;
+  }
+
+  return { framework: fw, instructions, needsBackend };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // COMPILED SKILL KNOWLEDGE — Pre-extracted from the top skills
 // ═══════════════════════════════════════════════════════════════════════════════
 

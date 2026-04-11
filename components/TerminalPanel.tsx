@@ -4,8 +4,6 @@ import React, { useState } from 'react';
 interface TerminalPanelProps {
   showTerminal: boolean;
   webContainer: { state: { status: string }; previewUrl?: string | null; startDevServer: () => void; [key: string]: any };
-  outputFramework: string;
-  setOutputFramework: (v: any) => void;
   setShowTestRunner: (v: boolean) => void;
   runtimeErrors: Array<{ message: string; line?: number }>;
   fixRuntimeError: (err: { message: string; line?: number }) => void;
@@ -29,8 +27,6 @@ interface TerminalPanelProps {
 const TerminalPanel = React.memo(function TerminalPanel({
   showTerminal,
   webContainer,
-  outputFramework,
-  setOutputFramework,
   setShowTestRunner,
   runtimeErrors,
   fixRuntimeError,
@@ -60,29 +56,8 @@ const TerminalPanel = React.memo(function TerminalPanel({
         <span className="text-[#555]">WebContainer: {webContainer.state.status}</span>
         {webContainer.previewUrl && <span className="text-emerald-400/60 ml-auto truncate max-w-[120px]">{webContainer.previewUrl}</span>}
         <div className="flex items-center gap-1 ml-auto">
-          <button
-            onClick={() => setClaudeCodeMode?.(!claudeCodeMode)}
-            className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all duration-200 ${
-              claudeCodeMode
-                ? 'bg-purple-500/20 text-purple-400 ring-1 ring-purple-500/40 shadow-[0_0_8px_rgba(168,85,247,0.3)]'
-                : 'bg-[#1a1a1a] text-[#555] hover:text-purple-400 hover:bg-purple-500/10'
-            }`}
-            title={claudeCodeMode ? 'Claude Code Mode: ON — Natural language commands' : 'Enable Claude Code Mode'}
-          >
-            ⚡ CC
-          </button>
           <button onClick={() => setShowTestRunner(true)} className="px-1.5 py-0.5 rounded bg-[#1a1a1a] text-[#888] hover:text-purple-400 hover:bg-purple-500/10 transition-colors" title="Test Runner">🧪</button>
           <button onClick={() => { webContainer.startDevServer(); }} className="px-1.5 py-0.5 rounded bg-[#1a1a1a] text-[#888] hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors" title="npm run dev">▶</button>
-          <select value={outputFramework} onChange={(ev) => setOutputFramework(ev.target.value)} className="bg-[#1a1a1a] text-[#555] text-[9px] rounded px-1 py-0.5 outline-none border-none cursor-pointer" title="Output framework">
-            <option value="html">HTML</option>
-            <option value="react">React</option>
-            <option value="nextjs">Next.js</option>
-            <option value="vue">Vue</option>
-            <option value="svelte">Svelte</option>
-            <option value="angular">Angular</option>
-            <option value="python">Python</option>
-            <option value="fullstack">Full-Stack</option>
-          </select>
         </div>
       </div>
       {/* Error panel */}
@@ -139,7 +114,7 @@ const TerminalPanel = React.memo(function TerminalPanel({
           className={`flex-1 bg-transparent outline-none placeholder-[#555] ${
             claudeCodeMode ? 'text-purple-200 caret-purple-400' : 'text-[#ccc] caret-emerald-400'
           } disabled:opacity-50`}
-          placeholder={claudeCodeMode ? 'Ask Claude Code anything... (natural language)' : 'Type a command...'}
+          placeholder={claudeCodeMode ? 'Ask anything... (natural language)' : 'Type a command...'}
           spellCheck={false}
         />
         {isClaudeCodeStreaming && (
