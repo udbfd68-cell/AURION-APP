@@ -323,33 +323,68 @@ const PreviewPanel = React.memo(function PreviewPanel(props: PreviewPanelProps) 
                     )}
                     {browser21stResults.length > 0 && (
                       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-                        {browser21stResults.map((comp, i) => (
-                          <div key={comp.id || i} className="flex flex-col bg-[#111] border border-[#1e1e1e] rounded-xl overflow-hidden hover:border-indigo-500/30 transition-colors group cursor-pointer" onClick={() => setPreview21stComponent(comp)}>
-                            {/* Iframe preview */}
-                            {(comp.demoCode || comp.code) && (
-                              <div className="relative w-full bg-[#09090b] border-b border-[#1a1a1a]" style={{ height: '140px' }}>
-                                <iframe
-                                  srcDoc={build21stPreviewHtml(comp.demoCode || comp.code || '')}
-                                  sandbox="allow-scripts"
-                                  className="w-full h-full border-0 pointer-events-none"
-                                  loading="lazy"
-                                  title={comp.name || 'Component preview'}
-                                  style={{ transform: 'scale(0.25)', transformOrigin: 'top left', width: '400%', height: '400%' }}
-                                />
-                                <div className="absolute inset-0" />
+                        {browser21stResults.map((comp, i) => {
+                          // Extract dominant Tailwind colors from code for visual preview
+                          const codeStr = comp.demoCode || comp.code || '';
+                          const colorMatch = codeStr.match(/(?:bg|from|to|via|text|border)-(?:indigo|violet|purple|blue|cyan|teal|emerald|green|lime|yellow|amber|orange|red|pink|rose|fuchsia|sky|slate|zinc|neutral|stone|gray)[-/]?\d*/g);
+                          const colors = [...new Set((colorMatch || []).slice(0, 6))];
+                          // Count approximate lines
+                          const lineCount = codeStr.split('\n').length;
+                          // Detect component type from code patterns
+                          const hasGrid = /grid|flex.*gap|columns/i.test(codeStr);
+                          const hasImage = /img|image|svg|icon/i.test(codeStr);
+                          const hasInput = /input|textarea|form|button/i.test(codeStr);
+                          const hasAnimation = /animate|motion|transition|framer/i.test(codeStr);
+
+                          return (
+                            <div key={comp.id || i} className="flex flex-col bg-[#111] border border-[#1e1e1e] rounded-xl overflow-hidden hover:border-indigo-500/40 transition-all group cursor-pointer hover:shadow-lg hover:shadow-indigo-500/5" onClick={() => setPreview21stComponent(comp)}>
+                              {/* Visual preview card — NO iframe */}
+                              <div className="relative w-full bg-[#09090b] border-b border-[#1a1a1a] p-3" style={{ height: '120px' }}>
+                                {/* Color palette dots */}
+                                <div className="flex gap-1 mb-2">
+                                  {colors.length > 0 ? colors.map((c, ci) => (
+                                    <span key={ci} className={`w-3 h-3 rounded-full ${c.replace(/text-|border-/, 'bg-')} opacity-70`} title={c} />
+                                  )) : (
+                                    <span className="w-3 h-3 rounded-full bg-zinc-700 opacity-50" />
+                                  )}
+                                </div>
+                                {/* Wireframe layout hint */}
+                                <div className="flex flex-col gap-1">
+                                  {hasGrid && <div className="flex gap-0.5">
+                                    <div className="h-2 flex-1 rounded-sm bg-[#1e1e1e]" />
+                                    <div className="h-2 flex-1 rounded-sm bg-[#1e1e1e]" />
+                                    <div className="h-2 flex-1 rounded-sm bg-[#1e1e1e]" />
+                                  </div>}
+                                  <div className="h-1.5 w-3/4 rounded-sm bg-[#1a1a1a]" />
+                                  <div className="h-1.5 w-1/2 rounded-sm bg-[#161616]" />
+                                  {hasImage && <div className="h-6 w-full rounded-sm bg-[#141414] flex items-center justify-center"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>}
+                                  {hasInput && <div className="h-3 w-full rounded-sm bg-[#141414] border border-[#222]" />}
+                                  {hasAnimation && <div className="absolute top-2 right-2"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="1.5" className="animate-pulse"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>}
+                                </div>
+                                {/* Code size badge */}
+                                <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1">
+                                  <span className="text-[7px] px-1 py-0.5 rounded bg-[#1a1a1a] text-[#444] font-mono">{lineCount}L</span>
+                                </div>
+                                {/* Hover overlay */}
+                                <div className="absolute inset-0 bg-indigo-500/0 group-hover:bg-indigo-500/5 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                  <span className="text-[9px] text-indigo-300 bg-black/60 px-2 py-0.5 rounded-full">Click to preview</span>
+                                </div>
                               </div>
-                            )}
-                            <div className="p-2 flex flex-col gap-1.5">
-                              <div className="flex items-start justify-between gap-1">
-                                <p className="text-[10px] font-semibold text-white leading-tight truncate">{comp.name || 'Component'}</p>
-                                {comp.code && <span className="shrink-0 text-[8px] px-1 py-0.5 rounded bg-[#1a1a1a] text-emerald-400/70 font-mono">{Math.round(comp.code.length / 1000)}k</span>}
+                              <div className="p-2 flex flex-col gap-1.5">
+                                <div className="flex items-start justify-between gap-1">
+                                  <p className="text-[10px] font-semibold text-white leading-tight truncate">{comp.name || 'Component'}</p>
+                                  {comp.code && <span className="shrink-0 text-[8px] px-1 py-0.5 rounded bg-[#1a1a1a] text-emerald-400/70 font-mono">{Math.round(comp.code.length / 1000)}k</span>}
+                                </div>
+                                {comp.tags && comp.tags.length > 0 && (
+                                  <div className="flex flex-wrap gap-0.5">{comp.tags.slice(0, 3).map(t => (<span key={t} className="text-[8px] px-1 py-0.5 rounded bg-[#1a1a1a] text-[#555]">{t}</span>))}</div>
+                                )}
+                                <button onClick={(e) => { e.stopPropagation(); inject21stComponent(comp); }} disabled={!!injecting21stComponent} className="w-full py-1 rounded-lg bg-indigo-500/15 text-indigo-300 text-[9px] font-medium hover:bg-indigo-500/25 transition-colors disabled:opacity-40 flex items-center justify-center gap-1 group-hover:bg-indigo-500/20">
+                                  {injecting21stComponent === comp.name ? <><svg width="9" height="9" viewBox="0 0 24 24" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="30 70"/></svg> Injecting…</> : <><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Use</>}
+                                </button>
                               </div>
-                              <button onClick={(e) => { e.stopPropagation(); inject21stComponent(comp); }} disabled={!!injecting21stComponent} className="w-full py-1 rounded-lg bg-indigo-500/15 text-indigo-300 text-[9px] font-medium hover:bg-indigo-500/25 transition-colors disabled:opacity-40 flex items-center justify-center gap-1 group-hover:bg-indigo-500/20">
-                                {injecting21stComponent === comp.name ? <><svg width="9" height="9" viewBox="0 0 24 24" className="animate-spin"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="30 70"/></svg> Injecting…</> : <><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Use</>}
-                              </button>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                     {/* ── Fullscreen Preview Modal ── */}

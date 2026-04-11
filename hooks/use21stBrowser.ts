@@ -28,56 +28,41 @@ interface Use21stBrowserDeps {
 // Exhaustive component categories — each fires one API call returning ~3 components
 const BROWSE_CATEGORIES = [
   // Heroes
-  'hero section', 'hero banner gradient', 'hero with image', 'hero animated text', 'hero dark landing',
-  'hero dithering card', 'hero minimal clean', 'hero with video background', 'hero split layout',
+  'hero section', 'hero banner gradient', 'hero animated text', 'hero dark landing', 'hero dithering card',
   // Pricing
-  'pricing card', 'pricing table comparison', 'pricing toggle monthly yearly', 'pricing section gradient',
+  'pricing card', 'pricing table comparison', 'pricing toggle monthly yearly',
   // Navigation
   'navigation bar', 'header navbar responsive', 'sidebar navigation', 'mobile hamburger menu',
-  'breadcrumb navigation', 'bottom tab bar mobile',
   // Cards
   'card grid', 'product card ecommerce', 'profile card avatar', 'feature card icon',
-  'blog post card', 'stats card dashboard', 'image gallery card', 'team member card',
+  'blog post card', 'stats card dashboard', 'team member card',
   // Buttons & CTAs
-  'CTA button animated', 'button group variant', 'gradient button glow', 'floating action button',
-  'magnetic button hover', 'shimmer button effect',
+  'CTA button animated', 'button group variant', 'gradient button glow', 'shimmer button effect',
   // Forms & Inputs
-  'contact form', 'login form', 'signup form registration', 'input field animated label',
-  'search bar command palette', 'textarea rich editor', 'file upload drag drop',
-  'OTP input verification code', 'password strength input', 'multi step form wizard',
+  'contact form', 'login form', 'signup form registration', 'search bar command palette',
+  'file upload drag drop', 'multi step form wizard',
   // Footer
-  'footer section links', 'footer newsletter signup', 'footer minimal dark',
+  'footer section links', 'footer newsletter signup',
   // Modals & Overlays
-  'modal dialog popup', 'drawer sidebar sheet', 'alert dialog confirm', 'command palette',
-  'popover dropdown menu', 'tooltip hover info',
+  'modal dialog popup', 'drawer sidebar sheet', 'command palette', 'tooltip hover info',
   // Layout
-  'bento grid layout', 'masonry grid gallery', 'split screen layout', 'dock taskbar',
-  'kanban board columns', 'infinite scroll feed',
+  'bento grid layout', 'masonry grid gallery', 'dock taskbar', 'kanban board columns',
   // Data Display
-  'data table sortable', 'chart bar graph', 'stat counter animated', 'progress bar steps',
-  'timeline vertical horizontal', 'tree view hierarchy',
+  'data table sortable', 'chart bar graph', 'progress bar steps', 'timeline vertical horizontal',
   // Testimonials & Social
-  'testimonials carousel', 'reviews star rating', 'social proof logos', 'avatar group stack',
-  'marquee scroll infinite', 'tweet embed card',
+  'testimonials carousel', 'reviews star rating', 'marquee scroll infinite',
   // Feedback
-  'notification toast', 'alert banner warning', 'skeleton loading placeholder', 'empty state illustration',
-  'error page 404', 'success confetti animation',
+  'notification toast', 'skeleton loading placeholder', 'error page 404',
   // Interactive
   'accordion FAQ', 'tabs panel', 'carousel slider', 'date picker calendar',
-  'color picker palette', 'slider range input', 'toggle switch dark mode',
-  'dropdown select combobox', 'tag input multi select',
+  'dropdown select combobox', 'toggle switch dark mode',
   // Animation & Effects
   'animated gradient background', 'text reveal animation', 'parallax scroll effect',
-  'cursor follower effect', 'particles background', 'blur fade transition',
-  'globe 3d animated', 'typewriter text effect', 'count up number animation',
-  'liquid gradient mesh', 'aurora northern lights', 'spotlight hover card',
+  'particles background', 'globe 3d animated', 'typewriter text effect',
+  'aurora northern lights', 'spotlight hover card',
   // Special
-  'badge chip label', 'divider separator ornament', 'scroll area custom scrollbar',
-  'aspect ratio media container', 'clipboard copy button', 'dark theme component',
-  'comparison before after', 'video player controls', 'audio player waveform',
-  'code block syntax highlight', 'terminal console output',
-  'payment checkout stripe', 'cookie consent banner', 'onboarding walkthrough',
-  'changelog release notes', 'waitlist early access',
+  'badge chip label', 'comparison before after', 'code block syntax highlight',
+  'payment checkout stripe', 'cookie consent banner', 'waitlist early access',
 ];
 
 async function fetchCategory(query: string, signal?: AbortSignal): Promise<Component21st[]> {
@@ -140,9 +125,8 @@ export function use21stBrowser(deps: Use21stBrowserDeps) {
     setBrowser21stResults([]);
     setTerminalLines(prev => [...prev, `$ 21st.dev: loading ${BROWSE_CATEGORIES.length} categories…`]);
 
-    const batchSize = 4; // smaller batches = less chance of failures
+    const batchSize = 3;
     const allResults: Component21st[] = [];
-    let completed = 0;
 
     for (let i = 0; i < BROWSE_CATEGORIES.length; i += batchSize) {
       if (controller.signal.aborted) break;
@@ -153,10 +137,13 @@ export function use21stBrowser(deps: Use21stBrowserDeps) {
       for (const result of batchResults) {
         if (result.status === 'fulfilled') allResults.push(...result.value);
       }
-      completed += batch.length;
-      // Progressive update
+      // Progressive update every batch
       const deduped = dedupeComponents(allResults);
       setBrowser21stResults([...deduped]);
+      // Small delay between batches to avoid throttling
+      if (i + batchSize < BROWSE_CATEGORIES.length && !controller.signal.aborted) {
+        await new Promise(r => setTimeout(r, 200));
+      }
     }
 
     if (!controller.signal.aborted) {
